@@ -2862,6 +2862,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // NumericUpDown can bind it).
     public double VoiceStopReadAloudThresholdValue => (double)VoiceStopReadAloudLevelThreshold;
 
+    [ObservableProperty]
+    private bool _voiceDuckOtherAudio;
+
+    [ObservableProperty]
+    private decimal _voiceDuckingPercent = 40;
+
+    public bool CanDuckOtherAudio => IsAudioAvailable && (OperatingSystem.IsWindows() || OperatingSystem.IsLinux());
+
+    public string AudioDuckingExplanation => !IsAudioAvailable ? AudioUnavailableMessage
+        : OperatingSystem.IsMacOS() ? "Audio ducking is not available on macOS. Per-app audio routing is planned separately."
+        : "Other apps stay at this percentage of Cockpit's system mixer volume. Quieter apps stay quiet; your volume changes are kept.";
+
     // Two-way bound to the "Test microphone" toggle; flipping it starts/stops a live level meter for setting the
     // barge-in threshold by eye (AC-9).
     [ObservableProperty]
@@ -3676,8 +3688,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
         ISyncOptions? syncOptions = null,
-        ISessionMcpRestore? sessionMcpRestore = null)
+        IPluginStoreSources? pluginStoreSources = null,
+        ISessionMcpRestore? sessionMcpRestore = null,
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
+        Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null,
+        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null)
     {
+        MentionSources = mentionSources;
+        _heavyRunSettingsStore = heavyRunSettingsStore;
+        _heavyRunSettingsRefresh = heavyRunSettingsRefresh;
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
         _providerConfigViews = providerConfigViews;
@@ -3722,7 +3741,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
         // where the page renders its defaults rather than the dialog failing to open.
-        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
+        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory, sessionProfileStore);
         _ = AssistantOptions.RefreshAsync();
         ModelIntelligence = new ModelIntelligenceOptionsViewModel(modelIntelligenceOptions);
         Sync = new SyncOptionsViewModel(syncOptions);
@@ -3857,7 +3876,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginAdministration is not null && pluginRegistrationStore is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary)
+            ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary, pluginStoreSources)
             : new PluginManagerViewModel();
         // a plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the banner
         // would keep reporting the state at startup while the Plugin manager moved on, the exact divergence the ticket
@@ -6290,6 +6309,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
+        VoiceDuckOtherAudio = CanDuckOtherAudio && settings.DuckOtherAudioWhileSpeaking;
+        VoiceDuckingPercent = (decimal)(Math.Clamp(double.IsFinite(settings.DuckingLevel) ? settings.DuckingLevel : 0.4, 0, 1) * 100);
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         VoiceTtsSpeed = (decimal)settings.TtsSpeed;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == settings.ReadAloudLanguage) ?? ReadAloudLanguages[0];
@@ -6364,6 +6385,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
+            DuckOtherAudioWhileSpeaking = CanDuckOtherAudio && VoiceDuckOtherAudio,
+            DuckingLevel = (double)VoiceDuckingPercent / 100,
             TtsVoiceSid = SelectedTtsVoice.Sid,
             TtsSpeed = (double)VoiceTtsSpeed,
             ReadAloudLanguage = SelectedReadAloudLanguage.Code,
@@ -6813,6 +6836,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     key: $"session.unisolated:{launched.PaneId}");
             }
 
+            if ((launched?.FailureReason ?? launched?.RoleWarning) is { } roleNotice)
+            {
+                ToastHost.Add(roleNotice, ToastSeverity.Warning, [], sticky: true);
+            }
+
             return launched?.PaneId is { Length: > 0 } started ? started : null;
         }
         catch (Exception exception) when (exception is WorktreeAdmissionException || (exception is ProfileSessionLimitException && !refuseLoudly))
@@ -6856,6 +6884,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             IsComposed = result.IsComposed,
             NameIsComposed = result.NameIsComposed,
             Effort = result.Effort.Value,
+            Role = result.Role,
+            IsRestoring = result.IsRestoring,
             EnabledMcpServerNames = result.EnabledMcpServerNames,
             ReadingLevel = result.ReadingLevel,
             ProjectJobId = result.ProjectJobId,
@@ -6888,6 +6918,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             NameIsComposed = request.NameIsComposed,
             StartedByTheAssistant = request.StartedByTheAssistant,
             ProjectJobId = request.ProjectJobId,
+            Role = request.Role,
         };
     }
 
@@ -7358,6 +7389,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The plugin list decides which plugin pages the dialog has at all, so it is read before the dialog is built.
         // With the closure hashes cached (AC-2018) that is a directory walk, not a read of every plugin byte.
         await Plugins.LoadAsync();
+        await LoadHeavyRunSettingsAsync();
         _MarkOptionsOpen("plugins");
 
         // AC-2018: the rest is read after the dialog is on screen, each page covered by a loading state until its own
@@ -7713,6 +7745,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
         await SaveUsagePillSettingsCommand.ExecuteAsync(null);
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
+        await SaveHeavyRunSettingsAsync();
         // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
         // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
@@ -7988,6 +8021,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         measurement.Mark("config");
 
+        if (_heavyRunSettingsRefresh is not null)
+        {
+            await _heavyRunSettingsRefresh.RefreshSettingsAsync();
+        }
+
         // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
         // nothing, and a blocked Apply still writes no update settings, exactly as before.
         _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
@@ -8081,6 +8119,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await LoadTranscriptDisplaySettingsAsync();
         await LoadUsagePillSettingsAsync();
         await LoadSessionBehaviorSettingsAsync();
+        await LoadHeavyRunSettingsAsync();
         await LoadScreenshotSettingsAsync();
         await LoadQuickNoteSettingsAsync();
         await LoadLayoutSettingsAsync();
@@ -8158,6 +8197,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MemoryBudgetPercent = behavior.MemoryBudgetPercent;
         PluginRestartAdviceAfter = behavior.PluginRestartAdviceAfter;
         AutomaticDockerCleanup = behavior.AutomaticDockerCleanup;
+        var heavyRuns = new Cockpit.Core.HeavyRuns.HeavyRunSettings();
+        MaxParallelRuns = heavyRuns.MaxParallelRuns;
+        RunCpuCeilingPercent = heavyRuns.CpuCeilingPercent;
+        RunMemoryCeilingPercent = heavyRuns.MemoryCeilingPercent;
 
         var screenshot = new ScreenshotSettings();
         ScreenshotGlobalHotkeyEnabled = screenshot.GlobalHotkeyEnabled;
@@ -8191,6 +8234,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = voice.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = voice.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)voice.StopReadAloudLevelThreshold;
+        VoiceDuckOtherAudio = CanDuckOtherAudio && voice.DuckOtherAudioWhileSpeaking;
+        VoiceDuckingPercent = (decimal)(Math.Clamp(double.IsFinite(voice.DuckingLevel) ? voice.DuckingLevel : 0.4, 0, 1) * 100);
         VoiceTtsSpeed = (decimal)voice.TtsSpeed;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(item => item.Sid == voice.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == voice.ReadAloudLanguage) ?? ReadAloudLanguages[0];
@@ -8523,6 +8568,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ProjectId: pane.ProjectId)
         {
             NameIsComposed = !pane.NameIsChosen,
+            Role = plan.State?.Role,
+            IsRestoring = true,
             StartedByTheAssistant = _sessionRegistry?.Find(pane.Id)?.StartedByTheAssistant == true,
         };
     }
@@ -8554,7 +8601,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 result = result with { EnabledMcpServerNames = restoredSelection };
             }
-            if (await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId }) is { PaneId.Length: > 0 })
+            var launched = await launcher.StartSessionAsync(_RequestOf(result, session.WorkspaceId) with { PaneId = session.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
+            if (launched is { PaneId.Length: > 0 })
             {
                 session.RestoreOffer = null;
             }
@@ -9644,6 +9696,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         public void NotifyPreparing(Cockpit.Core.Voice.VoicePlaybackSource source = Cockpit.Core.Voice.VoicePlaybackSource.Session, string? ownerId = null) { }
         public event EventHandler<bool>? PlaybackActiveChanged { add { } remove { } }
         public event EventHandler? SpeakingStarted { add { } remove { } }
+        public event EventHandler<bool>? AudioPendingChanged { add { } remove { } }
         public event EventHandler<Cockpit.Core.Abstractions.Voice.VoicePlaybackStoppedEventArgs>? PlaybackStopped { add { } remove { } }
         public void StopAll() { }
         public int Generation => 0;
@@ -9746,6 +9799,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         session.RestoreDecided -= OnSessionRestoreDecided;
         session.NameChanged -= OnSessionNameChanged;
         _lastStatus.Remove(session);
+        _pendingNotificationSounds.RemoveSession(session.PaneId);
+        _lastNotificationSounds.Remove(session.PaneId);
 
         // Deterministic teardown on a real close (a tab-switch never reaches here): empty the transcript while the pane
         // is still attached, so its realised rows dematerialise and their heavy control trees leave the tree now.
@@ -9887,7 +9942,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         try
         {
-            await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            var launched = await _sessionLauncher!.Invoke()!.StartSessionAsync(_RequestOf(launch, Workspaces.EnsureSessionWorkspace()) with { PaneId = record.PaneId });
+            if (launched?.RoleWarning is { } warning)
+            {
+                ToastHost.Add(warning, ToastSeverity.Warning, [], sticky: true);
+            }
         }
         catch (ProfileSessionLimitException exception)
         {
@@ -10078,6 +10137,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
 
             owned.Add(session);
+            OnPropertyChanged(nameof(AllSessions));
         }
 
         var session = _MakeSdkPane(
@@ -10120,6 +10180,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _embeddedSessions.Remove(workspaceId);
+        OnPropertyChanged(nameof(AllSessions));
         foreach (var session in owned)
         {
             _ = _TeardownEmbeddedSessionAsync(session);
@@ -10150,6 +10211,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _embeddedSessions.Remove(workspaceId);
                 }
 
+                OnPropertyChanged(nameof(AllSessions));
                 return _TeardownEmbeddedSessionAsync(session, endReason);
             }
         }
@@ -10524,6 +10586,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
+        _pendingNotificationSounds.RemoveSession(session.PaneId);
+        _lastNotificationSounds.Remove(session.PaneId);
         _sessionRegistry?.Unregister(session.PaneId);
         _embeddedSessionViews.Remove(session.PaneId);
         session.PropertyChanged -= OnSessionPropertyChanged;
@@ -10629,6 +10693,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _disposed = true;
+        _pendingNotificationSounds.Dispose();
         _StopSwarmSidebar();
         if (_voicePlaybackQueue is not null)
         {

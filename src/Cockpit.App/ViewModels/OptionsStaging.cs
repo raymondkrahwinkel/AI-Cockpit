@@ -6,6 +6,7 @@ namespace Cockpit.App.ViewModels;
 
 // This list only answers "has the operator changed anything", for the footer's indicator and the warning on Escape
 // (AC-999).
+// Publisher trust is written by consent; there is no editable Options value to stage.
 internal static class OptionsStaging
 {
     // A character no setting can contain, so two different sets of values cannot join into the same string.
@@ -31,6 +32,9 @@ internal static class OptionsStaging
         "LocalNotificationsEnabled",
         "LogDiagnosticSnapshots",
         "MemoryBudgetPercent",
+        "MaxParallelRuns",
+        "RunCpuCeilingPercent",
+        "RunMemoryCeilingPercent",
         "MinimizeToTrayOnClose",
         "NotifyOnCiFailure",
         "MonitorMessagesPerHour",
@@ -81,6 +85,8 @@ internal static class OptionsStaging
         "VoicePushToTalkKeyName",
         "VoiceStopReadAloudLevelThreshold",
         "VoiceStopReadAloudWhenSpeaking",
+        "VoiceDuckOtherAudio",
+        "VoiceDuckingPercent",
         "VoiceTtsSpeed",
         "WakeAgentsByDefault",
         "WebhookUrl",
@@ -97,12 +103,22 @@ internal static class OptionsStaging
         "AssistantOptions.PushToTalkKeyName",
         "AssistantOptions.SelectedReadingLevel",
         "AssistantOptions.SpeakReplies",
+        "AssistantOptions.WakeWordEnabled",
+        "AssistantOptions.WakeWord",
+        "AssistantOptions.WakeWordListeningSeconds",
+        "AssistantOptions.SelectedSpeechMode",
+        "AssistantOptions.SelectedSpeechMethod",
+        "AssistantOptions.SelectedSpeechProfileLabel",
     ];
 
     // Cancel does not undo what these feed, which is exactly why each one has to be named here rather than simply left
     // off the list above: a new control lands in a category on purpose or the guard test fails.
     public static readonly string[] ImmediateOrTransient =
     [
+        // Store visibility is saved by Manage stores immediately, independently of the Options Apply/Cancel cycle.
+        "Plugins.HiddenStoreSourceKeys",
+        // Companion strip preferences are applied by Customize immediately, outside Options.
+        "CompanionStripLayout",
         "IsTestingMic",
         "OptionsSearchText",
         "BackupIncludesCredentials",

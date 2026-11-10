@@ -10,6 +10,126 @@
 
 - AC-2143: prepare a bounded private connection for the Browser engine host, rejecting stale generations and requests for unregistered tabs.
 
+- AC-2257: a paired phone can list this Cockpit's sessions with their statusline and state, read one session's transcript and its open permission questions, and send that session a message, all inside the encrypted channel; plugins get `PluginTranscriptEntry.Index` (plugin SDK 3.84.0, host 0.173.0).
+
+- AC-2256: plugins can read each open session's statusline, whether it is a terminal and whether its transcript is readable, plus the tail of that transcript and its open permission questions through `Sessions.ReadTranscriptAsync` and `Sessions.ReadPendingPermissionsAsync` (plugin SDK 3.83.0, host 0.172.0).
+
+- AC-2255: a phone paired from Settings › Depot now reaches this Cockpit: the Cockpit connects to the Depot relay right after pairing, instead of the phone reporting it offline and not paired.
+
+- AC-717: opt in to lowering other apps during assistant speech on Windows and Linux, relative to Cockpit's mixer volume, with automatic restore and crash recovery. macOS shows the option as unavailable.
+
+- AC-2242: the QR code in Pair phone is black on white in every theme, with a quiet zone of 4 modules, at least 240 px and sharp, so a phone camera can focus on it.
+
+- AC-2241: the Depot panel without a server has an "Add Depot server" button that opens the Depot settings, and its project list is off with a "No Depot server" label instead of showing a dot.
+
+- AC-2192: the mobile app and its phone pairing (Settings › Depot › Pair phone…) are experimental and carry an "Experimental" label, and may change or break between releases.
+
+- AC-2238: a paired phone can page back through the whole assistant conversation, 50 rows at a time, also right after Cockpit restarted; plugins can read earlier assistant rows through `ReadRowsAsync` (plugin SDK 3.82.0, host 0.171.0).
+
+- AC-2239: a phone pairing is saved only after both devices confirm their encryption keys; a changed QR key or missing confirmation leaves no new pairing or assistant access.
+
+- AC-2227: a paired phone talks to your assistant in the same conversation as the chat window, end to end encrypted over Depot: messages from the phone go in as yours, the answer streams back, the phone can page back 50 rows at a time through what was said since Cockpit started, and a permission prompt or a question of the assistant shows on the phone as waiting for you on the desktop. With the chat closed, the phone gets a notification without any text. A forgotten phone gets nothing and can send nothing.
+
+- AC-2224: pair your phone from Settings › Depot: "Pair phone…" on a signed-in connection shows a QR code that is valid for five minutes, and the phone is paired only once its end-to-end handshake checks out. "Paired phones" lists your phones with a Forget button, and links to Depot to unpair one there.
+
+- AC-2222: groundwork for the mobile app: the Depot plugin can now encrypt the conversation between your phone and this Cockpit end to end, so Depot only relays bytes it cannot read. Nothing to see yet; pairing follows in a later release.
+
+- AC-1788: Remote files supports WebDAV with Basic or bearer authentication, certificate pinning and conditional saves. HTTPS is recommended; HTTP carries a red warning.
+
+- AC-1787: new plugin Remote files: add SFTP, FTPS or FTP servers under Options › Plugins › Remote files and browse, view and edit them in the Files browser. Test connection shows the server's host key or self-signed certificate and nothing of your login is sent until you trust it; a changed key is refused with the old and new fingerprint. Passwords, private keys and passphrases are stored as secrets and the page only shows whether one is set. FTP without encryption can be chosen but is never the default and carries a red warning. Each connection is read only until you allow writing. On a server, the connection runs from the server. The Files browser shows a refused server key as its own state with both fingerprints and a way to the connection settings (plugin SDK 3.81.0, host 0.170.0).
+
+- AC-1786: new plugin Local files: add folders under Options › Plugins › Local files (or a Cockpit project folder as a shortcut) and browse, view and edit them in the Files browser. A folder is read only until you allow writing; nothing outside the added folders can be reached, a link that points outside shows Forbidden, and Cockpit's own state folder is always refused. On a server, an admin adds folders on the server's disk.
+
+- AC-2236: plugins with a file source get a file browser in the dock rail without building their own: pick a connection (also on a managed server), open folders, click a Markdown file to preview it or Edit it, add a file or folder, upload up to 1 MiB and download any size. A read-only connection shows no New, Upload or Edit (plugin SDK 3.81.0, UI SDK 3.27.0, host 0.170.0).
+
+- AC-1819: conversation details show the copyable scratch folder and its size; the disk indicator hover shows the total scratch size for this instance.
+
+- AC-2235: closing a session no longer breaks `/tmp` in Git Bash for your other sessions; the scratch folder that Git Bash uses as `/tmp` is left in place instead of removed.
+
+- AC-2220: a session whose brain is a Depot brain gets the Depot gateway filtered by that brain (`brain=<organization>/<slug>`) on every route: SDK, TTY, start_agent, delegation, the assistant and local models. The parameter sits on the upstream address behind the session gateway, so the agent never sees it; a project without a Depot brain, or with a brain on another Depot, keeps the unfiltered gateway.
+
+- AC-2219: when the Depot gateway offers too many tools (Depot totals them over all your organizations: 40 tools or 22 KB for a warning, 80 or 44 KB for critical), the New session, project and profile MCP lists, Options › MCP Servers and a conversation's details say so beside the gateway, with a link to Depot's Performance page. Never a banner; nothing shows when Depot gives no figure or the load is fine.
+
+- AC-2218: the Depot plugin shows the personal MCPs that still need your sign-in under Personal MCPs in the Depot settings, as a bell with an Authorize button, and as a step after the first-start sign-in with Later. Authorize opens Depot in the browser; when it is done the list updates, and running sessions get the new tools without a restart.
+
+- AC-2217: the Depot plugin offers the Depot gateway as one extra MCP server per connection ("Depot gateway: <connection>") on the same sign-in, only on a Depot that lists the depot.gateway scope; an older or unreachable Depot keeps working exactly as before, without a gateway row or a message.
+
+- AC-2216: plugins can let two MCP servers share one sign-in, refresh a server's tools in running sessions without a restart, and a server that refuses a sign-in for missing permissions now shows the usual sign-in notice.
+- AC-2237: live recovery retries briefly when the saved note lags behind, keeping unconfirmed text protected.
+
+- AC-2232: a maximized main window stays maximized after locking and unlocking Windows.
+
+- AC-2233: the disk indicator in the status bar now uses the same hover background as CPU/RAM.
+
+- AC-2190: the companion strip and its pop-outs now look like the approved mockup: a 44px strip with one assistant chip ("F10 to talk"), quiet icon buttons, a split screenshot button, hairlines between the groups, and pop-outs 6px from the strip with a shared head and close button. Customize strip reorders by dragging and has Reset, the notification cards show their age and answer pills, and a background agent is no longer also counted as running.
+- AC-2209: the assistant can look at one whole display with `look_at_screen`, only after you start it on its card (display and 5, 10 or 30 minutes); while it runs the strip shows a cyan border, the time left and Stop, the display gets a cyan frame and a tab with the last look and Stop, and none of them are in what the assistant sees. Every look is one screenshot on its own call; there is no interval.
+- AC-2207: Customize strip adds, removes and reorders companion tools while Cockpit stays in the tray; new tools wait under Available, and unavailable plugins keep their place with Enable and Forget.
+- AC-2203: open the assistant conversation or its pending questions from the companion strip, and choose the assistant or selected agent as the screenshot recipient; the strip and its pop-outs stay out of captures.
+- AC-2208: a plugin can embed the cockpit's live Markdown editor, with the people in the file and their carets, in its own view (plugin SDK 3.78.0, host 0.167.0).
+- AC-2204: the companion strip shows running, waiting and background counts; its status panel lists agents and services and lets you select an agent while Cockpit stays in the tray.
+- AC-2201: the companion strip gets a soft shadow, and a pop-out shell with one placement rule is in place for the strip's upcoming items.
+- AC-2206: companion tool plugins can put a badge on their button and ask for their own pop-out (plugin SDK 3.76.0, host 0.165.0).
+- AC-2205: the companion strip gets a bell with a panel for what waits on you: open questions and permissions can be answered right there (SDK sessions; a terminal session shows Open in Cockpit), and a finished agent waits there until you dismiss or open it.
+- AC-2202: the companion strip lies horizontally or vertically, drags freely, can stay above other windows (on by default), and shows each tool as an icon button with its badge that opens the tool in a pop-out; the setting is remembered.
+- AC-2230: with the speaker switched off, the assistant no longer reads a reply aloud, and a mute clicked while the assistant is still starting is no longer overwritten by the stored value; "Read full reply aloud" still speaks on request.
+
+- AC-2211: agent browser actions wait for navigation or download feedback, and profile cleanup waits for browser shutdown even when a tab closes concurrently.
+
+- AC-2215: project cards and waiting conversations on Home wrap a long title onto further lines instead of cutting it off.
+
+- AC-2194: the project picker follows the approved compact row typography and selection stripe, and token marks leave the surrounding spaces clear.
+
+- AC-2199: typing @ on Home picks the project the button shows (and removing it clears the button again); every other project mention goes into the prompt with its path or shared id, and the list now works the same on Home, in sessions and in the assistant panel.
+
+- AC-2200: plugins can add their own suggestions to the chat's @-list under "Suggested by plugins"; a plugin source that fails or takes longer than two seconds is left out without holding up the rest.
+- AC-2198: typing @ in a chat composer opens one shared list that hangs on the caret line at the composer's full width, groups files and projects per window, skips group headings with the arrow keys, and marks accepted project mentions in the text.
+- AC-1981: the Installed tab shows each plugin's source and verified publisher, says when its version was cleaned up (with an update to the newest) or its source is no longer available, and shows a revoked publisher key; a restore reports a plugin whose source is not available instead of fetching it from another store.
+
+- AC-1980: an installed plugin stays with the store it came from: a higher version in another store is no update (also not in Update all), the details show "Also offered by" with a Switch button that asks for consent again, and installations without a recorded store keep their consent.
+
+- AC-1977: Manage plugin stores shows a row per organization with its Depot and plugin count, lets you hide or show it, and says "You are no longer a member" when the Depot no longer lists you; installed plugins keep running without updates.
+
+- AC-1979: ask before trusting a changed plugin publisher key; Update all keeps the current version and explains why.
+
+- AC-1976: the plugin store shows a "From <organization>" block per Depot organization on Discover, says on every row which store it comes from, and lists the source and publisher key of a plugin in its details.
+
+- AC-2213: clear Speaking when queued audio drains while the assistant continues working, preserving open-mic pausing.
+
+- AC-2169: keep session and assistant role pickers behind the frontend contract boundary.
+
+- AC-2173: every session receives the pull request merge rule automatically; assistant briefs no longer repeat the standing work agreements.
+- AC-2172: choose an optional role when starting a session or editing the Assistant Profile. The assistant keeps its role across provider changes and starts with a warning if the role cannot be loaded.
+
+- AC-2171: the assistant explicitly chooses a role or none when starting sessions, including on paired nodes. Role refusals show the available choices; manual server starts and delegated tasks keep roles optional.
+
+- AC-2170: sessions can carry an optional role from their brain on every provider route, keep that choice when copied or resumed, and resume with a warning if the role source is unavailable. Older memory plugins and servers continue to work without roles.
+- AC-2212: the Simple rail now has a Plugins row above Settings and Help that opens the plugin store, with the same update and approval badges as the Panels sidebar.
+
+- AC-2191: the Panels sidebar footer uses flat icon rows like the Simple rail, and the Menu and Help flyouts get the mention-picker look with icon rows (also in the Simple rail's Help).
+
+- AC-2188: queued test runs start strictly in arrival order, without pre-merge priority or aging.
+
+- AC-2189: inbox messages from other sessions now start collapsed to their header in the transcript, and run results keep a coloured one-line verdict; the toggle opens the full text.
+- Centre the Simple/Panels switch on the main window's title bar, keeping it available down to the window's minimum width.
+- Move the Simple/Panels switch to the title bar in both views and remove the Simple rail's More options shortcut.
+- Keep connected sessions' MCP counts and status buttons current after live server or connection-issue changes, preserving other session statuses.
+- AC-2119: the assistant now speaks the first sentences while the answer is still arriving, also for Short and Summary without AI, which now read the full answer; Short and Summary need an AI method to shorten.
+- AC-2187: the assistant can tell which session you have selected: `list_sessions` marks it, following the Simple stand's own selection when that stand is showing.
+- AC-2100: display relative Depot note images in Markdown file previews and editors without rewriting their source.
+
+- AC-2168: keep test scratch isolation stable when plugin probes reload a test assembly.
+
+- AC-2168: keep private speech out of synthesis and playback error logs, and stream completed sentences ending in short words without mistaking them for abbreviations.
+
+- AC-2167: choose Full, Summary or Short assistant speech and its shortening method in Options, with Short + Assistant as the default, clear fallback notices and a Read full reply aloud action on each answer. Ambiguous speech keeps the configured read-aloud language.
+
+- AC-2166: prepare private short speech through the assistant or a selected profile, with a three-second deadline and rule-based fallback for providers without an ephemeral route.
+- AC-2165: prepare bounded short and summary speech per completed assistant reply, while full speech keeps streaming.
+- Closing the main window exits Cockpit even after hiding the Companion or another helper window; closing to the tray still keeps it running.
+- Desktop shutdown stops background services and awaits their final writes before disposing their dependencies.
+- Enabling an installed plugin without consent now explains that permission for its current SHA is required instead of reporting it as missing.
+- AC-2177: open a session's MCP servers from its header settings or connected-server count.
+
 - AC-2178: keep existing plugins that register host services loading after an app update, and defer changes to those plugins until restart.
 
 - AC-2164: keep opening prompts queued until the Claude or Codex terminal composer is ready, so workspace trust dialogs cannot consume them as delivered turns.
@@ -19,6 +139,9 @@
 - AC-2058: preserve graceful SIGTERM shutdown on Linux/macOS when the Browser plugin is active.
 
 - AC-241: Companion remembers a reachable position, uses native window dragging, and separates tools with an explicit empty state.
+- AC-2174: set this machine's maximum parallel test/build runs and CPU/memory queue limits in Options › Sessions; queued runs explain when the parallel maximum is reached.
+
+- Session done and Waiting for you sounds wait three seconds and stay silent if the session has moved on.
 
 - AC-2117: reset swarm membership from any state, rejoin with fresh confirmation, show standalone/paused status and explain conflicting histories.
 
@@ -93,6 +216,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ## [Unreleased]
 
 ### Added
+
+- Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.
+
+- The Depot plugin-store epic now includes the current host changes while retaining runtime stores and their credential protection.
+- Plugins can offer stores with refreshed credentials alongside configured stores. Manage stores can hide these sources; their addresses and credentials stay out of backups.
 
 - The assistant can attach files from its scratch folder and managed worktrees to replies, with image previews and file downloads in chat.
 - Discord replies now carry files and images on the last message part, and display Markdown tables as aligned code blocks.

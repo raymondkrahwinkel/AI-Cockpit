@@ -19,15 +19,14 @@ internal sealed partial class AgentOwnedTabs
             using var ended = session.Ended.Register(timeout.Cancel);
             var token = timeout.Token;
             var boundary = await BoundaryAsync(caller, session, token).ConfigureAwait(false);
+            using var feedback = await boundary.ObserveActionAsync(entry.Target, token).ConfigureAwait(false);
             boundary.TakeBlocked(entry.Target);
             await boundary.DenyDownloadsAsync(token).ConfigureAwait(false);
             using var targets = JsonDocument.Parse(await Http.GetStringAsync(session.Upstream + "/json/list", token).ConfigureAwait(false));
-            var target = targets.RootElement.EnumerateArray().FirstOrDefault(p => p.GetProperty("id").GetString() == entry.Target);
-            if (target.ValueKind == JsonValueKind.Undefined)
+            if (!targets.RootElement.EnumerateArray().Any(p => p.GetProperty("id").GetString() == entry.Target))
             {
                 throw new OwnedTabException("tab_gone", "The tab has closed.");
             }
-            using var page = await CdpPage.ConnectAsync(RequiredString(target, "webSocketDebuggerUrl"), (_, _) => { }, token).ConfigureAwait(false);
             void CheckAction()
             {
                 Check(caller, entry.Generation, mutate);
@@ -36,7 +35,7 @@ internal sealed partial class AgentOwnedTabs
                     throw new OwnedTabException("tab_gone", "The tab has closed.");
                 }
             }
-            Task<JsonElement> Send(string method, object? parameters) => page.CallAsync(method, parameters, token, CheckAction);
+            Task<JsonElement> Send(string method, object? parameters) => boundary.CallAsync(entry.Target, method, parameters, token, CheckAction);
             async Task<JsonElement> Evaluate(string expression)
             {
                 var result = await Send("Runtime.evaluate", new { expression, returnByValue = true }).ConfigureAwait(false);
@@ -79,7 +78,11 @@ internal sealed partial class AgentOwnedTabs
                     await Send("Input.insertText", new { text = action.Text }).ConfigureAwait(false);
                     break;
                 case "key":
-                    await ValidateLinkAsync(Evaluate, "document.activeElement").ConfigureAwait(false);
+                    var keyActivation = await ValidateActivationAsync(Evaluate, "document.activeElement").ConfigureAwait(false);
+                    if (keyActivation.FileChooser && action.Text is "Enter" or "Space" || keyActivation.Navigation && action.Text == "Enter")
+                    {
+                        feedback.ExpectSignal();
+                    }
                     var (key, code) = Key(action.Text!);
                     await Send("Input.dispatchKeyEvent", new { type = "keyDown", key, windowsVirtualKeyCode = code, text = key.Length == 1 ? key : "" }).ConfigureAwait(false);
                     await Send("Input.dispatchKeyEvent", new { type = "keyUp", key, windowsVirtualKeyCode = code }).ConfigureAwait(false);
@@ -101,7 +104,11 @@ internal sealed partial class AgentOwnedTabs
                         x = point.GetProperty("x").GetDouble();
                         y = point.GetProperty("y").GetDouble();
                     }
-                    await ValidateLinkAsync(Evaluate, "document.elementFromPoint(" + JsonSerializer.Serialize(x) + "," + JsonSerializer.Serialize(y) + ")").ConfigureAwait(false);
+                    var activation = await ValidateActivationAsync(Evaluate, "document.elementFromPoint(" + JsonSerializer.Serialize(x) + "," + JsonSerializer.Serialize(y) + ")").ConfigureAwait(false);
+                    if (activation.Navigation || activation.FileChooser)
+                    {
+                        feedback.ExpectSignal();
+                    }
                     await Send("Input.dispatchMouseEvent", new { type = "mousePressed", x, y, button = "left", clickCount = 1 }).ConfigureAwait(false);
                     await Send("Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }).ConfigureAwait(false);
                     break;
@@ -109,13 +116,12 @@ internal sealed partial class AgentOwnedTabs
             Check(caller, entry.Generation);
             if (action.Tool is "click" or "key" or "navigate")
             {
-                // ponytail: feedback waits at most 200 ms; slower boundary events may miss this action's response.
-                await Task.Delay(200, token).ConfigureAwait(false);
-                if (boundary.TakeBlocked(entry.Target) is { } blocked)
+                if (await feedback.WaitAsync(token).ConfigureAwait(false) is { } blocked)
                 {
                     throw BoundaryFailure(blocked);
                 }
             }
+            Check(caller, entry.Generation);
             return new("", true, Action: action.Tool);
         }
         catch (Exception ex) when (IsBrowserFailure(ex))
@@ -145,11 +151,14 @@ internal sealed partial class AgentOwnedTabs
         }
     }
 
-    private static async Task ValidateLinkAsync(Func<string, Task<JsonElement>> evaluate, string element)
+    private static async Task<(bool Navigation, bool FileChooser)> ValidateActivationAsync(Func<string, Task<JsonElement>> evaluate, string element)
     {
-        var href = await evaluate("(() => { const a=(" + element + ")?.closest('a,area'); return a?.href || ''; })()").ConfigureAwait(false);
-        if (href.GetString() is { Length: > 0 } url && !AgentTabBoundary.IsWeb(url))
+        var activation = await evaluate("(() => { const e=(" + element + "); const a=e?.closest('a,area'); const f=e?.closest('input[type=file]') || e?.closest('label')?.control; return {href:a?.href || '', fileChooser:f?.type === 'file' && !f.matches(':disabled')}; })()").ConfigureAwait(false);
+        if (activation.GetProperty("href").GetString() is { Length: > 0 } url && !AgentTabBoundary.IsWeb(url))
+        {
             throw new OwnedTabException("invalid_argument", "Only http(s) links are allowed.");
+        }
+        return (activation.GetProperty("href").GetString() is { Length: > 0 }, activation.GetProperty("fileChooser").GetBoolean());
     }
 
     private static (string Key, int Code) Key(string key) => key switch

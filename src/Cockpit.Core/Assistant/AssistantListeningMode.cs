@@ -14,8 +14,6 @@ public enum AssistantListeningMode
     // and that it costs per utterance when they switch it on (criterion 18), once, not on every use.
     AlwaysOn,
 
-    // The microphone stays open but the assistant only answers after the wake word — the filter that makes
-    // `AlwaysOn` liveable. *Not built in this phase.* Exists here so the indicator can show it as
-    // "not set up yet" rather than hide it; selecting it is refused while no wake word is configured.
+    // Local transcripts reach the assistant only after the first wake word or during its follow-up period.
     AlwaysOnWithWakeWord,
 }

@@ -1,5 +1,19 @@
 # AI-Cockpit
 
+Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
+(`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
+`Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)
+are local `cockpit.json` settings, deliberately excluded from the settings carrier. Apply saves
+them; Cancel discards edits. Older configurations without these keys use Short + Assistant.
+Full streams speech; the shorter modes wait for the completed answer. AI shortening sends the
+answer and profile context to the selected profile through a private generation route, with up to
+three seconds of extra waiting. An unavailable, missing or unsafe profile falls back to built-in
+shortening and reports why. The speech text never enters the chat, copy or export. Read full reply
+aloud on an assistant answer stops current speech and private generation, then reads that answer
+in full, regardless of the selected mode. Speech uses sentence language cues for Dutch, English
+and German; short ambiguous sentences use the preceding language, starting each batch with the
+configured read-aloud language. Adjacent sentences in the same language share one segment.
+
 The host checks live sessions every 30 seconds for failed turns, unanswered permissions,
 abandoned processes when a session is neither Busy nor WorkingBackground, and panes that disappear
 before finishing. Plain terminals are excluded. It sends at most one inbox message per tick to the
@@ -31,6 +45,19 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 > **Status: 0.3.0, pre-1.0, in active development.** Expect breaking changes between commits; there are no
 > releases yet. Deliberately still 0.x: under 1.0 semver promises nothing, which is the honest state of a thing
 > whose plugin contract is still moving. Built and tested on Windows and Linux (Fedora).
+
+### Test and build run limits
+
+Options › Sessions stages this machine's maximum parallel heavy runs and CPU/memory ceilings until Apply;
+Cancel discards edits. `heavyRuns` in `cockpit.json` also works on servers without a UI:
+`MaxParallelRuns` defaults to `0` (automatic, the existing resource-based admission),
+`CpuCeilingPercent` to `75`, and `MemoryCeilingPercent` to `85`.
+A positive maximum adds a limit to the existing resource checks. With no run active, the first heavy run
+can start regardless of these limits. Light and operator runs retain their existing admission rules.
+Queued runs start strictly in arrival order, regardless of purpose or time spent waiting.
+Light and operator-started runs still start immediately. Legacy `AgingMinutes` settings are ignored.
+Queued runs show the reason in Test runs. Overload failures can lower the resource ceilings.
+These settings stay on this machine and are excluded from the settings carrier.
 
 ## Why
 
@@ -92,6 +119,12 @@ In Depot files, Open views a Markdown document, Edit enables changes, and New Ma
 draft in the chosen folder. Save or Ctrl+S writes with the original checksum. Pop out and Dock back
 keep the same text and undo history. Closing warns about unsaved changes; unsaved text is not restored
 after restart. A source conflict preserves local text for the later conflict-resolution flow.
+
+Depot notes also display standalone relative Markdown images in previews, pinned tabs and the live
+editor. Paths are relative to the note's folder in its project; source mode and saving preserve the
+original Markdown. PNG, JPEG, GIF and WebP previews support up to 2 MiB and 16 megapixels per image.
+Unavailable images show their alt text. Reload checks for replacements; signing out or changing a
+connection clears private previews. This requires Depot's authenticated artifact-byte endpoint.
 
 The cockpit does not talk to any model API of its own accord. A session is a driver: it spawns the provider's own
 client, or speaks to the provider's own endpoint, under your own login and your own credentials — which the
@@ -165,12 +198,29 @@ calling agent cannot delegate to what it cannot see.
   [binary size & on-demand runtimes](docs/binary-size-and-on-demand-runtimes.md).
 - **Open-mic mode:** continuous listening with Silero VAD-based endpointing (configurable silence timeout) — no
   push-to-talk needed.
+- **Wake word:** Options → Voice can filter always-listening speech using the existing local transcription.
+  Set comma-separated variants such as `Zyra, Zira`. The first matching whole word anywhere in an utterance
+  is used, ignoring case, accents and punctuation. `Zara` and `Computers` do not match `Zyra` and `computer`.
+  Only the text after the match is sent to the assistant; preceding text and utterances without
+  a match are discarded without being logged. A match with nothing after it admits the next utterance for
+  8 seconds by default.
+  In `cockpit.json`, `Assistant.WakeWordEnabled` defaults to `false`, `Assistant.WakeWord` (the variant list) to `computer`,
+  and `Assistant.WakeWordListeningSeconds` to `8` (1–30 seconds). These preferences stay local and are excluded
+  from `SettingsCarrierWhitelist`, like the existing assistant voice settings. The indicator identifies the filter.
 - **Push-to-talk:** a configurable key (default `F9`); optionally a **global hotkey** that works even when the
   cockpit isn't focused (a low-level keyboard hook on Windows, the XDG global-shortcuts portal on Wayland/Linux),
   paired with a small **desktop overlay** showing listening/transcribing state and a live waveform.
 - **TTS (read-aloud):** replies can be read aloud via sherpa-onnx running **SupertonicTTS** — one multilingual voice
   speaks both Dutch and English, with automatic per-language pronunciation within a single reply, and a choice of
   reading verbatim, rewritten into natural speech, or summarized to the essence.
+- **Audio ducking (Windows and Linux):** Options → Assistant → Speech can lower other apps while the assistant
+  speaks. `Voice.DuckOtherAudioWhileSpeaking` defaults to `false` (no OS audio calls while off);
+  `Voice.DuckingLevel` defaults to `0.4`, a fraction of Cockpit's OS session volume, clamped to 0–1.
+  Cockpit at 80% with a 50% setting caps other apps on the same output at 40%; quieter apps stay quiet.
+  Volumes return about 500 ms after speech ends, unless changed by the operator. `audio-ducking.json`
+  journals original volumes before changing them and recovers them on the next enabled start after a crash.
+  Missing streams stay journalled for a later recovery. These settings stay local and are excluded from
+  `SettingsCarrierWhitelist`. macOS and machines without audio show a disabled option with an explanation.
 - All voice features are **opt-in and fully local** — no audio leaves the machine.
 
 ## Plugins & plugin store
@@ -340,6 +390,11 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
+Plugins can supply runtime plugin stores with request-time credentials. Manage stores shows these sources with
+Hide/Show instead of Remove. `HiddenPluginStoreSources` is a string array of hidden source keys (default empty),
+saved immediately by Manage stores; Options Apply/Cancel does not change it. This machine-local preference is
+excluded from settings carriers. Runtime store descriptors and their tokens are never stored in config or backups.
+
 Notification sounds are configured under `Notifications.NotificationSoundsEnabled`,
 `NotificationSoundOnSessionFinished`, `NotificationSoundOnNeedsAttention`, `SessionFinishedSound`,
 `NeedsAttentionSound`, `SessionFinishedCustomSoundPath`, `NeedsAttentionCustomSoundPath` and
@@ -479,6 +534,9 @@ that cannot be looked at by running the app.
 
 Tests:
 
+Test assemblies initialize one private scratch root per process, replacing any inherited
+`COCKPIT_SCRATCH_ROOT`. Loading a test assembly again as a plugin keeps that root and any active test override.
+
 ```
 dotnet test
 ```
@@ -610,3 +668,25 @@ unless `COCKPIT_STATE_ROOT` overrides it), copy `cockpit.json` to a private back
 and pair again. The older panel may still incorrectly label standalone as leader. Do not restore
 the old membership log after pairing. This manual recovery keeps old node connections and keys;
 the reset action in the fixed build also revokes swarm access.
+
+### Publisher trust for plugin-provided stores
+
+Plugin-provided stores require SSHSIG Ed25519 signatures (`cockpit-plugin-v1@krahwinkel-it.nl`, SHA-512), verified before extraction or consent. Signed downloads keep the HTTP client's timeout for their complete body and are limited to 512 MiB and the archive manifest must match the signed id and version. Ordinary unsigned stores keep their existing behavior.
+
+`cockpit.json` holds publisher decisions in `PluginTrust`, keyed by normalized plugin id: each entry has `Source` and `KeyFingerprint`. This is consent metadata with no editable Options value; it is saved immediately and is excluded from automatic settings-carrier sync. Removing a plugin keeps its rule. When settings are selected for restore, local rules win and the archive fills missing rules only for the selected plugins. Malformed archive rules are ignored. An unattended install proceeds only for a known source and key. A source or key change requires confirmation; changing to an unsigned source removes the rule only after a successful install.
+
+Revoked keys block installations and updates. Installed plugins keep running and receive a warning on each readable source-feed check. Revocations are not stored permanently: Cockpit follows the current feed (contract decision C remains open). A manually selected zip bypasses publisher verification and keeps the remembered publisher rule. A signature identifies its publisher, not whether code is safe; plugins run in-process, and on a first install the key comes from the same Depot.
+
+`AssistantProfile.AssistantRole` stores the assistant's optional role separately from its provider profile. It is included in the settings carrier; projects remain machine-local. The Assistant Profile dialog stages this value until Save and applies it on the next assistant start. It is not an Options field, so `OptionsStaging` does not track it.
+
+### Companion strip preferences
+
+`Layout.CompanionStripLayout` stores `Order`, `HiddenIds`, `SeenIds`, `Titles` and
+`PluginIds` by companion tool id. Customize strip applies changes immediately,
+including while the main window is in the tray; Options Apply/Cancel does not
+change them. The assistant stays first. New plugin tools wait under Available.
+Unavailable tools keep their order and enabled state until forgotten, and return
+to the same place when their plugin is enabled again. Titles and owning plugin ids
+let the panel explain a missing tool and use the existing plugin consent flow.
+These preferences stay on this machine, outside `SettingsCarrierWhitelist`,
+because its installed companion tools can differ from another machine's.

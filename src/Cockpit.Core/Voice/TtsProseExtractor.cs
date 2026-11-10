@@ -12,7 +12,12 @@ public sealed record TtsProseStream(IReadOnlyList<string> Sentences, int Consume
 // aloud. Pure and testable: no dependency on the TTS engine itself.
 public static partial class TtsProseExtractor
 {
-    public static IReadOnlyList<string> Extract(string assistantMarkdown)
+    private static readonly HashSet<string> Abbreviations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bv", "bijv", "dr", "mr", "mrs", "ms", "nr", "vs", "ca", "eg", "ie", "etc",
+    };
+
+    public static IReadOnlyList<string> Extract(string assistantMarkdown, bool usePlaceholders = true)
     {
         if (string.IsNullOrWhiteSpace(assistantMarkdown))
         {
@@ -31,13 +36,13 @@ public static partial class TtsProseExtractor
                 case MarkdownBlockKind.List:
                     foreach (var item in block.Items)
                     {
-                        _AppendAsSentence(prose, item);
+                        _AppendAsSentence(prose, item, usePlaceholders);
                     }
 
                     break;
 
                 default:
-                    _AppendAsSentence(prose, block.Inlines);
+                    _AppendAsSentence(prose, block.Inlines, usePlaceholders);
                     break;
             }
         }
@@ -68,12 +73,6 @@ public static partial class TtsProseExtractor
             var lineEnd = newline < 0 ? markdown.Length : newline;
             var nextLineStart = newline < 0 ? markdown.Length : newline + 1;
             var line = markdown[lineStart..lineEnd];
-            var lineIsComplete = newline >= 0 || SentenceEndingPunctuation().IsMatch(line) || line.TrimStart().StartsWith("```", StringComparison.Ordinal);
-            if (!lineIsComplete)
-            {
-                break;
-            }
-
             if (insideFence)
             {
                 if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
@@ -145,7 +144,9 @@ public static partial class TtsProseExtractor
             completedLength = lineEnd;
         }
 
-        for (var index = lineStart; index < lineEnd; index++)
+        // A list marker's own dot is no sentence end, and a half-arrived item must not speak just the number.
+        var scanStart = lineStart + ListItem().Match(line).Length;
+        for (var index = scanStart; index < lineEnd; index++)
         {
             if (markdown[index] is '.' or '!' or '?' && _IsCompletedSentence(markdown, index))
             {
@@ -169,12 +170,13 @@ public static partial class TtsProseExtractor
         }
 
         var wordStart = index;
-        while (wordStart > 0 && char.IsLetterOrDigit(markdown[wordStart - 1]))
+        while (wordStart > 0 && (char.IsLetterOrDigit(markdown[wordStart - 1]) || markdown[wordStart - 1] == '.'))
         {
             wordStart--;
         }
         var word = markdown[wordStart..index];
-        if (word.Length is <= 2 || word.Equals("e.g", StringComparison.OrdinalIgnoreCase) || word.Equals("i.e", StringComparison.OrdinalIgnoreCase))
+        var dottedAbbreviation = word.Contains('.') && word.Split('.').All(part => part.Length is > 0 and <= 2 && part.All(char.IsLetter));
+        if (word.Length == 0 || word.Length == 1 && char.IsUpper(word[0]) || Abbreviations.Contains(word) || dottedAbbreviation)
         {
             return false;
         }
@@ -183,11 +185,11 @@ public static partial class TtsProseExtractor
     }
 
     // Appends a block's plain text, forcing a sentence boundary after it — headings and list items rarely end in punctuation, and without one the next block would run on into the same spoken sentence.
-    private static void _AppendAsSentence(StringBuilder builder, IReadOnlyList<MarkdownInline> inlines)
+    private static void _AppendAsSentence(StringBuilder builder, IReadOnlyList<MarkdownInline> inlines, bool usePlaceholders)
     {
         // Inline code is kept (short identifiers like `git` read fine) — but a path or URL inside it is
         // cleaned by _StripNonSpeech just like one in plain prose, so "C:\…" does not get spelled out.
-        var text = _StripNonSpeech(string.Concat(inlines.Select(inline => inline.Text)));
+        var text = _StripNonSpeech(string.Concat(inlines.Select(inline => inline.Text)), usePlaceholders);
         if (text.Length == 0)
         {
             return;
@@ -217,14 +219,14 @@ public static partial class TtsProseExtractor
     }
 
     // AC-1013: Strips characters that read poorly aloud — emoji/pictographs plus joiners/skin-tone modifiers — then collapses leftover whitespace so a stripped emoji doesn't leave a dangling space. Currency/maths symbols are kept: "€5" and "2 + 2" carry spoken meaning.
-    private static string _StripNonSpeech(string text)
+    private static string _StripNonSpeech(string text, bool usePlaceholders)
     {
         // Replace things that read terribly aloud with a short natural stand-in before stripping symbols:
         // URLs ("https://…") and file paths (Windows "C:\…" or POSIX "/home/…") become "a link"/"a path"
         // so a sentence stays speakable instead of the engine spelling out every slash and separator.
-        text = UrlPattern().Replace(text, "a link");
-        text = WindowsPathPattern().Replace(text, "a path");
-        text = UnixPathPattern().Replace(text, "a path");
+        text = UrlPattern().Replace(text, usePlaceholders ? "a link" : string.Empty);
+        text = WindowsPathPattern().Replace(text, usePlaceholders ? "a path" : string.Empty);
+        text = UnixPathPattern().Replace(text, usePlaceholders ? "a path" : string.Empty);
 
         var builder = new StringBuilder(text.Length);
         foreach (var rune in text.EnumerateRunes())

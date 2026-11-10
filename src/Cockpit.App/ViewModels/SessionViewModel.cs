@@ -71,7 +71,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private readonly ISessionLoginFlows? _loginFlows;
 
     // AC-740: null in the design-time/unit-test graph, where the @-mention picker's file source always answers empty.
-    private readonly IMentionFileSource? _mentionFileSource;
 
     // AC-1239: a swallowed launch failure left no trace anywhere. Null in the design-time/unit-test graph.
     private readonly ILogger<SessionViewModel>? _logger;
@@ -426,6 +425,77 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // A turn pauses on a question/permission and then keeps streaming into the same growing entry afterwards (AC-97).
     private readonly StringBuilder _readAloudPendingProse = new();
+    private SpokenReplyMode _assistantSpeechMode = SpokenReplyMode.Short;
+    private SpokenReplyMode _turnSpeechMode;
+    private (long Turn, int Generation) _speechTurn;
+    private readonly object _speechGenerationLock = new();
+    private CancellationTokenSource? _speechGeneration;
+    private readonly ISessionDriverFactory? _speechDrivers;
+    private SpokenReplyMethod _assistantSpeechMethod = SpokenReplyMethod.Assistant;
+    private SessionProfile? _speechProfile;
+    private SpokenReplyMethod _turnSpeechMethod;
+    private SessionProfile? _turnSpeechProfile;
+
+    public SpokenReplyMethod AssistantSpeechMethod
+    {
+        get => _assistantSpeechMethod;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMethod, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+
+    public SessionProfile? SpeechProfile
+    {
+        get => _speechProfile;
+        set
+        {
+            if (SetProperty(ref _speechProfile, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
+
+    public string? SpeechRulesReason { get; private set; }
+
+    [RelayCommand]
+    private async Task ReadFullReplyAsync(TranscriptEntryViewModel entry)
+    {
+        if (!IsTheVoiceAssistant || !IsAudioAvailable || !ReferenceEquals(entry.Session, this))
+        {
+            return;
+        }
+        CancelReadAloud();
+        ResetReadAloudCancellation();
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
+        await EnqueueReadAloudAsync(TtsProseExtractor.Extract(entry.ReplyTextWithImageSuffix), CaptureReadAloudTurn(), explicitRequest: true);
+        CompleteReadAloudStream();
+    }
+
+    protected override void OnReadAloudInvalidated()
+    {
+        lock (_speechGenerationLock)
+        {
+            _speechGeneration?.Cancel();
+        }
+    }
+
+    public SpokenReplyMode AssistantSpeechMode
+    {
+        get => _assistantSpeechMode;
+        set
+        {
+            if (SetProperty(ref _assistantSpeechMode, value) && IsTheVoiceAssistant)
+            {
+                CancelReadAloud();
+            }
+        }
+    }
     private readonly Dictionary<TranscriptEntryViewModel, string> _readAloudObservedEntries = [];
     private int _readAloudObservedEntryCount;
 
@@ -1393,12 +1463,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Parameterless constructor kept for the Avalonia previewer design-time context.
-    public SessionViewModel(IMentionFileSource? mentionFileSource = null)
+    public SessionViewModel(IEnumerable<IMentionSource>? mentionSources = null)
     {
         _control = _BindControl(SessionControls.DesignTime);
         _rowFeed = _FollowRows(eventLog: null, logger: null);
-        _mentionFileSource = mentionFileSource;
-        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
+        MentionPicker = new MentionPickerViewModel(mentionSources ?? [], () => new MentionContext(MentionSurface.Session, WorkingDirectory));
         // Sample MCP selection, and the status line derived from it rather than typed out beside it (AC-563): a
         // hard-coded "Connected (3 MCP servers)." next to an unset selection would have every previewer and render
         // showing a count of three over a hover saying the selection is unknown.
@@ -1472,15 +1541,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         VoiceOverlayCoordinator? voiceOverlay = null,
         IProfileLoginChecker? loginChecker = null,
         ISessionLoginFlows? loginFlows = null,
-        IMentionFileSource? mentionFileSource = null,
+        IEnumerable<IMentionSource>? mentionSources = null,
         ISessionTranscriptReader? transcriptReader = null,
         ILogger<SessionViewModel>? logger = null,
         IBackendEventLog? eventLog = null,
         ISessionRunActivities? heavyRuns = null,
-        IAudioAvailability? audioAvailability = null)
+        IAudioAvailability? audioAvailability = null,
+        ISessionDriverFactory? speechDrivers = null)
         : base(usageHistory, heavyRuns)
     {
         _transcriptReader = transcriptReader;
+        _speechDrivers = speechDrivers;
         // AC-1090: every pane but the design-time/unit-test graph gets the store from the container, which
         // `APaneTakenFromTheContainer_RecordsItsRowsToDisk` holds this to; the control writes it (AC-1377, AC-1449).
         _control = _BindControl(sessionControls);
@@ -1491,9 +1562,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _usageSignals = usageSignals;
         _loginChecker = loginChecker;
         _loginFlows = loginFlows;
-        _mentionFileSource = mentionFileSource;
         _logger = logger;
-        MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => WorkingDirectory);
+        MentionPicker = new MentionPickerViewModel(mentionSources ?? [], () => new MentionContext(MentionSurface.Session, WorkingDirectory));
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, openMicState, voiceOverlay, audioAvailability);
         CloseRequested += (_, _) => _control.StopPolling();
@@ -1630,11 +1700,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         var text = InputText;
         var replyTo = PendingReplyTo;
+        var sent = MentionPicker.ExpandMentions(text);
         InputText = string.Empty;
         PendingReplyTo = null;
         try
         {
-            await _remoteControl.SendPromptAsync(BuildOutgoingText(text, replyTo)).ConfigureAwait(true);
+            await _remoteControl.SendPromptAsync(BuildOutgoingText(sent, replyTo)).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -1806,14 +1877,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             OnPropertyChanged(nameof(CanTakeAPrompt));
         }
     }
-
-    // AC-740: no source registered (design-time/unit-test graph) or no working directory yet both answer empty
-    // rather than throw — the picker itself stays closed whenever WorkingDirectory is null (see its own guard),
-    // so this only actually runs once a session has one.
-    private Task<IReadOnlyList<string>> _MentionPathsAsync(CancellationToken cancellationToken) =>
-        _mentionFileSource is not null && WorkingDirectory is { } workingDirectory
-            ? _mentionFileSource.GetPathsAsync(workingDirectory, cancellationToken)
-            : Task.FromResult<IReadOnlyList<string>>([]);
 
     private void _TrackPendingAttachments()
     {
@@ -2171,6 +2234,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
+        {
+            CancelReadAloud();
+        }
         if (!_control.IsRunning)
         {
             return;
@@ -2387,6 +2454,23 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return true;
     }
 
+    // AC-2256: text handed in from outside goes out alone; the operator's draft is set aside and put back (Send reads the
+    // input before its first await and clears it only while it still holds what it sent). Pending images do ride along:
+    // the assistant's channel adds a message's images right before it hands over the text.
+    public override void InjectAndSubmit(string text)
+    {
+        if (string.IsNullOrEmpty(text) || IsReadingChild || !SendCommand.CanExecute(null))
+        {
+            base.InjectAndSubmit(text);
+            return;
+        }
+
+        var draft = InputText;
+        InputText = text;
+        SendCommand.Execute(null);
+        InputText = draft;
+    }
+
     [RelayCommand]
     private async Task SendAsync()
     {
@@ -2429,7 +2513,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         var replyTo = PendingReplyTo;
 
         var attachments = PendingAttachments.ToArray();
-        var prompt = new QueuedPrompt(text, images, replyTo?.Id);
+        var prompt = new QueuedPrompt(MentionPicker.ExpandMentions(text), images, replyTo?.Id);
         _submittingPrompt = prompt;
         _submissionFailed = false;
         try
@@ -2491,7 +2575,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // below stay on the bare text, so a reply prefix never changes retry or auto-close behaviour.
     private void _OnTurnStarting(QueuedPrompt prompt)
     {
+        if (IsTheVoiceAssistant && _turnSpeechMode != SpokenReplyMode.Full)
+        {
+            CancelReadAloud();
+        }
+        if (IsTheVoiceAssistant && (_turnSpeechMode != SpokenReplyMode.Full || AssistantSpeechMode != SpokenReplyMode.Full))
+        {
+            _currentTurnAssistantEntries.Clear();
+            _ResetReadAloudStream();
+        }
         ResetReadAloudCancellation();
+        _turnSpeechMode = IsTheVoiceAssistant ? AssistantSpeechMode : SpokenReplyMode.Full;
+        _speechTurn = CaptureReadAloudTurn();
+        _turnSpeechMethod = AssistantSpeechMethod;
+        _turnSpeechProfile = _turnSpeechMethod == SpokenReplyMethod.Profile ? SpeechProfile : _profile;
+        SpeechRulesReason = null;
+        OnPropertyChanged(nameof(SpeechRulesReason));
 
         var text = prompt.Text;
         var images = prompt.Images;
@@ -2743,7 +2842,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // answers (AC-97).
     private void _FlushPendingProseForReadAloud()
     {
-        if (!ReadResponsesAloud)
+        if (!ReadResponsesAloud || _turnSpeechMode != SpokenReplyMode.Full)
         {
             return;
         }
@@ -2759,7 +2858,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Clear();
         _spokenSomethingThisTurn = true;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(pending);
+        _ = EnqueueReadAloudAsync(TtsProseExtractor.Extract(pending), IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
     }
 
     private void _QueueCompletedProseForReadAloud()
@@ -2770,6 +2869,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _AppendStreamingReadAloudDelta();
+        if (_turnSpeechMode != SpokenReplyMode.Full)
+        {
+            return;
+        }
         var stream = TtsProseExtractor.ExtractCompleted(_readAloudPendingProse.ToString());
         if (stream.ConsumedLength == 0)
         {
@@ -2779,7 +2882,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _readAloudPendingProse.Remove(0, stream.ConsumedLength);
         _spokenSomethingThisTurn |= stream.Sentences.Count > 0;
         _RestartSignOfLifeClock();
-        _ = EnqueueReadAloudAsync(stream.Sentences);
+        _ = EnqueueReadAloudAsync(stream.Sentences, IsTheVoiceAssistant ? _speechTurn : CaptureReadAloudTurn());
     }
 
     private void _AppendStreamingReadAloudDelta()
@@ -2830,7 +2933,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // True for the cockpit's own voice assistant, the one session that speaks unasked (AC-597/598).
-    private bool IsTheVoiceAssistant =>
+    public bool IsTheVoiceAssistant =>
         string.Equals(PaneId, AssistantIdentity.PaneId, StringComparison.Ordinal);
 
     // Starts the clock that says "still on it" while a turn keeps running (AC-598), and pushes it back every time
@@ -2972,6 +3075,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // arrive after this, in `_OnLiveStateChanged`.
     private void _DrawTurnEnd(SessionTurnEnd end)
     {
+        if (_turnSpeechMode != SpokenReplyMode.Full && (end.IsError || end.WasInterrupted || end.BySessionError))
+        {
+            CancelReadAloud();
+            _ResetReadAloudStream();
+            _StopSignOfLifeClock();
+            CompleteReadAloudStream();
+        }
         var failedRow = end.FailedRowId is { } failedRowId && _rowsById.TryGetValue(failedRowId, out var row) ? row : null;
         if (end.BySessionError)
         {
@@ -3026,8 +3136,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
         }
 
-        _FlushPendingProseForReadAloud();
-        CompleteReadAloudStream();
+        if (_turnSpeechMode == SpokenReplyMode.Full)
+        {
+            _FlushPendingProseForReadAloud();
+            CompleteReadAloudStream();
+        }
+        else if (ReadResponsesAloud && !end.IsError && !end.WasInterrupted)
+        {
+            _AppendStreamingReadAloudDelta();
+            _ = _SpeakCompletedReplyAsync(_readAloudPendingProse.ToString(), _turnSpeechMode, _turnSpeechMethod, _turnSpeechProfile, _speechTurn);
+        }
+        else
+        {
+            CompleteReadAloudStream();
+        }
 
         _currentTurnAssistantEntries.Clear();
         _ResetReadAloudStream();
@@ -3036,6 +3158,47 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // This turn's images belong to this turn only (AC-116): a later image-less turn's tool call attaches nothing stale.
         ClearCurrentTurnImages();
         _turnCompletedInFold = true;
+    }
+
+    private async Task _SpeakCompletedReplyAsync(string answer, SpokenReplyMode mode, SpokenReplyMethod method, SessionProfile? profile, (long Turn, int Generation) expected)
+    {
+        if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
+        {
+            return;
+        }
+        using var cancellation = new CancellationTokenSource();
+        lock (_speechGenerationLock)
+        {
+            _speechGeneration = cancellation;
+        }
+        try
+        {
+            if (CaptureReadAloudTurn() != expected || !ReadResponsesAloud)
+            {
+                return;
+            }
+            var spoken = await SpokenReplyGeneration.GenerateAsync(_speechDrivers, profile, answer, profile?.SystemPrompt, mode, method, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && ReadResponsesAloud && CaptureReadAloudTurn() == expected)
+            {
+                SpeechRulesReason = spoken.RulesReason;
+                OnPropertyChanged(nameof(SpeechRulesReason));
+                await EnqueueReadAloudAsync(spoken.Sentences, expected);
+                if (CaptureReadAloudTurn() == expected)
+                {
+                    CompleteReadAloudStream();
+                }
+            }
+        }
+        finally
+        {
+            lock (_speechGenerationLock)
+            {
+                if (ReferenceEquals(_speechGeneration, cancellation))
+                {
+                    _speechGeneration = null;
+                }
+            }
+        }
     }
 
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.

@@ -116,10 +116,20 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     // AC-1367 criteria 1 and 2: a key without the bypass grant cannot start a profile that skips its approvals, refused
     // with the scope as the reason. Nor can it start without a project, which would leave a session it could not see or
     // stop. Another project is refused by the same policy, asserted over the API in SessionsEndpointsTests.
-    [Theory]
-    [InlineData(UnattendedProfile, null, "mayStartBypassProfiles")]
-    [InlineData(AllowedProfile, null, "must name one of them")]
-    public async Task Start_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReason(string profile, string? projectId, string reason)
+    [Fact]
+    public async Task Start_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReason()
+    {
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReasonAsync(UnattendedProfile, null, "mayStartBypassProfiles");
+        }
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReasonAsync(AllowedProfile, null, "must name one of them");
+        }
+    }
+
+    private async Task _AssertStart_ByAConnectKey_OutsideItsScope_IsRefusedWithTheScopeAsTheReasonAsync(string profile, string? projectId, string reason)
     {
         McpRequestContext.Set(NodeCallerIdentity.PaneId, KeyScopedToTheAllowedProject);
 
@@ -135,14 +145,36 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
 
     // AC-2003 (layer 2, authorization): a subscription login is its owner's alone, whatever the key's scope; an API-key
     // profile is shareable, and a kind the CLI has not reported yet counts as a login. The refusal carries the reason.
-    [Theory]
-    [InlineData(ProfileCredentialKind.Login, true, 1, null)]
-    [InlineData(ProfileCredentialKind.Login, false, 0, NodeCallerSessionPolicy.PersonalLoginRefusal)]
-    [InlineData(ProfileCredentialKind.ApiKey, true, 1, null)]
-    [InlineData(ProfileCredentialKind.ApiKey, false, 1, null)]
-    [InlineData(ProfileCredentialKind.Unknown, true, 1, null)]
-    [InlineData(ProfileCredentialKind.Unknown, false, 0, NodeCallerSessionPolicy.PersonalLoginRefusal)]
-    public async Task Start_OnASubscriptionLogin_IsForTheOwnersKeyOnly(ProfileCredentialKind credential, bool issuedToOwner, int spawns, string? refusal)
+    [Fact]
+    public async Task Start_OnASubscriptionLogin_IsForTheOwnersKeyOnly()
+    {
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind.Login, true, 1, null);
+        }
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind.Login, false, 0, NodeCallerSessionPolicy.PersonalLoginRefusal);
+        }
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind.ApiKey, true, 1, null);
+        }
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind.ApiKey, false, 1, null);
+        }
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind.Unknown, true, 1, null);
+        }
+        using (var scenario = new NodeSessionMcpToolsTests())
+        {
+            await scenario._AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind.Unknown, false, 0, NodeCallerSessionPolicy.PersonalLoginRefusal);
+        }
+    }
+
+    private async Task _AssertStart_OnASubscriptionLogin_IsForTheOwnersKeyOnlyAsync(ProfileCredentialKind credential, bool issuedToOwner, int spawns, string? refusal)
     {
         var logins = Substitute.For<IProfileLoginChecker>();
         logins.CredentialKind(Arg.Any<SessionProfile>()).Returns(credential);

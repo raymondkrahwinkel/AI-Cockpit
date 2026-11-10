@@ -14,7 +14,8 @@ public sealed record RemoteAssistantSettings(
     string? Instructions,
     bool ReplacesStandingInstruction,
     bool ProviderInstalled,
-    RemoteConsentBypass ConsentBypass);
+    RemoteConsentBypass ConsentBypass,
+    string? AssistantRole = null);
 
 // AC-1475: which sources may skip the consent card, to read only; nothing on the connection writes it.
 public sealed record RemoteConsentBypass(bool All, IReadOnlyList<string> Sources);
@@ -23,6 +24,8 @@ public sealed record RemoteConsentBypass(bool All, IReadOnlyList<string> Sources
 public sealed record RemoteAssistantProfilePatch
 {
     public string? Label { get; init; }
+
+    public string? AssistantRole { get; init; }
 
     public string? Instructions { get; init; }
 

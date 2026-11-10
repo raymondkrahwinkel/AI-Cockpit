@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using Cockpit.Core.Abstractions.Audio;
@@ -36,6 +37,7 @@ public static class DependencyInjection
         // service back through ICockpitInternalMcpProvider, and injecting it directly closes a construction cycle
         // that deadlocks the container instead of being reported.
         services.AddSingleton<Func<IMcpServerCatalog?>>(provider => provider.GetService<IMcpServerCatalog>);
+        services.AddSingleton<Func<SessionStartComposer>>(provider => provider.GetRequiredService<SessionStartComposer>);
         services.AddSingleton(provider => new Assistant.LocalTextModelClient(
             provider.GetRequiredService<Cockpit.Core.Abstractions.Profiles.ISessionProfileStore>(),
             new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
@@ -134,9 +136,25 @@ public static class DependencyInjection
     public static IServiceCollection AddDesktopInfrastructure(this IServiceCollection services)
     {
         AddAudio(services);
+        services.AddSingleton<ISystemAudioDucker>(provider =>
+        {
+            string journal = Path.Combine(Configuration.CockpitConfigPath.Root, "audio-ducking.json");
+            var loggerFactory = provider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>();
+            if (OperatingSystem.IsWindows())
+            {
+                return new WindowsAudioDucker(loggerFactory.CreateLogger<WindowsAudioDucker>(), journal);
+            }
+            if (OperatingSystem.IsLinux())
+            {
+                return new LinuxAudioDucker(loggerFactory.CreateLogger<LinuxAudioDucker>(), journal);
+            }
+            return new NullAudioDucker();
+        });
         services.AddSingleton<ISpeechToTextService, WhisperWorkerSpeechToTextService>();
         AddGlobalHotkey(services);
         AddScreenshotCapture(services);
+        services.AddSingleton<ScreenLookAlong>();
+        services.AddSingleton<IScreenLookAlong>(provider => provider.GetRequiredService<ScreenLookAlong>());
         AddScreenLockMonitor(services);
         AddPresenceDetector(services);
 

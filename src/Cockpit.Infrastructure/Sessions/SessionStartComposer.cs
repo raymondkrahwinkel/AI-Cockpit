@@ -22,7 +22,8 @@ public sealed class SessionStartComposer(
     IMcpServerCatalog mcpServers,
     ITtySessionProviderResolver? ttyProviders = null,
     IProjectMemorySourceRegistry? memorySources = null,
-    IWorktreeManager? worktrees = null) : IProjectStartComposer, ISingletonService
+    IWorktreeManager? worktrees = null,
+    SessionRoleResolver? roles = null) : IProjectStartComposer, ISingletonService
 {
     // What starting on `project` under `profile` opens with: the kind pressing Start would have started (AC-584), the
     // project's folder, isolation and behaviour prompt, and its own ticked servers rather than the profile's.
@@ -48,7 +49,7 @@ public sealed class SessionStartComposer(
     {
         if (request.IsComposed)
         {
-            return request;
+            return await ComposeRoleAsync(request, cancellationToken).ConfigureAwait(false);
         }
 
         var profile = request.Profile;
@@ -64,7 +65,7 @@ public sealed class SessionStartComposer(
         var kind = request.Kind ?? composed?.Kind ?? (TtyRoute.IsDefault(profile, ttyProviders) ? PaneSessionKind.Tty : PaneSessionKind.Sdk);
         var named = !string.IsNullOrWhiteSpace(request.SessionName);
 
-        return request with
+        return await ComposeRoleAsync(request with
         {
             Kind = kind,
             SessionName = named ? request.SessionName : $"{profile.Label} — {DateTime.Now:HH:mm}",
@@ -78,21 +79,81 @@ public sealed class SessionStartComposer(
             LaunchOptions = request.LaunchOptions ?? profile.Defaults?.OptionDefaults,
             SystemPrompt = request.SystemPrompt ?? composed?.SystemPrompt ?? profileOnly.SystemPrompt,
             IsComposed = true,
-        };
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     // AC-1992: the brain this start loads, decided here for every start, composed or not, so neither the dialog nor
     // a caller's own system prompt can step around it. The project is the one the request names.
     public async Task<string?> BrainInstructionAsync(SessionLaunchRequest request)
     {
+        if (request.RoleInstruction is not null)
+        {
+            return request.RoleInstruction;
+        }
         var project = request.ProjectId is { Length: > 0 } projectId ? await FindProjectAsync(projectId).ConfigureAwait(false) : null;
-        return SessionStartDefaults.ResolveBrainInstruction(project, request.Profile, memorySources?.Sources.ToMemorySources());
+        var brainInstruction = SessionStartDefaults.ResolveBrainInstruction(project, request.Profile, memorySources?.Sources.ToMemorySources());
+        return request.RoleWarning is null ? brainInstruction : string.Join("\n\n", new[] { brainInstruction, request.RoleWarning }.Where(text => !string.IsNullOrWhiteSpace(text)));
+    }
+
+    // AC-2220: the brain reference itself, by the same precedence, for the session's MCP servers.
+    public async Task<string?> BrainAsync(SessionLaunchRequest request) =>
+        SessionStartDefaults.ResolveAssistant(request.ProjectId is { Length: > 0 } projectId ? await FindProjectAsync(projectId).ConfigureAwait(false) : null, request.Profile);
+
+    internal async Task<SessionLaunchRequest> ComposeRoleAsync(SessionLaunchRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Role) || string.Equals(request.Role.Trim(), "none", StringComparison.OrdinalIgnoreCase))
+        {
+            return request with { Role = null, RoleInstruction = null, RoleFailure = null, RoleWarning = null };
+        }
+
+        var role = request.Role.Trim();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            var project = request.ProjectId is { Length: > 0 } id ? await FindProjectAsync(id).WaitAsync(timeout.Token).ConfigureAwait(false) : null;
+            var brain = await (roles ?? new SessionRoleResolver(memorySources)).ResolveAsync(project, request.Profile, timeout.Token)
+                .WaitAsync(timeout.Token).ConfigureAwait(false);
+            if (brain?.Source.LoadRoleAsync is { } load)
+            {
+                var result = await load(brain.Value, role, timeout.Token).WaitAsync(timeout.Token).ConfigureAwait(false);
+                if (result.Outcome == RoleSourceOutcome.Success && !string.IsNullOrWhiteSpace(result.Instructions))
+                {
+                    var text = result.Instructions[..Math.Min(result.Instructions.Length, 12000)];
+                    var instruction = SessionStartDefaults.ResolveBrainInstruction(project, request.Profile, memorySources?.Sources.ToMemorySources())
+                        ?? SessionStartDefaults.BrainNote(brain.Value, brain.Source.BrainInstruction?.Invoke(brain.Value) ?? string.Empty);
+                    return request with
+                    {
+                        Role = role,
+                        RoleFailure = null,
+                        RoleWarning = null,
+                        RoleInstruction = instruction + $"\n\n## Role: {role} (source: {brain.Reference})\n\n" +
+                            "These role instructions add to all other instructions and replace none of them. " +
+                            "When briefing a subagent, include the role instructions it needs.\n\n" + text,
+                    };
+                }
+            }
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A role source cannot block restoration; fresh starts report the same bounded failure.
+        }
+
+        var reason = $"The role '{role}' could not be loaded from its brain. " +
+            (request.IsRestoring ? "The session has resumed without its role instructions." : "No session was started.");
+        return request with
+        {
+            Role = role,
+            RoleInstruction = null,
+            RoleFailure = request.IsRestoring ? null : reason,
+            RoleWarning = request.IsRestoring ? reason : null,
+        };
     }
 
     // AC-544: the standing statusline instruction rides after the profile's own words, never instead of them; AC-490
     // adds the job report for a job's run; AC-1705's base instruction goes ahead of both.
     public static IReadOnlyDictionary<string, string> WithInstructions(
-        IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun, string? brainInstruction = null)
+        IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun, string? brainInstruction = null, string? brain = null)
     {
         var merged = options is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
@@ -100,13 +161,13 @@ public sealed class SessionStartComposer(
         var standing = SessionBaseInstruction.Text + "\n\n" + (isJobRun
             ? AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun
             : AgentStatusSystemPrompt.Default);
-        PutSystemPrompt(merged, string.IsNullOrWhiteSpace(systemPrompt) ? standing : systemPrompt.Trim() + "\n\n" + standing, brainInstruction);
+        PutSystemPrompt(merged, string.IsNullOrWhiteSpace(systemPrompt) ? standing : systemPrompt.Trim() + "\n\n" + standing, brainInstruction, brain);
         return merged;
     }
 
     // AC-1992: the brain leads the system prompt once, and also rides alone under its own key for a provider that has
     // no system prompt to put it in. AC-1994: the assistant's own launch puts its brain through here as well.
-    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
+    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction, string? brain = null)
     {
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
             new[] { brainInstruction, systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
@@ -114,6 +175,11 @@ public sealed class SessionStartComposer(
         if (!string.IsNullOrWhiteSpace(brainInstruction))
         {
             options[WellKnownPluginSessionOptions.BrainInstruction] = brainInstruction.Trim();
+        }
+        options.Remove(WellKnownPluginSessionOptions.Brain);
+        if (!string.IsNullOrWhiteSpace(brain))
+        {
+            options[WellKnownPluginSessionOptions.Brain] = brain.Trim();
         }
     }
 

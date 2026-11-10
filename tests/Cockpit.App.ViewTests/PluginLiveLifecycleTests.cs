@@ -8,11 +8,13 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Startup;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.ManagedCli;
+using Cockpit.Infrastructure.Mentions;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
@@ -25,13 +27,16 @@ using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.Health;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Mentions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.Plugins;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
@@ -55,7 +60,8 @@ public sealed class PluginLiveLifecycleTests
     [Fact]
     public Task APluginThatMakesEveryContribution_LeavesNothingBehind_AndComesBack() => HeadlessAvalonia.RunAsync(async () =>
     {
-        var folder = Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName;
+        // Under `<state>/plugins/<id>`, as installed: the copies go beside `plugins`, never into the root of the temp volume.
+        var folder = Directory.CreateDirectory(Path.Combine(Directory.CreateTempSubdirectory("cockpit-live-plugin").FullName, "plugins", PluginId)).FullName;
         File.WriteAllText(
             Path.Combine(folder, "plugin.json"),
             $$"""{"id":"{{PluginId}}","name":"Everything","version":"1.0.0","entryAssembly":"everything.dll","abstractionsVersion":3}""");
@@ -137,7 +143,8 @@ public sealed class PluginLiveLifecycleTests
         Assert.Equal(PluginActivationStatus.NotActive, (await manager.DeactivateAsync(PluginId)).Status);
         Assert.Equal(2, disposed.Count);
 
-        Assert.Equal(PluginActivationStatus.Activated, (await Task.Run(() => manager.ActivateOne(discovered))).Status);
+        var reactivated = await Task.Run(() => manager.ActivateOne(discovered));
+        Assert.True(reactivated.Status == PluginActivationStatus.Activated, $"Reactivation gave {reactivated.Status}: {reactivated.Reason}");
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
         Assert.Equal(active, _Held(provider, cockpit));
@@ -179,6 +186,8 @@ public sealed class PluginLiveLifecycleTests
     private static readonly Type[] _RegistryTypes =
     [
         typeof(PluginChannelHub),
+        typeof(PluginMentionSources),
+        typeof(PluginStoreSources),
         typeof(IWidgetRegistry),
         typeof(IWorkspaceTypeRegistry),
         typeof(ICompanionToolRegistry),
@@ -208,7 +217,9 @@ public sealed class PluginLiveLifecycleTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton(new PluginStoreSources(Substitute.For<IPluginStoreConfigStore>(), Path.Combine(Path.GetTempPath(), "cockpit-lifecycle-" + Guid.NewGuid().ToString("N"), "cockpit.json")));
         services.AddSingleton(cockpit);
+        services.AddSingleton<PluginMentionSources>();
         services.AddSingleton(mcpEndpoints);
         services.AddSingleton(Substitute.For<IManagedCliService>());
         services.AddSingleton(new PluginChannelHub(NullLogger<PluginChannelHub>.Instance));
@@ -311,6 +322,9 @@ public sealed class PluginLiveLifecycleTests
             var source = Substitute.For<ISharedProjectSource>();
             source.Key.Returns("shared");
             host.AddSharedProjectSource(source);
+            var mentions = Substitute.For<IPluginMentionSource>();
+            mentions.Key.Returns("mentions");
+            host.AddMentionSource(mentions);
             var section = Substitute.For<IPluginHealthSection>();
             section.Name.Returns("health");
             host.AddHealthSection(section);
@@ -320,6 +334,7 @@ public sealed class PluginLiveLifecycleTests
             host.AddBackupTarget(target);
             host.AddStartupStep("step", _ => Task.CompletedTask);
             host.AddFileSource(Substitute.For<IFileSourceProvider>());
+            host.AddPluginStoreSource(Substitute.For<IPluginStoreSourceProvider>());
         }
 
         public void Dispose() => disposed.Add("backend");
@@ -351,6 +366,7 @@ public sealed class PluginLiveLifecycleTests
                 return new TextBlock();
             }));
             host.AddFileWorkspaceType("everything.file", "File");
+            host.AddFileBrowser(new FileBrowserRegistration("everything.browser", "Browser", MaterialIconKind.Abacus, "everything.file"));
             host.AddLinkHandler(new LinkHandlerRegistration(_NeverMatches, (_, _) => false));
         }
 

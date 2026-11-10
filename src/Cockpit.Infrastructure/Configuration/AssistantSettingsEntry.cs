@@ -1,4 +1,5 @@
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Configuration;
 
@@ -9,9 +10,17 @@ internal sealed class AssistantSettingsEntry
 
     public bool SpeakReplies { get; set; } = true;
 
+    public string? SpeechMode { get; set; }
+    public string? SpeechMethod { get; set; }
+    public string? SpeechProfileLabel { get; set; }
+
     public string PushToTalkKeyName { get; set; } = "F10";
 
     public bool AlwaysOnCostAcknowledged { get; set; }
+
+    public bool WakeWordEnabled { get; set; }
+    public string WakeWord { get; set; } = "computer";
+    public int WakeWordListeningSeconds { get; set; } = 8;
 
     // AC-681. Defaults true to match `AssistantSettings.AlwaysOnTop`'s own default.
     public bool AlwaysOnTop { get; set; } = true;
@@ -36,8 +45,14 @@ internal sealed class AssistantSettingsEntry
     {
         IsEnabled = settings.IsEnabled,
         SpeakReplies = settings.SpeakReplies,
+        SpeechMode = settings.SpeechMode.ToString(),
+        SpeechMethod = settings.SpeechMethod.ToString(),
+        SpeechProfileLabel = settings.SpeechProfileLabel,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         AlwaysOnCostAcknowledged = settings.AlwaysOnCostAcknowledged,
+        WakeWordEnabled = settings.WakeWordEnabled,
+        WakeWord = settings.WakeWord,
+        WakeWordListeningSeconds = settings.WakeWordListeningSeconds,
         AlwaysOnTop = settings.AlwaysOnTop,
         ContextCompactionPercent = settings.ContextCompactionPercent,
         ReadingLevel = settings.ReadingLevel.ToString(),
@@ -50,8 +65,14 @@ internal sealed class AssistantSettingsEntry
     {
         IsEnabled = IsEnabled,
         SpeakReplies = SpeakReplies,
+        SpeechMode = Enum.TryParse<SpokenReplyMode>(SpeechMode, out var mode) && Enum.IsDefined(mode) ? mode : SpokenReplyMode.Short,
+        SpeechMethod = Enum.TryParse<SpokenReplyMethod>(SpeechMethod, out var method) && Enum.IsDefined(method) ? method : SpokenReplyMethod.Assistant,
+        SpeechProfileLabel = SpeechProfileLabel,
         PushToTalkKeyName = PushToTalkKeyName,
         AlwaysOnCostAcknowledged = AlwaysOnCostAcknowledged,
+        WakeWordEnabled = WakeWordEnabled,
+        WakeWord = WakeWord?.Trim() ?? string.Empty,
+        WakeWordListeningSeconds = AssistantSettings.NormalizeWakeWordListeningSeconds(WakeWordListeningSeconds),
         AlwaysOnTop = AlwaysOnTop,
         ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
         // A value written by an older build, or a hand-edited config, that does not name one of the three levels

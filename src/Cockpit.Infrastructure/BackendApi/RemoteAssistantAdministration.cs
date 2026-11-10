@@ -11,16 +11,29 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
 {
     private const string Route = "api/v1/assistant/settings";
 
+    public async Task<Cockpit.Core.Projects.RoleListResult> ListRolesAsync(string? brain, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await client.SendAsync<Cockpit.Core.Projects.RoleListResult>(HttpMethod.Get, $"{Route}/roles?brain={Uri.EscapeDataString(brain ?? string.Empty)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        }
+        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
+        {
+            return new(Cockpit.Core.Projects.RoleSourceOutcome.NoRoles, []);
+        }
+    }
+
     public Task<RemoteAssistantSettings> GetAsync(CancellationToken cancellationToken = default) =>
         _CallAsync(HttpMethod.Get, Route, null, cancellationToken);
 
     public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) =>
         _CallAsync(HttpMethod.Put, $"{Route}/enabled", new { enabled }, cancellationToken);
 
-    public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
+    public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default, string? assistantRole = null) =>
         _CallAsync(HttpMethod.Patch, $"{Route}/profile", new RemoteAssistantProfilePatch
         {
             ReplacesStandingInstruction = replacesStandingInstruction,
+            AssistantRole = assistantRole ?? string.Empty,
             Profile = new RemoteProfilePatch { Profile = RemoteProfileWire.ToJson(profile) },
         }, cancellationToken);
 

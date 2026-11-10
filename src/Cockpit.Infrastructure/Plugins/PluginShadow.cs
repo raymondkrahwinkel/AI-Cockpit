@@ -128,8 +128,15 @@ public sealed class PluginShadow
     }
 
     // Next to the plugins root, so a state root of its own (a dev build, a test) has its own copies.
-    internal static string RootFor(string pluginsRoot) =>
-        Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginsRoot)))!, ShadowFolder);
+    internal static string RootFor(string pluginsRoot)
+    {
+        var state = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(pluginsRoot)));
+
+        // A plugins root directly under the filesystem root would put the copies in `/plugin-shadow`: refuse that.
+        return string.IsNullOrEmpty(state) || Path.GetPathRoot(state) == state
+            ? throw new IOException($"The plugins root '{pluginsRoot}' has no state folder to keep plugin copies in.")
+            : Path.Combine(state, ShadowFolder);
+    }
 
     private static PluginShadow _Prepare(DiscoveredPlugin discovered)
     {

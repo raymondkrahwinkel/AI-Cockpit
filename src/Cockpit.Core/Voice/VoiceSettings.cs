@@ -76,4 +76,8 @@ public sealed record VoiceSettings
     // `StopReadAloudWhenSpeaking` takes it for you rather than the room. Tunable for the reason the
     // silence timeout is: a quiet room and a noisy one do not share a number, and neither do two microphones.
     public double StopReadAloudLevelThreshold { get; init; } = 0.15;
+
+    public bool DuckOtherAudioWhileSpeaking { get; init; }
+
+    public double DuckingLevel { get; init; } = 0.4;
 }

@@ -21,9 +21,7 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
-    // J2: the dialog opens the pane, the answer lands busy then done (AC-1437); Stop is no failure (AC-1031/1449), a
-    // failed turn offers Retry from the event log (AC-728/1438). AC-1535: four heavy runs on a busy machine: one runs,
-    // three wait with a reason, a closed session's place comes back, and the pre-merge gate starts first.
+    // J2: session lifecycle, FIFO heavy runs (AC-2188), and a quick note through the real desktop.
     [Fact]
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
@@ -106,7 +104,7 @@ public sealed class SessionJourney
         ];
         var heavy = cockpit.Services.GetServices<ISupervisedActivitySource>().Single(source => source.Label == "Heavy runs");
         var waiting = heavy.Snapshot().Where(run => run.Details.Any(detail => detail.Label == "Waiting")).ToList();
-        Assert.Equal([queued[2], queued[0], queued[1]], waiting.Select(run => run.Id));
+        Assert.Equal(queued, waiting.Select(run => run.Id));
         Assert.All(waiting, run => Assert.StartsWith("waiting: CPU 85%", run.Details.Single(detail => detail.Label == "Waiting").Value));
 
         await HeadlessAvalonia.RunAsync(() => cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(other));
@@ -122,7 +120,7 @@ public sealed class SessionJourney
                 verdicts.AddRange(Regex.Matches(text, @"Run (\w+) \('[^']*'\) finished: (\w+)").Select(match => (match.Groups[1].Value, match.Groups[2].Value)));
             },
             () => queued.All(runId => verdicts.Any(verdict => verdict.RunId == runId)));
-        Assert.Equal(queued[2], verdicts[0].RunId);
+        Assert.Equal(queued[0], verdicts[0].RunId);
         Assert.All(verdicts, verdict => Assert.Equal("Passed", verdict.Verdict));
 
         // AC-1658: a quick note from the palette lands in the project's memory, and its window closes on the save.

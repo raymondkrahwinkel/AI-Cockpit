@@ -12,8 +12,49 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
     public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel.Subscribe(name, handler);
 
+    public async Task<byte[]> ReadImageAsync(FileRef file, string target, CancellationToken cancellationToken)
+    {
+        var encoded = await _CallAsync<string>(FileImageChannel.Read, new FileImageRequest(file, target), cancellationToken).ConfigureAwait(false);
+        if (encoded.Length > ((FileImageChannel.MaxBytes + 2) / 3) * 4)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+        }
+        var bytes = Convert.FromBase64String(encoded);
+        if (bytes.Length > FileImageChannel.MaxBytes)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This image is too large.");
+        }
+        return bytes;
+    }
+
     public async Task<IReadOnlyList<FileConnection>> ConnectionsAsync(CancellationToken cancellationToken) =>
         await _RunAsync(() => _CallAsync<FileConnection[]>(FileSourceChannel.Connections, new { }, cancellationToken), cancellationToken).ConfigureAwait(false);
+
+    public Task<FileListing> ListAsync(FileRef folder, string? pageToken, CancellationToken cancellationToken) =>
+        _RunAsync(async () =>
+        {
+            var listing = await _CallAsync<FileListing>(FileSourceChannel.List, new FileSourceListRequest(folder, pageToken), cancellationToken).ConfigureAwait(false);
+            return listing.Entries is null ? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid folder.") : listing;
+        }, cancellationToken);
+
+    public Task<FileEntry> CreateFolderAsync(FileRef parent, string name, CancellationToken cancellationToken) =>
+        _RunAsync(() => _CallAsync<FileEntry>(FileSourceChannel.CreateFolder, new FileSourceCreateFolderRequest(parent, name), cancellationToken), cancellationToken);
+
+    public Task<FileEntry> CreateFileAsync(FileRef parent, string name, byte[] content, CancellationToken cancellationToken) =>
+        _RunAsync(() => _CallAsync<FileEntry>(FileSourceChannel.CreateFile,
+            new FileSourceCreateFileRequest(parent, name, Convert.ToBase64String(content)), cancellationToken), cancellationToken);
+
+    // Size is the whole file's, so the caller knows when it has every block.
+    public Task<(byte[] Bytes, string Version, long Size)> ReadRangeAsync(FileRef file, long offset, int count, CancellationToken cancellationToken) =>
+        _RunAsync(async () =>
+        {
+            var block = await _CallAsync<FileSourceReadAnswer>(FileSourceChannel.ReadRange,
+                new FileSourceReadRangeRequest(file, offset, count), cancellationToken).ConfigureAwait(false);
+            var bytes = FileSourceChannel.DecodeContent(block.ContentBase64 ?? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid block."));
+            return string.IsNullOrWhiteSpace(block.Version) || block.Size is not { } size || bytes.Length > count
+                ? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid block.")
+                : (bytes, block.Version, size);
+        }, cancellationToken);
 
     public async Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
         (await ReadWithLiveAsync(file, cancellationToken).ConfigureAwait(false)).Read;
@@ -107,7 +148,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         var answer = json.Deserialize<FileSourceAnswer<T>>(FileSourceChannel.Json);
         if (answer?.Error is { } error)
         {
-            throw new FileSourceException(error.Kind, error.Message);
+            throw new FileSourceException(error.Kind, error.Message) { Trusted = error.Trusted, Presented = error.Presented };
         }
         return answer?.Data ?? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The file source returned an invalid answer.");
     }

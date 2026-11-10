@@ -155,6 +155,18 @@ public sealed record AssistantChannelSendResult(bool Ok, bool Ignored, string? E
 }
 
 /// <summary>
+/// One page of the assistant's earlier conversation (AC-2238): <see cref="Rows"/> newest first, and
+/// <see cref="Before"/>, the cursor for the next older page, null when this page reached the start.
+/// </summary>
+public sealed record AssistantChannelHistoryPage(IReadOnlyList<AssistantChannelRow> Rows, string? Before)
+{
+    /// <summary>
+    /// A host that cannot read earlier rows, or a conversation with none.
+    /// </summary>
+    public static AssistantChannelHistoryPage Empty { get; } = new([], null);
+}
+
+/// <summary>
 /// The seam a channel plugin gets from <see cref="ICockpitHost.OpenAssistantChannel"/> (AC-1023): messages in,
 /// transcript rows out, consent relayed both ways. Dispose to close the channel; nothing here ends the conversation.
 /// </summary>
@@ -241,4 +253,16 @@ public interface IAssistantChannelGateway : IDisposable
         IReadOnlyList<string> chosen,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantChannelSendResult.Refused("This cockpit cannot take answers from a channel."));
+
+    /// <summary>
+    /// Reads at most <paramref name="limit"/> rows of the conversation that were there before now, newest first, older
+    /// than the row whose <see cref="AssistantChannelRow.Id"/> is <paramref name="before"/> (the newest when null). The
+    /// ids are the ones <see cref="RowChanged"/> uses, so a row seen live and read back is the same row. The channel's
+    /// <see cref="AssistantChannelAccess"/> does not apply: it is the same conversation this channel already receives.
+    /// </summary>
+    /// <remarks>
+    /// Default empty, so older hosts keep working; a plugin that calls it sets minHostVersion 0.171.0 (AC-2238).
+    /// </remarks>
+    Task<AssistantChannelHistoryPage> ReadRowsAsync(int limit, string? before, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantChannelHistoryPage.Empty);
 }

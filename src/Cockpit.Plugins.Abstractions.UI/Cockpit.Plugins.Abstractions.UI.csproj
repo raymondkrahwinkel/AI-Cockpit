@@ -58,7 +58,11 @@
          this desktop manages. A plugin that calls it sets minHostVersion 0.153.0. Additive; still v3. -->
     <!-- 3.24.0: ICockpitUiHost.SetStatusText(text, tone, createPopup), a clickable status line with a plugin-built popup.
          A plugin that calls it sets minHostVersion 0.158.0. Additive; still v3. -->
-    <Version>3.24.0</Version>
+    <!-- AC-2100: optional document-bound IMarkdownEditor.ImageLoader and invalidation; requires host 0.161.0. -->
+    <!-- 3.26.0: ICockpitUiHost.CreateLiveMarkdownEditor, ILiveMarkdownEditor and CompanionToolRegistration.Attached; a plugin that calls it requires host 0.167.0. Additive; still v3. -->
+    <!-- 3.27.0 (AC-2236): ICockpitUiHost.AddFileBrowser and FileBrowserRegistration, the host's file browser; a plugin that calls
+         it requires host 0.168.0. Additive; still v3. -->
+    <Version>3.27.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

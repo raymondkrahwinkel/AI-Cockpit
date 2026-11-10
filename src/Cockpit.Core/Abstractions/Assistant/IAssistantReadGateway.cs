@@ -116,4 +116,5 @@ public sealed record AssistantSessionRow(
     string? ProjectId = null,
     IReadOnlyList<string>? McpServers = null,
     string Activity = "",
-    string ActivityAge = "");
+    string ActivityAge = "",
+    bool Selected = false);

@@ -48,6 +48,9 @@ public interface IVoicePlaybackQueue
     /// </summary>
     event EventHandler? SpeakingStarted;
 
+    /// <summary>Raised when audio is queued or playing, independently of open response streams.</summary>
+    event EventHandler<bool>? AudioPendingChanged;
+
     /// <summary>
     /// Raised when <see cref="StopAll"/> cancels the active read-aloud generation.
     /// </summary>

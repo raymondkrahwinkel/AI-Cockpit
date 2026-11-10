@@ -1,4 +1,5 @@
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.Core.Abstractions.Assistant;
@@ -132,7 +133,7 @@ public interface IAssistantSession : IAsyncDisposable
     /// <summary>
     /// Seeds its speech from the operator's settings; a session with no voice ignores it.
     /// </summary>
-    void ApplySpeech(bool speakReplies);
+    void ApplySpeech(AssistantSettings settings, SessionProfile? speechProfile = null);
 
     /// <summary>
     /// Turns reading replies aloud on or off from the next reply on.

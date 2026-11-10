@@ -72,6 +72,16 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
         _editor.Document.Changing += (_, e) => _ExternalChanging(e);
         _externalClock.Tick += (_, _) => _ExpireExternalLines();
         DetachedFromVisualTree += (_, _) => _externalClock.Stop();
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _imagesAttached = false;
+            InvalidateImages();
+        };
+        AttachedToVisualTree += (_, _) =>
+        {
+            _imagesAttached = true;
+            _Redraw();
+        };
         AttachedToVisualTree += (_, _) => _ExpireExternalLines();
         _editor.TextArea.AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
         _editor.TextArea.AddHandler(TextInputEvent, _OnTextInput, RoutingStrategies.Tunnel);
@@ -115,6 +125,7 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
         get => _editor.Document.Text;
         set
         {
+            InvalidateImages();
             _editor.Document.Text = value ?? string.Empty;
             _editor.Document.UndoStack.ClearAll();
         }
@@ -150,6 +161,15 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
 
     internal void UseWorkspaceSourceToggle() => _sourceToggle.IsVisible = false;
 
+    // For an editor in a narrow pop-out: typing Markdown stays, the formatting buttons do not fit.
+    internal void HideToolbar()
+    {
+        _toolbarHidden = true;
+        _toolbar.IsVisible = false;
+    }
+
+    private bool _toolbarHidden;
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -157,7 +177,7 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
         {
             _editor.IsReadOnly = IsReadOnly;
             _editor.TextArea.Caret.CaretBrush = IsReadOnly ? Brushes.Transparent : null;
-            _toolbar.IsVisible = !IsReadOnly;
+            _toolbar.IsVisible = !IsReadOnly && !_toolbarHidden;
             _Redraw();
         }
         else if (change.Property == ShowSourceProperty)

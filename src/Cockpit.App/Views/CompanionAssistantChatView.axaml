@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Cockpit.App.Views"
+             xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.CompanionAssistantChatView"
+             Height="240">
+    <!-- AC-2190: the mockup's head — the title, open in Cockpit and close as ghost icons, no rule under it. -->
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="14,10,10,4">
+            <Button x:Name="CloseButton" DockPanel.Dock="Right" Classes="Ghost" Width="24" Height="24" Padding="0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    ToolTip.Tip="Close" AutomationProperties.Name="Close assistant pop-out">
+                <icons:MaterialIcon Kind="Close" Width="14" Height="14" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </Button>
+            <Button x:Name="OpenInCockpitButton" DockPanel.Dock="Right" Classes="Ghost" Width="24" Height="24" Padding="0" Margin="0,0,4,0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    ToolTip.Tip="Open in Cockpit" AutomationProperties.Name="Open in Cockpit">
+                <icons:MaterialIcon Kind="OpenInNew" Width="14" Height="14" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </Button>
+            <TextBlock Text="Assistant" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        </DockPanel>
+        <views:AssistantChatView x:Name="Chat"/>
+    </DockPanel>
+</UserControl>

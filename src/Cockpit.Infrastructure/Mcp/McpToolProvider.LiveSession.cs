@@ -46,6 +46,7 @@ internal sealed partial class McpToolProvider
             if (!ownsToken)
             {
                 _provider._oauthCoordinator.AccountChanged += _AccountChanged;
+                _provider._refreshRequested += _Reconnect;
             }
         }
 
@@ -330,11 +331,13 @@ internal sealed partial class McpToolProvider
             }
         }
 
-        private void _AccountChanged(McpServerConfig config)
+        private void _AccountChanged(McpServerConfig config) => _Reconnect(config.Name);
+
+        private void _Reconnect(string name)
         {
             lock (_sync)
             {
-                if (_servers.TryGetValue(config.Name, out var server))
+                if (_servers.TryGetValue(name, out var server))
                 {
                     server.AccountChanges.Writer.TryWrite(true);
                     server.Signals.Writer.TryWrite(true);
@@ -734,6 +737,7 @@ internal sealed partial class McpToolProvider
             }
             await _mountLifetime.CancelAsync();
             _provider._oauthCoordinator.AccountChanged -= _AccountChanged;
+            _provider._refreshRequested -= _Reconnect;
             foreach (var server in servers)
             {
                 await server.CallLifetime.CancelAsync();

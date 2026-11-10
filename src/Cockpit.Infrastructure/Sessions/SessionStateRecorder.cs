@@ -105,7 +105,8 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         // below would otherwise leave the saved conversation id standing — and a cockpit closed before any new
         // conversation id arrives would resume the just-cleared one on its next start (V1).
         bool forgetConversation = false,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        string? role = null) =>
         _WriteAsync(paneId, existing =>
         {
             var newProfileId = profile.Label;
@@ -125,6 +126,7 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
                 WorktreePath = worktreePath,
                 WorktreeBranch = worktreeBranch,
                 PermissionMode = permissionMode,
+                Role = role,
                 ConversationId = contextChanged ? null : existing.ConversationId,
                 ConversationState = contextChanged ? SessionConversationIdState.Unknown : existing.ConversationState,
             };

@@ -8,6 +8,9 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Core.Abstractions.Screenshots;
+using Cockpit.Infrastructure.Screenshots;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using NSubstitute;
 using Cockpit.Core.Abstractions.Sessions;
@@ -53,6 +56,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
     private readonly RecordingNodesClient _nodes = new();
 
     private int _attached;
+    private int _looks;
 
     private AssistantAgentMcpTools _Tools()
     {
@@ -72,7 +76,16 @@ public sealed class AssistantActMountRuleTests : IDisposable
             _attached++;
             return (string?)null;
         });
-        return new(_gateway, _memory, _consent, _nodes, sessions);
+        // look_at_screen (AC-2209) is an act tool like the rest: a real look-along over fakes, whose one display lookup
+        // counts as the call reaching what the tool is for (the operator's card).
+        var displays = Substitute.For<IDesktopDisplays>();
+        displays.EnumerateAsync(Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            _looks++;
+            return Task.FromResult<IReadOnlyList<DesktopDisplay>>([new DesktopDisplay { Bounds = new CaptureRect(0, 0, 100, 100), Scale = 1 }]);
+        });
+        var lookAlong = new ScreenLookAlong(Substitute.For<IScreenshotCapture>(), displays, Substitute.For<IScreenshotImageEditor>(), _consent);
+        return new(_gateway, _memory, _consent, _nodes, sessions, lookAlong: lookAlong);
     }
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
@@ -93,10 +106,24 @@ public sealed class AssistantActMountRuleTests : IDisposable
     /// Calls a tool with a filled-in argument for every parameter — including the optional ones, since a refusal
     /// that only holds when the caller left fields blank is not a refusal.
     /// </summary>
-    private async Task<JsonNode> _CallAsync(AssistantAgentMcpTools tools, MethodInfo tool) =>
-        _Json(await (Task<string>)tool.Invoke(tools, tool.Name == nameof(AssistantAgentMcpTools.AttachToReplyAsync)
+    private async Task<JsonNode> _CallAsync(AssistantAgentMcpTools tools, MethodInfo tool)
+    {
+        var call = tool.Invoke(tools, tool.Name == nameof(AssistantAgentMcpTools.AttachToReplyAsync)
             ? [null, null, 0]
-            : [.. tool.GetParameters().Select(_Argument)])!);
+            : [.. tool.GetParameters().Select(_Argument)])!;
+        if (call is Task<string> json)
+        {
+            return _Json(await json);
+        }
+
+        // A tool that answers with an MCP result (look_at_screen): its text is the answer. A refusal is the same JSON
+        // as everywhere else; any other text is read as ok unless the result is flagged an error.
+        var result = await (Task<CallToolResult>)call;
+        var text = string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+        return text.StartsWith('{') && JsonNode.Parse(text) is JsonObject { } refusal && refusal.ContainsKey("ok")
+            ? refusal
+            : new JsonObject { ["ok"] = result.IsError != true, ["error"] = text };
+    }
 
     private static object? _Argument(ParameterInfo parameter) =>
         // AC-1323: `node` sends a start to another machine instead of the gateway this test counts; left blank,
@@ -198,7 +225,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         Assert.Equal(
             tools.Count,
-            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _memory.Rewritten.Count + _nodes.Reads.Count + _attached);
+            _gateway.Calls.Count + _memory.Remembered.Count + _memory.Noted.Count + _memory.Exported.Count + _memory.Imported.Count + _memory.Rewritten.Count + _nodes.Reads.Count + _attached + _looks);
     }
 
 
@@ -499,7 +526,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
 
         public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => throw new NotSupportedException();
 
-        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
+        public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default, string? role = null) =>
             throw new NotSupportedException();
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();

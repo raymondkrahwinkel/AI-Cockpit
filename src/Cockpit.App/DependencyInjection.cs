@@ -57,6 +57,8 @@ public static class DependencyInjection
         services.AddSingleton<ISessionStartObserver>(provider => provider.GetRequiredService<DesktopSessionSeams>());
         services.AddSingleton<IAssistantSessionFactory>(provider => provider.GetRequiredService<DesktopSessionSeams>());
         services.AddTransient<Func<ISessionLauncher>>(provider => provider.GetRequiredService<ISessionLauncher>);
+        // AC-2207: the companion strip reaches the cockpit when first asked, as the seams above do.
+        services.AddTransient<Func<CockpitViewModel>>(provider => provider.GetRequiredService<CockpitViewModel>);
 
         return services;
     }

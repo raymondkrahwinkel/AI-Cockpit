@@ -77,7 +77,7 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin version is not in the server's store.");
             }
 
-            var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version), cancellationToken).ConfigureAwait(false);
+            var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version, index.Index?.RevokedKeys, AllowDowngrade: true), cancellationToken).ConfigureAwait(false);
             await _AuditAsync(services, "api:install_plugin", cancellationToken).ConfigureAwait(false);
             return Results.Json(PluginInstallResponse.From(result, install.Version), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
@@ -94,12 +94,17 @@ internal static class PluginEndpoints
             var (enabled, consented) = body;
             var installed = await plugins().GetInstalledAsync(cancellationToken).ConfigureAwait(false);
             var plugin = installed.FirstOrDefault(candidate => string.Equals(candidate.Discovered.FolderId, folderId, StringComparison.Ordinal));
-            var pin = consented is null
-                ? plugin?.Registration?.PinnedSha256
-                : string.Equals(consented, plugin?.Discovered.Sha256, StringComparison.OrdinalIgnoreCase) ? plugin?.Discovered.Sha256 : null;
-            if (pin is null)
+            if (plugin is null)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin is not installed on the server.");
+            }
+
+            var pin = consented is null
+                ? plugin.Registration?.PinnedSha256
+                : string.Equals(consented, plugin.Discovered.Sha256, StringComparison.OrdinalIgnoreCase) ? plugin.Discovered.Sha256 : null;
+            if (pin is null)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "consent_required", "That plugin needs permission for its installed version. Supply its current sha256 to confirm consent.");
             }
 
             var state = await plugins().SetEnabledAsync(folderId, enabled, pin, cancellationToken).ConfigureAwait(false);

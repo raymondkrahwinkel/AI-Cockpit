@@ -121,7 +121,7 @@ internal sealed class SessionStatusTools(
     }
 
     [McpServerTool(Name = "start_run", ReadOnly = false, Destructive = false)]
-    [Description("Starts a command (e.g. a `dotnet test` filter) and returns a run id right away, before the command has finished — you can end your turn immediately after. When it ends, by finishing or by its timeout, the verdict is delivered to your own inbox and, if you have wake consent, a turn is started for you to read it. It never restarts anything on your behalf. A heavy run (any `kind` but `light`) first takes its place in the machine-wide queue: it starts once the measured CPU and memory leave room for it, and the reply then says `queued` with the reason ('waiting: CPU 82%, 2 ahead of you') — put that in your statusline and end your turn; the verdict still comes to your inbox. A `pre-merge` run goes ahead of an `explore` one. The timeout counts from the start, not from the wait. On timeout the verdict is `TimedOut`, carrying whatever the command had already printed. Every process the run's tree still holds when it ends — a compiler daemon it spawned and left running included — is ended too, whether the run finished cleanly or timed out; this does not touch anything outside that one run. `unreachable`, when present in the reply, means nothing is going to bring this run's verdict to you on its own — read it before you end your turn.")]
+    [Description("Starts a command (e.g. a `dotnet test` filter) and returns a run id right away, before the command has finished — you can end your turn immediately after. When it ends, by finishing or by its timeout, the verdict is delivered to your own inbox and, if you have wake consent, a turn is started for you to read it. It never restarts anything on your behalf. A heavy run (any `kind` but `light`) first takes its place in the machine-wide queue: it starts once the measured CPU and memory leave room for it, and the reply then says `queued` with the reason ('waiting: CPU 82%, 2 ahead of you') — put that in your statusline and end your turn; the verdict still comes to your inbox. Queued runs start in arrival order, regardless of purpose. The timeout counts from the start, not from the wait. On timeout the verdict is `TimedOut`, carrying whatever the command had already printed. Every process the run's tree still holds when it ends — a compiler daemon it spawned and left running included — is ended too, whether the run finished cleanly or timed out; this does not touch anything outside that one run. `unreachable`, when present in the reply, means nothing is going to bring this run's verdict to you on its own — read it before you end your turn.")]
     public async Task<string> StartRunAsync(
         [Description("The directory the command runs in.")] string workingDirectory,
         [Description("The command to run, e.g. 'dotnet'. Never parsed by a shell — pass its arguments separately in `arguments`, not appended here.")] string command,
@@ -129,7 +129,7 @@ internal sealed class SessionStatusTools(
         [Description("How long the command may run before it is ended and the verdict is TimedOut, in seconds. Defaults to 900 and cannot be set higher.")] int timeoutSeconds = MaxTimeoutSeconds,
         [Description("Optional. Your session id — the value of the COCKPIT_PANE_ID environment variable in this session. Only needed as a fallback when automatic session identification is unavailable.")] string? session = null,
         [Description("What the run is: `light` (lint, or one test class or method by `--filter`) starts at once; `build`, `unit` and `journeys` (tests with a database or a browser) wait for room in the machine-wide queue. Defaults to `journeys`, so a run that does not say waits rather than fails a gate on an overloaded machine.")] string? kind = null,
-        [Description("Why the run is wanted: `pre-merge` (the gate right before a merge) goes ahead of `explore` (anything else). Defaults to `explore`.")] string? purpose = null)
+        [Description("Why the run is wanted: `pre-merge` labels the gate right before a merge; `explore` labels other work. Purpose does not affect queue order. Defaults to `explore`.")] string? purpose = null)
     {
         var caller = McpRequestContext.CurrentPaneId ?? session;
         if (string.IsNullOrEmpty(caller))
@@ -272,7 +272,8 @@ internal sealed class SessionStatusTools(
             TrackedRunResult result;
             try
             {
-                result = await runner.RunAsync(workingDirectory, command, arguments, timeout, runId, stopping.Token).ConfigureAwait(false);
+                result = await runner.RunAsync(workingDirectory, command, arguments, timeout, runId, stopping.Token,
+                    paneId: sessions?.Find(caller) is null ? null : caller).ConfigureAwait(false);
             }
             catch (Exception exception)
             {

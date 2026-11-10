@@ -18,7 +18,8 @@ internal sealed class AssistantReadGateway(
     IProjectStore projectStore,
     IWorkspaceSettingsStore workspaceStore,
     IMcpServerCatalog? mcpServers = null,
-    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null)
+    Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
+    ISessionDesks? desks = null)
     : IAssistantReadGateway, ISingletonService
 {
     private const int MaxActivityLength = 120;
@@ -34,10 +35,13 @@ internal sealed class AssistantReadGateway(
         var workspaces = await workspaceStore.LoadAsync().ConfigureAwait(false);
         var namesById = workspaces.Workspaces.ToDictionary(workspace => workspace.Id, workspace => workspace.Name, StringComparer.Ordinal);
 
-        return await Task.WhenAll(panes.Select(session => _RowAsync(session, namesById))).ConfigureAwait(false);
+        // AC-2187: read at the moment of the question, on the desktop's UI thread; a backend has no screen.
+        var selectedPaneId = desks is null ? null : await desks.RunExclusiveAsync(() => desks.SelectedPaneId).ConfigureAwait(false);
+
+        return await Task.WhenAll(panes.Select(session => _RowAsync(session, namesById, selectedPaneId))).ConfigureAwait(false);
     }
 
-    private async Task<AssistantSessionRow> _RowAsync(ISessionHandle session, IReadOnlyDictionary<string, string> namesById)
+    private async Task<AssistantSessionRow> _RowAsync(ISessionHandle session, IReadOnlyDictionary<string, string> namesById, string? selectedPaneId)
     {
         // AC-1309: what this session still carries that Status does not hold it on — a backgrounded shell,
         // tracked but deliberately not status-pinning (AC-276).
@@ -71,7 +75,8 @@ internal sealed class AssistantReadGateway(
             session.ProjectId,
             mcpMounts?.Set(session.PaneId)?.ServerNames.ToArray() ?? session.McpServersOverride,
             AssistantReadMcpTools.Bounded(activity, MaxActivityLength).Text,
-            activityAge);
+            activityAge,
+            selectedPaneId is not null && string.Equals(session.PaneId, selectedPaneId, StringComparison.Ordinal));
     }
 
     public async Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync()

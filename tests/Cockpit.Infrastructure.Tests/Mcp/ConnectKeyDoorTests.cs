@@ -30,6 +30,35 @@ namespace Cockpit.Infrastructure.Tests.Mcp;
 // has none, and that is where a valid key used to meet a 403.
 public sealed class ConnectKeyDoorTests
 {
+    [Fact]
+    public async Task SecurityDoor_PreservesItsIndependentChecks()
+    {
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertRevokingAKey_CutsOffItsCallInFlight_AndFailsTheOpenClientsNextCallAsync();
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertSettingAKeysScope_HoldsItsOpenClientToItFromTheNextCallAsync();
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertAnIssuedUsedAndRevokedKey_LeavesItsPrefixButNeverItselfInConfigLogOrAuditAsync();
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertALockout_OutlivesARestart_AndTheNextOneIsStillDoubledAsync();
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertSigningAProfileIn_IsForAnAdminKeyOnly_AndIsAuditedAsync();
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertASignIn_NeverCarriesTheProvidersTokenOverTheLineAsync();
+        }
+    }
+
     private const string Bootstrap = "ck_bootstrapKeyForTheNodeDoorTests0123456789ab";
 
     private const string PairingSecret = "the-pairing-secret";
@@ -76,13 +105,32 @@ public sealed class ConnectKeyDoorTests
     // Criterion 1: a bootstrap key from a file, or from the variable as fallback, opens the door with no pairing and
     // nothing done on the node; with neither, or a key too short or too monotonous to be random, the same call is the
     // one refusal every failure gets. Either way the node lets go of both variables once it has read them.
-    [Theory]
-    [InlineData(new[] { ConnectKeyVerifier.BootstrapFileVariable }, Bootstrap, HttpStatusCode.OK)]
-    [InlineData(new[] { ConnectKeyVerifier.BootstrapVariable }, Bootstrap, HttpStatusCode.OK)]
-    [InlineData(new string[0], Bootstrap, HttpStatusCode.Unauthorized)]
-    [InlineData(new[] { ConnectKeyVerifier.BootstrapVariable }, ShortBootstrap, HttpStatusCode.Unauthorized)]
-    [InlineData(new[] { ConnectKeyVerifier.BootstrapVariable }, MonotonousBootstrap, HttpStatusCode.Unauthorized)]
-    public async Task BootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOne(string[] suppliedBy, string key, HttpStatusCode expected)
+    [Fact]
+    public async Task BootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOne()
+    {
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertBootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOneAsync(new[] { ConnectKeyVerifier.BootstrapFileVariable }, Bootstrap, HttpStatusCode.OK);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertBootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOneAsync(new[] { ConnectKeyVerifier.BootstrapVariable }, Bootstrap, HttpStatusCode.OK);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertBootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOneAsync(new string[0], Bootstrap, HttpStatusCode.Unauthorized);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertBootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOneAsync(new[] { ConnectKeyVerifier.BootstrapVariable }, ShortBootstrap, HttpStatusCode.Unauthorized);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertBootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOneAsync(new[] { ConnectKeyVerifier.BootstrapVariable }, MonotonousBootstrap, HttpStatusCode.Unauthorized);
+        }
+    }
+
+    private async Task _AssertBootstrapKey_OpensTheDoorWithoutAPairing_OnlyWhenASecretSuppliesAStrongOneAsync(string[] suppliedBy, string key, HttpStatusCode expected)
     {
         await using var door = new _Door();
         var keyFile = Path.Combine(door.Directory, "connect-key");
@@ -105,14 +153,36 @@ public sealed class ConnectKeyDoorTests
     // Criterion 2: every failed credential answers byte for byte like an unknown key. Revoked rows run after a restart,
     // so they pass only if the revocation was persisted (or, unsaved, stayed loud and revoked). AC-1985: so does the
     // pairing secret still stored for an old controller.
-    [Theory]
-    [InlineData("unknown key")]
-    [InlineData("wrong key with a known prefix")]
-    [InlineData("expired key")]
-    [InlineData("revoked key")]
-    [InlineData("key whose revocation could not be saved, after a restart")]
-    [InlineData("the stored pairing secret")]
-    public async Task EveryFailedCredential_GetsTheSameAnswerAsAnUnknownKey(string credential)
+    [Fact]
+    public async Task EveryFailedCredential_GetsTheSameAnswerAsAnUnknownKey()
+    {
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync("unknown key");
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync("wrong key with a known prefix");
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync("expired key");
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync("revoked key");
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync("key whose revocation could not be saved, after a restart");
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync("the stored pairing secret");
+        }
+    }
+
+    private async Task _AssertEveryFailedCredential_GetsTheSameAnswerAsAnUnknownKeyAsync(string credential)
     {
         await using var door = new _Door();
         var beforeRestart = door.Verifier(_Environment());
@@ -151,8 +221,7 @@ public sealed class ConnectKeyDoorTests
     // Criterion 3: revocation reaches a controller that is already connected. The node's MCP transport is stateless
     // (SDK 2.0), so what is open at that moment is a call in flight: it is cut off within a second, and the open
     // client's next call is refused. A test that reconnected after revoking would pass on any door.
-    [Fact]
-    public async Task RevokingAKey_CutsOffItsCallInFlight_AndFailsTheOpenClientsNextCall()
+    private async Task _AssertRevokingAKey_CutsOffItsCallInFlight_AndFailsTheOpenClientsNextCallAsync()
     {
         await using var door = new _Door();
         var reached = new TaskCompletionSource();
@@ -186,8 +255,7 @@ public sealed class ConnectKeyDoorTests
 
     // AC-1367 criterion 4: a scope change reaches a controller that is already connected, from its next call —
     // the same open client, never a reconnect. The call before the change still saw the project.
-    [Fact]
-    public async Task SettingAKeysScope_HoldsItsOpenClientToItFromTheNextCall()
+    private async Task _AssertSettingAKeysScope_HoldsItsOpenClientToItFromTheNextCallAsync()
     {
         await using var door = new _Door();
         await door.StartAsync(_Environment());
@@ -211,13 +279,32 @@ public sealed class ConnectKeyDoorTests
     // project, permissions on and bypass off.
 
     // Criterion 4: managing keys is admin's alone. Admin issue/revoke/list success is covered by their behavior tests.
-    [Theory]
-    [InlineData("operate key", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("operate key", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("admin key", "set_connect_key_scope", null)]
-    public async Task KeyTools_AreForAnAdminKeyOnly(string credential, string tool, string? refusal)
+    [Fact]
+    public async Task KeyTools_AreForAnAdminKeyOnly()
+    {
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertKeyTools_AreForAnAdminKeyOnlyAsync("operate key", "issue_connect_key", NodeSessionMcpTools.AdminRefusal);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertKeyTools_AreForAnAdminKeyOnlyAsync("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertKeyTools_AreForAnAdminKeyOnlyAsync("operate key", "list_connect_keys", NodeSessionMcpTools.AdminRefusal);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertKeyTools_AreForAnAdminKeyOnlyAsync("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal);
+        }
+        {
+            var scenario = new ConnectKeyDoorTests();
+            await scenario._AssertKeyTools_AreForAnAdminKeyOnlyAsync("admin key", "set_connect_key_scope", null);
+        }
+    }
+
+    private async Task _AssertKeyTools_AreForAnAdminKeyOnlyAsync(string credential, string tool, string? refusal)
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync(_Environment(), new NodePairing { ControllerName = "laptop", ControllerAddress = "10.0.0.2", PairedAtUtc = DateTimeOffset.UnixEpoch, AllowAllProfiles = true, AllowAllProjects = true });
@@ -244,8 +331,7 @@ public sealed class ConnectKeyDoorTests
 
     // Criterion 5: after issuing, using and revoking a key, the key itself is in none of cockpit.json, the log and
     // the audit trail. Finding the prefix in each proves the search looked where the key would have been.
-    [Fact]
-    public async Task AnIssuedUsedAndRevokedKey_LeavesItsPrefixButNeverItselfInConfigLogOrAudit()
+    private async Task _AssertAnIssuedUsedAndRevokedKey_LeavesItsPrefixButNeverItselfInConfigLogOrAuditAsync()
     {
         await using var door = new _Door();
         await door.StartAsync(_Environment());
@@ -274,8 +360,7 @@ public sealed class ConnectKeyDoorTests
 
     // AC-1459 criterion 1: a lockout outlives a restart with the same end, and the next one is still doubled. The
     // restart is a second verifier over the same state directory, as the next process builds it.
-    [Fact]
-    public async Task ALockout_OutlivesARestart_AndTheNextOneIsStillDoubled()
+    private async Task _AssertALockout_OutlivesARestart_AndTheNextOneIsStillDoubledAsync()
     {
         await using var door = new _Door();
         const string address = "203.0.113.7";
@@ -307,8 +392,7 @@ public sealed class ConnectKeyDoorTests
 
     // AC-1357 criterion 2: signing a profile in is admin's. An operate key gets the API's one forbidden on start,
     // input and status; the admin key starts, answers the prompt and reads the outcome, and the audit names who.
-    [Fact]
-    public async Task SigningAProfileIn_IsForAnAdminKeyOnly_AndIsAudited()
+    private async Task _AssertSigningAProfileIn_IsForAnAdminKeyOnly_AndIsAuditedAsync()
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync(_Environment());
@@ -341,8 +425,7 @@ public sealed class ConnectKeyDoorTests
 
     // AC-1357 criterion 3: the token stays on the node. A flow whose CLI prints a token next to its code and fails
     // with one in its error text lets neither reach a response, the audit or the log; only the link and the device code cross.
-    [Fact]
-    public async Task ASignIn_NeverCarriesTheProvidersTokenOverTheLine()
+    private async Task _AssertASignIn_NeverCarriesTheProvidersTokenOverTheLineAsync()
     {
         const string token = "sk-ant-oat01-TheProvidersAccessTokenThatMustStayOnTheNode0123456789";
         await using var door = new _Door();

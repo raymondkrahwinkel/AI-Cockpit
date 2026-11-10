@@ -1,10 +1,9 @@
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.Core.Assistant;
 
-// The assistant's own settings, persisted under `assistant` in `cockpit.json`, deliberately not extending
-// `Cockpit.Core.Voice.VoiceSettings` since the assistant can be used with neither mic nor speaker. The
-// profile lives behind `AssistantProfileSlot`; the listening mode is computed, not stored, from `VoiceSettings.OpenMicEnabled`.
+// Assistant preferences live separately from voice because the assistant also works without audio.
 public sealed record AssistantSettings
 {
     public const double MinimumCompactionPercent = 10;
@@ -23,6 +22,10 @@ public sealed record AssistantSettings
     // machine with no working audio can still want a text assistant. Switching off mid-sentence cuts it
     // off — whoever clicks off wants silence, not one more paragraph (criterion 9).
     public bool SpeakReplies { get; init; } = true;
+
+    public SpokenReplyMode SpeechMode { get; init; } = SpokenReplyMode.Short;
+    public SpokenReplyMethod SpeechMethod { get; init; } = SpokenReplyMethod.Assistant;
+    public string? SpeechProfileLabel { get; init; }
 
     // Avalonia `Key` enum name for the assistant push-to-talk hotkey. F10, next to dictation's F9, and rebindable.
     public string PushToTalkKeyName { get; init; } = "F10";
@@ -43,6 +46,12 @@ public sealed record AssistantSettings
     // first time `AssistantListeningMode.AlwaysOn` is switched on, and never asked again: a warning
     // that returns every time is one that gets clicked away without being read.
     public bool AlwaysOnCostAcknowledged { get; init; }
+
+    public bool WakeWordEnabled { get; init; }
+    public string WakeWord { get; init; } = "computer";
+    public int WakeWordListeningSeconds { get; init; } = 8;
+
+    public static int NormalizeWakeWordListeningSeconds(int value) => value is >= 1 and <= 30 ? value : 8;
 
     // Skip Cockpit's consent card for every source and both risk classes (#AC-637). *On by default* — the
     // friction the operator wanted gone — falling back to the two per-source lists below when off, which

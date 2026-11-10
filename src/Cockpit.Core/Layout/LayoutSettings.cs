@@ -59,6 +59,13 @@ public sealed record LayoutSettings
     // requiring the tray toggle every time.
     public bool CompanionWindowVisible { get; init; }
 
+    // How the companion strip lies on the screen, and whether it stays above other windows.
+    public CompanionOrientation CompanionOrientation { get; init; } = CompanionOrientation.Horizontal;
+
+    public bool CompanionAlwaysOnTop { get; init; } = true;
+
+    public CompanionStripLayout? CompanionStripLayout { get; init; }
+
     // Which stand the cockpit opens in (AC-1301): the Simple one — a single conversation filling the window —
     // or the panels stand. Off by default, so an existing install opens exactly as it did. The Simple/Panels
     // switch at the bottom of the left column changes what is on screen now and leaves this alone.

@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:plugins="using:Cockpit.Core.Plugins"
+        x:Class="Cockpit.App.Views.PublisherKeyChangedDialog"
+        x:DataType="plugins:PluginKeyConsentRequest"
+        Title="Publisher key changed" Width="580" MaxHeight="700"
+        SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource CockpitPanelBgBrush}">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Padding="20,12"
+                Background="{DynamicResource CockpitChromeBgBrush}">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Classes="Accent" Content="Keep current version" Click="OnKeep" IsCancel="True"/>
+                <Button Content="Trust the new key and update" Click="OnTrust"/>
+            </StackPanel>
+        </Border>
+        <ScrollViewer MaxHeight="520" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="20" Spacing="12">
+                <TextBlock Text="{Binding Id}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Version, StringFormat='Requested version: {0}'}"/>
+                <Border Padding="12" CornerRadius="{DynamicResource CockpitControlRadius}"
+                        Background="{DynamicResource CockpitStatusWaitingChipTintBrush}">
+                    <TextBlock Text="This update is signed with a different key. It could be a planned key change, or someone publishing in the publisher's name. Check with your organization before you continue."
+                               TextWrapping="Wrap"/>
+                </Border>
+                <TextBlock Text="You trusted" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <SelectableTextBlock Text="{Binding PreviousFingerprint}" FontFamily="{DynamicResource CockpitMonoFont}" TextWrapping="Wrap"/>
+                <TextBlock Text="This update" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <SelectableTextBlock Text="{Binding Fingerprint}" FontFamily="{DynamicResource CockpitMonoFont}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Organization, StringFormat='Organization: {0}'}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding DepotHost, StringFormat='Depot host: {0}'}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Repository, StringFormat='Repository: {0}'}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Tag, StringFormat='Tag: {0}'}" TextWrapping="Wrap"/>
+                <TextBlock Text="Added on Depot: date and author are not provided by this feed." TextWrapping="Wrap"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <TextBlock Text="The signature identifies the publisher; it does not make the plugin safe. Plugins run in-process with your account's permissions."
+                           TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

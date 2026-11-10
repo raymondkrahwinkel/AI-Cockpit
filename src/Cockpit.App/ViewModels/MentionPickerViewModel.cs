@@ -1,20 +1,23 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Mentions;
 
 namespace Cockpit.App.ViewModels;
 
-// Backs the AC-740 @-mention popup, modeled on CommandPaletteDialogViewModel's Query/Visible/Move/Accept shape.
-// Shared by both composers. The working directory is read lazily through `workingDirectory` on every '@' rather
-// than captured once — the Assistant-chat's session doesn't exist until the first message starts it.
+// Backs the @-mention list shared by every chat window: groups from the IMentionSource set, one flat Matches list
+// with heading rows, the selection (headings are skipped), and the tokens that were accepted into the text.
 public partial class MentionPickerViewModel : ViewModelBase
 {
     public const int MaxMatches = 15;
 
-    private readonly Func<CancellationToken, Task<IReadOnlyList<string>>> _fileSource;
-    private readonly Func<string?> _workingDirectory;
+    public static readonly TimeSpan SourceTimeout = TimeSpan.FromSeconds(2);
 
-    private IReadOnlyList<string>? _candidates;
+    private readonly IReadOnlyList<IMentionSource> _sources;
+    private readonly Func<MentionContext> _context;
+    private readonly Dictionary<string, MentionItem> _accepted = [];
+
+    private IReadOnlyList<MentionGroup>? _groups;
     private CancellationTokenSource? _loadCts;
     private int _suppressedTokenStart = -1;
 
@@ -30,32 +33,45 @@ public partial class MentionPickerViewModel : ViewModelBase
     [ObservableProperty]
     private MentionMatch? _selected;
 
+    [ObservableProperty]
+    private IReadOnlyList<MentionToken> _tokens = [];
+
+    // The first project token in text order; the window decides whether it sets the context or is a mention.
+    [ObservableProperty]
+    private MentionToken? _firstProjectToken;
+
+    // The project token that sets the window's project: the first one, when the window says its item can. Null elsewhere.
+    [ObservableProperty]
+    private MentionToken? _contextToken;
+
+    // Set by a window where the first project token chooses the project (Home); the rest keep every token a mention.
+    public Func<MentionItem, bool>? CanSetContext { get; init; }
+
+    // Flat list: a heading row precedes the rows of its group.
     public ObservableCollection<MentionMatch> Matches { get; } = [];
 
-    // The index of the '@' that opened the picker, for splicing an accepted/typed-through mention back into the
-    // composer's text. -1 while closed.
+    public bool HasMatches => Matches.Any(match => match.IsItem);
+
+    // The index of the '@' that opened the list, -1 while closed.
     public int TokenStart { get; private set; } = -1;
 
     // Design-time constructor for the previewer.
     public MentionPickerViewModel()
-        : this(_ => Task.FromResult<IReadOnlyList<string>>([]), () => null)
+        : this([], () => new MentionContext(MentionSurface.Home, null))
     {
     }
 
-    public MentionPickerViewModel(
-        Func<CancellationToken, Task<IReadOnlyList<string>>> fileSource,
-        Func<string?> workingDirectory)
+    public MentionPickerViewModel(IEnumerable<IMentionSource> sources, Func<MentionContext> context)
     {
-        _fileSource = fileSource;
-        _workingDirectory = workingDirectory;
+        _sources = sources.OrderBy(source => source.Order).ToList();
+        _context = context;
     }
 
-    // Re-evaluates the mention token under the caret and opens/updates/closes the picker accordingly. Call this
-    // only on caret-driven typing — never on a programmatic text mutation (voice input, Up-recall, pasting a
-    // block), which would open the picker for text the operator never typed a caret through.
+    // Re-evaluates the token under the caret; call it on caret-driven typing only, never on a programmatic text change.
     public void OnTextChanged(string text, int caretIndex)
     {
-        if (MentionQuery.From(text, caretIndex) is not { } token || _workingDirectory() is null)
+        SyncTokens(text);
+        if (MentionQuery.From(text, caretIndex) is not { } token)
         {
             _Reset(clearSuppression: true);
             return;
@@ -63,15 +79,14 @@ public partial class MentionPickerViewModel : ViewModelBase
 
         if (token.Start == _suppressedTokenStart)
         {
-            // Esc dismissed the picker for this exact token; stay closed until a new '@' starts a new one.
+            // Esc dismissed the list for this exact token; stay closed until a new '@' starts a new one.
             return;
         }
 
         _suppressedTokenStart = -1;
         TokenStart = token.Start;
 
-        // Re-ranking hangs off OnQueryChanged alone. Filtering here as well ranked every keystroke twice, and a
-        // keystroke that leaves the token's text alone (a caret move, a re-evaluation) now costs nothing at all.
+        // Ranking hangs off OnQueryChanged alone, so a keystroke that leaves the token text alone costs nothing.
         Query = token.Query;
         if (!IsOpen)
         {
@@ -80,41 +95,89 @@ public partial class MentionPickerViewModel : ViewModelBase
         }
     }
 
-    // Moves the selection up/down, clamped to the list — the picker's arrow-key handling.
+    // Looks the accepted tokens up again by their exact text, longest first, so names with spaces survive.
+    public void SyncTokens(string text)
+    {
+        var found = new List<MentionToken>();
+        foreach (var (insert, item) in _accepted.OrderByDescending(pair => pair.Key.Length).ToList())
+        {
+            var tokenText = "@" + insert;
+            var from = 0;
+            var any = false;
+            while (text.IndexOf(tokenText, from, StringComparison.Ordinal) is var at and >= 0)
+            {
+                from = at + tokenText.Length;
+                var end = at + tokenText.Length;
+                var bounded = (at == 0 || char.IsWhiteSpace(text[at - 1])) && (end == text.Length || char.IsWhiteSpace(text[end]));
+                if (bounded && !found.Any(other => at < other.Start + other.Length && other.Start < end))
+                {
+                    found.Add(new MentionToken(item, at, tokenText.Length));
+                    any = true;
+                }
+            }
+
+            if (!any)
+            {
+                _accepted.Remove(insert);
+            }
+        }
+
+        found.Sort((a, b) => a.Start.CompareTo(b.Start));
+        if (!found.SequenceEqual(Tokens))
+        {
+            Tokens = found;
+            FirstProjectToken = found.FirstOrDefault(token => token.Item.Kind == MentionKind.Project);
+            ContextToken = FirstProjectToken is { } first && CanSetContext?.Invoke(first.Item) == true ? first : null;
+        }
+    }
+
+    // The text as it goes to the model: every mention except the context token gains its path or shared id after the name.
+    public string ExpandMentions(string text)
+    {
+        SyncTokens(text);
+        foreach (var token in Tokens.Where(token => token.Item.Kind != MentionKind.File && token != ContextToken && token.Item.Reference is not null).Reverse())
+        {
+            text = text.Insert(token.Start + token.Length, $" ({token.Item.Reference})");
+        }
+
+        return text;
+    }
+
+    // Moves the selection over the item rows only; the headings are skipped.
     public void Move(int delta)
     {
-        if (Matches.Count == 0)
+        var items = Matches.Where(match => match.IsItem).ToList();
+        if (items.Count == 0)
         {
             return;
         }
 
-        var index = Selected is null ? 0 : Matches.IndexOf(Selected);
-        Selected = Matches[Math.Clamp(index + delta, 0, Matches.Count - 1)];
+        var index = Selected is null ? 0 : Math.Max(items.IndexOf(Selected), 0);
+        Selected = items[Math.Clamp(index + delta, 0, items.Count - 1)];
     }
 
-    // Accepts the current selection and closes the picker, or returns null if nothing is selected.
+    // Accepts the current selection and closes the list, or returns null if nothing is selected.
     public MentionAcceptance? Accept()
     {
-        if (Selected is not { } chosen)
+        if (Selected is not { Item: { } item })
         {
             return null;
         }
 
-        var acceptance = new MentionAcceptance(TokenStart, chosen.Path);
+        var acceptance = new MentionAcceptance(TokenStart, item);
+        _accepted[item.InsertText] = item;
         _Reset(clearSuppression: true);
         return acceptance;
     }
 
-    // Closes the picker on Esc and remembers the token, so further typing inside the same @-run doesn't reopen
-    // it — only a fresh '@' does.
+    // Closes on Esc and remembers the token, so typing on inside the same @-run does not reopen it; only a fresh '@' does.
     public void Dismiss()
     {
         _suppressedTokenStart = TokenStart;
         _Reset(clearSuppression: false);
     }
 
-    // Closes the picker unconditionally — used when the composer itself closes the door (message sent, session
-    // torn down). Clears the dismiss-suppression too, since there is no token left to suppress.
+    // Closes unconditionally (message sent, session torn down); there is no token left to suppress.
     public void Close() => _Reset(clearSuppression: true);
 
     partial void OnQueryChanged(string value) => _ApplyFilter();
@@ -128,7 +191,7 @@ public partial class MentionPickerViewModel : ViewModelBase
 
         _loadCts?.Cancel();
         _loadCts = null;
-        _candidates = null;
+        _groups = null;
         IsOpen = false;
         IsLoading = false;
         TokenStart = -1;
@@ -144,18 +207,19 @@ public partial class MentionPickerViewModel : ViewModelBase
         IsLoading = true;
         try
         {
-            var candidates = await _fileSource(cts.Token);
+            var context = _context();
+            var loaded = await Task.WhenAll(_sources.Select(source => _LoadOneAsync(source, context, cts.Token)));
             if (cts.IsCancellationRequested)
             {
                 return;
             }
 
-            _candidates = candidates;
+            _groups = loaded.SelectMany(groups => groups).OrderBy(group => _KindRank(context.Surface, group)).ToList();
             _ApplyFilter();
         }
         catch (OperationCanceledException)
         {
-            // Superseded by a newer load, or the picker closed while the fetch was in flight.
+            // The list closed while the sources were still loading.
         }
         finally
         {
@@ -166,24 +230,55 @@ public partial class MentionPickerViewModel : ViewModelBase
         }
     }
 
+    // A source that fails or is slow drops out alone; the other groups still show.
+    private static async Task<IReadOnlyList<MentionGroup>> _LoadOneAsync(IMentionSource source, MentionContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await source.GetAsync(context, cancellationToken).WaitAsync(SourceTimeout, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return [];
+        }
+    }
+
+    // OrderBy is stable, so groups of one kind keep their source order. A session reads files first, elsewhere projects lead.
+    private static int _KindRank(MentionSurface surface, MentionGroup group) =>
+        (group.Items.FirstOrDefault()?.Kind, surface) switch
+        {
+            (MentionKind.File, MentionSurface.Session) => 0,
+            (MentionKind.Project, MentionSurface.Session) => 1,
+            (MentionKind.Project, _) => 0,
+            (MentionKind.File, _) => 1,
+            _ => 2,
+        };
+
     private void _ApplyFilter()
     {
-        var ranked = _candidates is { } candidates
-            ? MentionMatcher.Rank(candidates, Query, MaxMatches)
-            : [];
+        var ranked = new List<MentionMatch>();
+        foreach (var group in _groups ?? [])
+        {
+            var items = _Rank(group.Items, Query);
+            if (items.Count == 0)
+            {
+                continue;
+            }
 
-        // Rewritten in place rather than cleared and refilled: Matches is bound to the popup's ListBox, and a
-        // Clear is a reset that throws away and rebuilds every container — on every keystroke, while the operator
-        // is typing into the box right underneath it. A row whose path is unchanged now raises nothing at all.
+            ranked.Add(MentionMatch.ForHeading(group));
+            ranked.AddRange(items.Select(item => MentionMatch.ForItem(item, Query)));
+        }
+
+        // Rewritten in place: Matches is bound to the list, and a Clear would rebuild every container per keystroke.
         for (var i = 0; i < ranked.Count; i++)
         {
             if (i == Matches.Count)
             {
-                Matches.Add(new MentionMatch(ranked[i]));
+                Matches.Add(ranked[i]);
             }
-            else if (!string.Equals(Matches[i].Path, ranked[i], StringComparison.Ordinal))
+            else if (Matches[i] != ranked[i])
             {
-                Matches[i] = new MentionMatch(ranked[i]);
+                Matches[i] = ranked[i];
             }
         }
 
@@ -192,7 +287,25 @@ public partial class MentionPickerViewModel : ViewModelBase
             Matches.RemoveAt(i);
         }
 
-        Selected = Matches.Count > 0 ? Matches[0] : null;
+        Selected = Matches.FirstOrDefault(match => match.IsItem);
+        OnPropertyChanged(nameof(HasMatches));
     }
 
+    private static IReadOnlyList<MentionItem> _Rank(IReadOnlyList<MentionItem> items, string query)
+    {
+        if (items.Count > 0 && items[0].Kind == MentionKind.File)
+        {
+            var byPath = items.GroupBy(item => item.InsertText).ToDictionary(g => g.Key, g => g.First());
+            return MentionMatcher.Rank(byPath.Keys.ToList(), query, MaxMatches).Select(path => byPath[path]).ToList();
+        }
+
+        return items
+            .Where(item => query.Length == 0
+                || item.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.SourceLine.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => query.Length > 0 && item.Title.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(item => item.LastActivity ?? DateTimeOffset.MinValue)
+            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 }

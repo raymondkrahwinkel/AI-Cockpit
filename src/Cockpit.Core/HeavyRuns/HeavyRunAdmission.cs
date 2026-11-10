@@ -2,36 +2,39 @@ using System.Globalization;
 
 namespace Cockpit.Core.HeavyRuns;
 
-// AC-1535: who may start next, decided on the measured load rather than a fixed count. A run gets in when the load
+// AC-1535: who may start next, within the operator's maximum and the measured load. A run gets in when the load
 // plus what its kind is known to add stays under the ceilings; with no heavy run of the cockpit's going, the head of
 // the line always gets in, whatever else loads the machine, so nothing waits forever.
 public static class HeavyRunAdmission
 {
-    // Pre-merge before explore, first come first served within a rank; an explore that waited long enough ranks up.
-    public static IReadOnlyList<int> Order(IReadOnlyList<HeavyRunCandidate> waiting, HeavyRunSettings settings, DateTimeOffset now) =>
+    public static IReadOnlyList<int> Order(IReadOnlyList<HeavyRunCandidate> waiting) =>
         [.. Enumerable.Range(0, waiting.Count)
-            .OrderByDescending(index => _Rank(waiting[index], settings, now))
-            .ThenBy(index => waiting[index].EnqueuedAt)];
+            .OrderBy(index => waiting[index].ArrivalSequence)];
 
     // Only the head of the line is considered: a smaller run behind it never overtakes, or a gate could starve.
     public static HeavyRunDecision Next(
-        IReadOnlyList<HeavyRunCandidate> waiting, MachineLoad load, HeavyRunSettings settings, bool isAnyHeavyRunning, DateTimeOffset now)
+        IReadOnlyList<HeavyRunCandidate> waiting, MachineLoad load, HeavyRunSettings settings, int runningCount)
     {
         if (waiting.Count == 0)
         {
             return new HeavyRunDecision(null, null);
         }
 
-        var head = Order(waiting, settings, now)[0];
-        var reason = WaitReason(waiting[head], load, settings, isAnyHeavyRunning);
+        var head = Order(waiting)[0];
+        var reason = WaitReason(waiting[head], load, settings, runningCount);
         return reason is null ? new HeavyRunDecision(head, null) : new HeavyRunDecision(null, reason);
     }
 
-    public static string? WaitReason(HeavyRunCandidate candidate, MachineLoad load, HeavyRunSettings settings, bool isAnyHeavyRunning)
+    public static string? WaitReason(HeavyRunCandidate candidate, MachineLoad load, HeavyRunSettings settings, int runningCount)
     {
-        if (!isAnyHeavyRunning)
+        if (runningCount == 0)
         {
             return null;
+        }
+
+        if (settings.MaxParallelRuns > 0 && runningCount >= settings.MaxParallelRuns)
+        {
+            return $"waiting: maximum {settings.MaxParallelRuns} parallel runs reached";
         }
 
         var cost = candidate.Cost;
@@ -63,9 +66,6 @@ public static class HeavyRunAdmission
     public static bool LooksOverloaded(string output) =>
         output.Contains("Command Timeout expired", StringComparison.OrdinalIgnoreCase)
         || output.Contains("unhealthy", StringComparison.OrdinalIgnoreCase);
-
-    private static int _Rank(HeavyRunCandidate candidate, HeavyRunSettings settings, DateTimeOffset now) =>
-        candidate.IsPreMerge || now - candidate.EnqueuedAt >= TimeSpan.FromMinutes(settings.AgingMinutes) ? 1 : 0;
 
     private static string _Gb(long bytes) => (bytes / 1_073_741_824.0).ToString("0.0", CultureInfo.InvariantCulture);
 }

@@ -40,6 +40,10 @@ public sealed class SessionLauncher(
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
         request = await composer.ComposeAsync(request).ConfigureAwait(false);
+        if (request.RoleFailure is { } roleFailure)
+        {
+            return new LaunchedSession(string.Empty, request.SessionName ?? request.Profile.Label, null, FailureReason: roleFailure);
+        }
         var profile = request.Profile;
         var kind = request.Kind ?? PaneSessionKind.Sdk;
         if (kind == PaneSessionKind.Tty && !hosting.CanHost(PaneSessionKind.Tty))
@@ -113,7 +117,8 @@ public sealed class SessionLauncher(
             var instructed = request with
             {
                 LaunchOptions = SessionStartComposer.WithWorktreeConfinement(
-                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null, brainInstruction),
+                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null, brainInstruction,
+                        await composer.BrainAsync(request).ConfigureAwait(false)),
                     admitted.WorktreeBranch is not null),
             };
             // AC-2162: establish profile/place before a fast provider reports its conversation id.
@@ -125,7 +130,7 @@ public sealed class SessionLauncher(
                 await stateRecorder.RecordSessionStartedAsync(
                     paneId, request.Profile, admitted.WorkingDirectory,
                     worktreePath: admitted.WorktreeBranch is not null ? admitted.WorkingDirectory : null,
-                    worktreeBranch: admitted.WorktreeBranch, permissionMode).ConfigureAwait(false);
+                    worktreeBranch: admitted.WorktreeBranch, permissionMode, role: request.Role).ConfigureAwait(false);
             }
             await hosted.StartAsync(instructed, admitted.WorkingDirectory).ConfigureAwait(false);
 
@@ -151,7 +156,7 @@ public sealed class SessionLauncher(
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
             : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
-        return new LaunchedSession(paneId, name, promptDelivered, UnisolatedNotice: admitted.Notice);
+        return new LaunchedSession(paneId, name, promptDelivered, UnisolatedNotice: admitted.Notice, RoleWarning: request.RoleWarning);
     }
 
     // Hosted, registered and recorded, in that order; null when the desk stopped holding sessions meanwhile.

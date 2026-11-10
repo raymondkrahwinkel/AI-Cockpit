@@ -22,9 +22,12 @@ public partial class CockpitViewModel
     internal string SimpleFallbackFolder { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Cockpit");
 
+    // What Home's @-list offers; a scene sets it before Home is first read.
+    internal IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? MentionSources { get; set; }
+
     private SimpleHomeViewModel _CreateSimpleHome()
     {
-        _simpleHome = new SimpleHomeViewModel(this);
+        _simpleHome = new SimpleHomeViewModel(this, MentionSources);
         Projects.RecentCards.CollectionChanged += (_, _) => _RefreshSimpleHome();
         Sessions.CollectionChanged += (_, _) => _RefreshSimpleHome();
         _RefreshSimpleHome();

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 
@@ -17,7 +18,18 @@ public partial class SimpleHomeView : UserControl
         InitializeComponent();
         HomeInput.AddHandler(KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
         HomeInput.AddHandler(KeyUpEvent, _OnInputKeyUp, RoutingStrategies.Tunnel);
+        HomeMentionPopup.EmptyActionCommand = new AsyncRelayCommand(async () =>
+        {
+            if (Cockpit is { } cockpit)
+            {
+                cockpit.SimpleHome.MentionPicker.Dismiss();
+                await _ChooseFolderAsync(cockpit.SimpleHome);
+            }
+        });
     }
+
+    // Set by the key-down tunnel: a key this view consumed is not typing, so its key-up must not re-read the @ token.
+    private bool _keyDownHandled;
 
     private CockpitViewModel? Cockpit => DataContext as CockpitViewModel;
 
@@ -33,7 +45,18 @@ public partial class SimpleHomeView : UserControl
     // Enter sends and Shift+Enter breaks the line, as in every composer here; the dictation key holds to talk.
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        _OnInputKeyDownCore(e);
+        _keyDownHandled = e.Handled;
+    }
+
+    private void _OnInputKeyDownCore(KeyEventArgs e)
+    {
         if (Cockpit is not { } cockpit)
+        {
+            return;
+        }
+
+        if (MentionComposerKeys.Handle(cockpit.SimpleHome.MentionPicker, HomeInput, e))
         {
             return;
         }
@@ -56,6 +79,12 @@ public partial class SimpleHomeView : UserControl
 
     private async void _OnInputKeyUp(object? sender, KeyEventArgs e)
     {
+        // A paste is not typing: Ctrl+V must not open the list for an @ that arrived with the clipboard.
+        if (Cockpit is { } home && !_keyDownHandled && !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            home.SimpleHome.MentionPicker.OnTextChanged(HomeInput.Text ?? string.Empty, HomeInput.CaretIndex);
+        }
+
         if (Cockpit is { IsAudioAvailable: true } cockpit
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, cockpit.VoicePushToTalkKeyName, cockpit.VoiceGlobalPushToTalk))
         {

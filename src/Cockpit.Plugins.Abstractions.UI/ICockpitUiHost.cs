@@ -215,6 +215,14 @@ public interface ICockpitUiHost
     {
     }
 
+    /// <summary>
+    /// Adds the host's file browser to the dock rail over this plugin's file source, on this computer and on each server
+    /// this desktop manages; register the workspace type first. UI SDK 3.27.0, host 0.168.0; an older host does nothing.
+    /// </summary>
+    void AddFileBrowser(Files.FileBrowserRegistration registration)
+    {
+    }
+
     /// <summary>Opens or focuses a file without replacing its document, undo history or unsaved changes.</summary>
     Task OpenFileWorkspaceAsync(string workspaceTypeId, Files.FileWorkspaceOpenOptions options) => Task.CompletedTask;
 
@@ -247,6 +255,12 @@ public interface ICockpitUiHost
 
     /// <summary>A live-preview Markdown editor over <paramref name="markdown"/>; null on a host without one.</summary>
     IMarkdownEditor? CreateMarkdownEditor(string markdown) => null;
+
+    /// <summary>
+    /// A live Markdown editor over a file of a live file source registered with <see cref="AddFileWorkspaceType"/>; null on a host
+    /// without one, or when the type is not registered. UI SDK 3.26.0, host 0.167.0.
+    /// </summary>
+    Files.ILiveMarkdownEditor? CreateLiveMarkdownEditor(Files.LiveMarkdownEditorOptions options) => null;
 
     /// <summary>
     /// Registers first-refusal handling for transcript links recognized by this plugin.

@@ -77,6 +77,22 @@ public interface ICockpitSessionObserver
     /// the session it acts for — say the caller of its MCP tool. Default null for a host that predates this member.
     /// </summary>
     string? GetWorkingDirectory(string paneId) => null;
+
+    /// <summary>
+    /// The last <paramref name="count"/> transcript rows of <paramref name="paneId"/>, oldest first, with the total
+    /// (AC-2256); SDK and readable TTY sessions alike. The host's own markers (turn end, divider) are left out, so
+    /// <see cref="PluginTranscriptSlice.Entries"/> can hold fewer than asked. Null for an unknown pane, one without a
+    /// readable transcript (<see cref="OpenCockpitSession.HasReadableTranscript"/>), or an older host.
+    /// </summary>
+    Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) => Task.FromResult<PluginTranscriptSlice?>(null);
+
+    /// <summary>
+    /// Every Allow/Deny question the session in <paramref name="paneId"/> is stopped on right now (AC-2256); empty once
+    /// they are answered, for an unknown pane, for a session whose questions are its own CLI's, and on a host that
+    /// predates this member. Read-only.
+    /// </summary>
+    Task<IReadOnlyList<PluginPendingPermission>> ReadPendingPermissionsAsync(string paneId) =>
+        Task.FromResult<IReadOnlyList<PluginPendingPermission>>([]);
 }
 
 /// <summary>
@@ -99,7 +115,43 @@ public sealed record OpenCockpitSession(
     string PaneId,
     string Name,
     string? ProfileLabel = null,
-    string? Status = null);
+    string? Status = null)
+{
+    /// <summary>
+    /// What the session last said it is working on (AC-2256), or null when it set nothing or the host predates this member.
+    /// </summary>
+    public string? Statusline { get; init; }
+
+    /// <summary>
+    /// True for a plain shell pane, which has no agent behind it (AC-2256).
+    /// </summary>
+    public bool IsTerminal { get; init; }
+
+    /// <summary>
+    /// Whether <see cref="ICockpitSessionObserver.ReadTranscriptAsync"/> can read this session back at all (AC-2256): a
+    /// route, not content. False for a plain terminal, a provider that records nothing readable, and on a host that
+    /// predates this member.
+    /// </summary>
+    public bool HasReadableTranscript { get; init; }
+}
+
+/// <summary>
+/// One Allow/Deny question a session is stopped on (AC-2256), as <see cref="ICockpitSessionObserver.ReadPendingPermissionsAsync"/>
+/// reports it. Read-only: answering it is not part of this surface.
+/// </summary>
+/// <param name="ToolUseId">
+/// The id of the tool call the question is about.
+/// </param>
+/// <param name="ToolName">
+/// The tool's name as the agent called it.
+/// </param>
+/// <param name="InputJson">
+/// The call's arguments as a JSON string, verbatim.
+/// </param>
+/// <param name="SinceUtc">
+/// When the question was asked.
+/// </param>
+public sealed record PluginPendingPermission(string ToolUseId, string ToolName, string InputJson, DateTimeOffset SinceUtc);
 
 /// <summary>
 /// One chunk of text a session produced, delivered on <see cref="ICockpitSessionObserver.OutputProduced"/>.

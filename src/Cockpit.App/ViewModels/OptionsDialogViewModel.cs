@@ -5,6 +5,8 @@ using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -15,7 +17,8 @@ public sealed partial class AssistantOptionsViewModel(
     IAssistantSettingsStore? settingsStore = null,
     IAssistantProfileStore? profileStore = null,
     IConsentAuditLog? consentAuditLog = null,
-    IAssistantMemory? memory = null) : ObservableObject
+    IAssistantMemory? memory = null,
+    ISessionProfileStore? speechProfiles = null) : ObservableObject
 {
     private readonly IAssistantMemory? _memory = memory;
 
@@ -35,6 +38,44 @@ public sealed partial class AssistantOptionsViewModel(
 
     [ObservableProperty]
     private bool _speakReplies = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WakeWordValidationMessage))]
+    private bool _wakeWordEnabled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WakeWordValidationMessage))]
+    private string _wakeWord = "computer";
+
+    [ObservableProperty]
+    private int _wakeWordListeningSeconds = 8;
+
+    public string? WakeWordValidationMessage => WakeWordEnabled && !AssistantWakeWord.IsConfigured(WakeWord)
+        ? "Enter comma-separated words using letters or numbers. Listening stays off until the list is valid."
+        : null;
+
+    public IReadOnlyList<SpeechModeOption> SpeechModes { get; } =
+        [new(SpokenReplyMode.Full, "Full"), new(SpokenReplyMode.Summary, "Summary"), new(SpokenReplyMode.Short, "Short")];
+    public IReadOnlyList<SpeechMethodOption> SpeechMethods { get; } =
+        [new(SpokenReplyMethod.Assistant, "Assistant"), new(SpokenReplyMethod.Profile, "Own AI profile"), new(SpokenReplyMethod.Rules, "Without AI")];
+    public ObservableCollection<string> SpeechProfileLabels { get; } = [];
+
+    [ObservableProperty]
+    private SpeechModeOption _selectedSpeechMode = new(SpokenReplyMode.Short, "Short");
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsesSpeechProfile))]
+    [NotifyPropertyChangedFor(nameof(UsesSpeechAi))]
+    [NotifyPropertyChangedFor(nameof(CanChooseSpeechMode))]
+    private SpeechMethodOption _selectedSpeechMethod = new(SpokenReplyMethod.Assistant, "Assistant");
+
+    [ObservableProperty]
+    private string? _selectedSpeechProfileLabel;
+
+    // Without AI has nothing to shorten with, so it reads the answer in full; the method stays choosable, which is the way back.
+    public bool CanChooseSpeechMode => SelectedSpeechMethod.Value != SpokenReplyMethod.Rules;
+    public bool UsesSpeechProfile => SelectedSpeechMethod.Value == SpokenReplyMethod.Profile;
+    public bool UsesSpeechAi => SelectedSpeechMethod.Value != SpokenReplyMethod.Rules;
 
     [ObservableProperty]
     private string _pushToTalkKeyName = "F10";
@@ -93,6 +134,12 @@ public sealed partial class AssistantOptionsViewModel(
                 _lastLoadedSettings = await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
                 IsEnabled = _lastLoadedSettings.IsEnabled;
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
+                WakeWordEnabled = _lastLoadedSettings.WakeWordEnabled;
+                WakeWord = _lastLoadedSettings.WakeWord;
+                WakeWordListeningSeconds = _lastLoadedSettings.WakeWordListeningSeconds;
+                SelectedSpeechMode = SpeechModes.First(option => option.Value == _lastLoadedSettings.SpeechMode);
+                SelectedSpeechMethod = SpeechMethods.First(option => option.Value == _lastLoadedSettings.SpeechMethod);
+                SelectedSpeechMode = SpeechModes.First(option => option.Value == SpokenReply.EffectiveMode(_lastLoadedSettings.SpeechMode, _lastLoadedSettings.SpeechMethod));
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
                 AlwaysOnTop = _lastLoadedSettings.AlwaysOnTop;
                 ContextCompactionPercent = _lastLoadedSettings.ContextCompactionPercent;
@@ -100,6 +147,20 @@ public sealed partial class AssistantOptionsViewModel(
                 ConsentBypassAll = _lastLoadedSettings.ConsentBypassAll;
                 await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
             }
+
+            if (speechProfiles is not null)
+            {
+                SpeechProfileLabels.Clear();
+                foreach (var profile in await speechProfiles.LoadAsync(cancellationToken).ConfigureAwait(true))
+                {
+                    SpeechProfileLabels.Add(profile.Label);
+                }
+                if (_lastLoadedSettings.SpeechProfileLabel is { } missing && !SpeechProfileLabels.Contains(missing))
+                {
+                    SpeechProfileLabels.Add(missing);
+                }
+            }
+            SelectedSpeechProfileLabel = _lastLoadedSettings.SpeechProfileLabel;
 
             if (_profileStore is not null)
             {
@@ -183,6 +244,19 @@ public sealed partial class AssistantOptionsViewModel(
     partial void OnIsEnabledChanged(bool value) => _SaveSettings();
 
     partial void OnSpeakRepliesChanged(bool value) => _SaveSettings();
+    partial void OnWakeWordEnabledChanged(bool value) => _SaveSettings();
+    partial void OnWakeWordChanged(string value) => _SaveSettings();
+    partial void OnWakeWordListeningSecondsChanged(int value) => _SaveSettings();
+    partial void OnSelectedSpeechModeChanged(SpeechModeOption value) => _SaveSettings();
+    partial void OnSelectedSpeechMethodChanged(SpeechMethodOption value)
+    {
+        if (value.Value == SpokenReplyMethod.Rules)
+        {
+            SelectedSpeechMode = SpeechModes.First(option => option.Value == SpokenReplyMode.Full);
+        }
+        _SaveSettings();
+    }
+    partial void OnSelectedSpeechProfileLabelChanged(string? value) => _SaveSettings();
 
     partial void OnPushToTalkKeyNameChanged(string value) => _SaveSettings();
 
@@ -219,8 +293,14 @@ public sealed partial class AssistantOptionsViewModel(
     public void RestoreDefaults()
     {
         var defaults = new AssistantSettings();
+        WakeWordEnabled = defaults.WakeWordEnabled;
+        WakeWord = defaults.WakeWord;
+        WakeWordListeningSeconds = defaults.WakeWordListeningSeconds;
         IsEnabled = defaults.IsEnabled;
         SpeakReplies = defaults.SpeakReplies;
+        SelectedSpeechMode = SpeechModes.First(option => option.Value == defaults.SpeechMode);
+        SelectedSpeechMethod = SpeechMethods.First(option => option.Value == defaults.SpeechMethod);
+        SelectedSpeechProfileLabel = defaults.SpeechProfileLabel;
         PushToTalkKeyName = defaults.PushToTalkKeyName;
         AlwaysOnTop = defaults.AlwaysOnTop;
         ContextCompactionPercent = defaults.ContextCompactionPercent;
@@ -257,6 +337,12 @@ public sealed partial class AssistantOptionsViewModel(
         {
             IsEnabled = IsEnabled,
             SpeakReplies = SpeakReplies,
+            WakeWordEnabled = WakeWordEnabled,
+            WakeWord = WakeWord.Trim(),
+            WakeWordListeningSeconds = AssistantSettings.NormalizeWakeWordListeningSeconds(WakeWordListeningSeconds),
+            SpeechMode = SelectedSpeechMode.Value,
+            SpeechMethod = SelectedSpeechMethod.Value,
+            SpeechProfileLabel = SelectedSpeechProfileLabel,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
             AlwaysOnTop = AlwaysOnTop,
             ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
@@ -280,6 +366,9 @@ public sealed partial class AssistantOptionsViewModel(
         Saved?.Invoke(this, EventArgs.Empty);
     }
 }
+
+public sealed record SpeechModeOption(SpokenReplyMode Value, string Label);
+public sealed record SpeechMethodOption(SpokenReplyMethod Value, string Label);
 
 // Never shown as the primary name, and never editable (AC-575).
 public sealed partial class ConsentBypassSourceViewModel(string key, string label, bool isOrphan = false) : ObservableObject

@@ -22,4 +22,7 @@ internal interface IMcpToolProvider
     /// Returns null when unknown/disabled/OAuth-gated/unenumerable, so the caller shows "unknown" not a false zero.
     /// </summary>
     Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, string? projectId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Has every live session that mounted <paramref name="name"/> reconnect to it, list its tools again and tell its agent the list changed.</summary>
+    void RefreshServer(string name);
 }

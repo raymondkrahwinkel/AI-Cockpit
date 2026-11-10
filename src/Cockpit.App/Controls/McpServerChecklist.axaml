@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="Cockpit.App.Controls.McpServerChecklist"
              x:Name="Root">
@@ -29,6 +30,15 @@
         <TextBlock Text="{Binding #Root.UnavailableText}" FontSize="11" TextWrapping="Wrap" Margin="19,0,0,0"
                    Foreground="{DynamicResource CockpitStatusWaitingBrush}"
                    IsVisible="{Binding #Root.UnavailableText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+        <!-- AC-2219: a plugin's advice about a ticked server (Depot: too many tools), next to the warning above. -->
+        <ItemsControl ItemsSource="{Binding #Root.Advisories}" Margin="19,0,0,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:McpAdvisoryItem">
+                    <controls:McpAdvisoryLine DataContext="{Binding}"/>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
         <StackPanel Spacing="4" Margin="19,2,0,0" IsVisible="{Binding #Root.IsExpanded}">
             <TextBlock Text="{Binding #Root.Hint}" FontSize="11" TextWrapping="Wrap"

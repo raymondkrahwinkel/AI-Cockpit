@@ -79,7 +79,7 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
 
     private static bool Wait(Process process, TimeSpan remaining)
     {
-        try { return process.HasExited || process.WaitForExit((int)Math.Clamp(remaining.TotalMilliseconds, 0, int.MaxValue)); }
+        try { return process.WaitForExit((int)Math.Clamp(remaining.TotalMilliseconds, 0, int.MaxValue)); }
         catch (InvalidOperationException) { return true; }
     }
 
