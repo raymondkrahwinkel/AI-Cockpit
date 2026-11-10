@@ -236,6 +236,19 @@ public interface ISessionHandle
     Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
 
     /// <summary>
+    /// Whether this session takes images with a message (AC-2265), as the composer's paste button decides. False by
+    /// default: a TTY session, a plain terminal and a remote handle have no host-owned turn to put an image in.
+    /// </summary>
+    bool AcceptsImages => false;
+
+    /// <summary>
+    /// Submits <paramref name="text"/> with <paramref name="pngImages"/> as one operator message, queued behind a turn in
+    /// flight like a typed one, and apart from whatever the operator has pending in the composer (AC-2265). True when a
+    /// live session took it; false by default, and whenever <see cref="AcceptsImages"/> is false.
+    /// </summary>
+    Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages) => Task.FromResult(false);
+
+    /// <summary>
     /// Places <paramref name="text"/> in the session's input without submitting it, for the operator to edit or send
     /// (AC-1399); true when a live pane took it. False by default: a handle with no input of its own has nowhere to put it.
     /// </summary>

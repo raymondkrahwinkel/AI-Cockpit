@@ -103,6 +103,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
                 TtyViewModel tty => tty.HasReadableTranscript,
                 _ => false,
             },
+            AcceptsImages = session is SessionViewModel { CanPasteImages: true },
         };
 
     // The selected session's ctx/5h/wk as a plugin reads it (AC-54), built from the same fields the header

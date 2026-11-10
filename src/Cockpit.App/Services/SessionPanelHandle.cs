@@ -226,6 +226,11 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(pane => pane.InjectAndSubmit(text));
 
+    public bool AcceptsImages => _pane is SessionViewModel { CanPasteImages: true };
+
+    public Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages) => UiThreadCall.RunAsync(() =>
+        _IsLive() && _pane is SessionViewModel sdk ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
+
     public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(pane => pane.InjectText(text));
 
     // AC-1386: an SDK session's own rows, raised where its host raises them; a TTY pane has no host-owned transcript.

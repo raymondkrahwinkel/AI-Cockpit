@@ -64,6 +64,9 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         _WatchSession(_host.Session);
     }
 
+    // The same answer the chat window's paste button gets: the running model sees images (AC-2265).
+    public bool AcceptsImages => !_disposed && _host.Session is { CanPasteImages: true };
+
     public event EventHandler<AssistantChannelRow>? RowChanged;
 
     public event EventHandler? TurnEnded;
@@ -111,8 +114,9 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return AssistantChannelSendResult.IgnoredSender();
         }
 
+        // The host's half of the trust boundary (AC-1049): the plugin says these are images, `InboundImage` decides.
         // Before the send, so the decoding runs on the caller's thread rather than the host's.
-        var (accepted, refusal) = _Accept(images);
+        var (accepted, refusal) = InboundImage.NormalizeAll(images);
 
         // The text fallback (AC-1553): while a question waits, a reply that names its choices is that answer.
         string? waiting;
@@ -240,38 +244,6 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         }
     }
 
-    // The host's half of the trust boundary (AC-1049): the plugin says these are images, `InboundImage` decides.
-    // A file that will not pass is dropped on its own — the message it came with still goes, which is what a
-    // sender who wrote a paragraph and attached the wrong file needs to happen.
-    private static (IReadOnlyList<byte[]> Accepted, string? Refusal) _Accept(IReadOnlyList<byte[]> images)
-    {
-        if (images.Count == 0)
-        {
-            return ([], null);
-        }
-
-        var accepted = new List<byte[]>();
-        var refusals = new List<string>();
-
-        foreach (var image in images.Take(AssistantChannelImageLimits.MaxPerMessage))
-        {
-            if (InboundImage.TryNormalizeToPng(image, out var png, out var refusal))
-            {
-                accepted.Add(png);
-            }
-            else
-            {
-                refusals.Add(refusal);
-            }
-        }
-
-        if (images.Count > AssistantChannelImageLimits.MaxPerMessage)
-        {
-            refusals.Add($"only the first {AssistantChannelImageLimits.MaxPerMessage} images of a message are passed on");
-        }
-
-        return (accepted, refusals.Count == 0 ? null : string.Join("; ", refusals.Distinct()));
-    }
 
     public void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false)
     {

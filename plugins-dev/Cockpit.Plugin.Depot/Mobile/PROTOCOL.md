@@ -293,16 +293,17 @@ phone only after the phone's `ready` opened (§ 9.4), apart from its own initial
 
 | `type` | `body` | What happens |
 |---|---|---|
-| `assistant.send` | `{ "text": string }` | Handed to the assistant as the operator's message, by the same route as typed text. Answered with `assistant.sent`. Refused while a question of the assistant waits (see `assistant.question`), because the Cockpit would read the text as its answer. The refusal lifts at the operator's next message, the moment the host stops reading text as the answer. |
+| `assistant.send` | `{ "text": string, "attachmentIds"?: [string] }` | Handed to the assistant as the operator's message, by the same route as typed text. Answered with `assistant.sent`. Refused while a question of the assistant waits (see `assistant.question`), because the Cockpit would read the text as its answer. The refusal lifts at the operator's next message, the moment the host stops reading text as the answer. |
 | `assistant.history` | `{ "limit"?: number, "before"?: string }` | The tail of the conversation: at most 50 rows (`limit` is clamped to 1…50), older than the row with id `before` when given. Answered with `assistant.history`. |
 | `assistant.chat` | `{ "open": bool }` | The chat is on screen on the phone (`true`) or not (`false`). Live rows go out only while it is open. A new stream starts closed. |
 | `cockpit.status` | `{}` | Answered with `cockpit.status`. |
+| `attachment.chunk` | `{ "attachmentId", "seq", "total", "mime", "data" }` | One piece of an image (§ 12). No answer, unless it is refused. |
 
 **Cockpit → phone.**
 
 | `type` | `body` | When |
 |---|---|---|
-| `assistant.sent` | `{ "replyTo", "ok": bool, "error"?: string }` | After `assistant.send`. |
+| `assistant.sent` | `{ "replyTo", "ok": bool, "error"?: string, "imagesRefused"?: string }` | After `assistant.send`. `imagesRefused` says why images did not go along (§ 12). |
 | `assistant.history` | `{ "replyTo", "more": bool, "last": bool, "rows": [row] }` | After `assistant.history`. A page fills as few frames as it can; `last` marks the final frame of the page, `more` says there are older rows. |
 | `assistant.rows` | `{ "last": bool, "rows": [row] }` | While the chat is open: rows that arrived or changed. A streaming row is sent as its latest snapshot, at most about four times a second. |
 | `assistant.turnEnded` | `{}` | While the chat is open: the assistant finished its turn. |
@@ -311,11 +312,13 @@ phone only after the phone's `ready` opened (§ 9.4), apart from its own initial
 | `assistant.question` | `{ "questionId": string, "question": string }` | While the chat is open (and on opening it): the assistant asked a question that is answered on the desktop. Read-only in v1, like `assistant.consent`. |
 | `assistant.questionClosed` | `{ "questionId": string }` | The operator's next message, typed anywhere, moved past the question. |
 | `notify` | `{ "kind": "assistantMessage" }` | The assistant finished a turn with a new answer while the chat was not open. No text, nothing of the answer; only to a phone with an open stream. |
-| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool }` | After `cockpit.status`: the machine name, the Cockpit version, and whether this Cockpit has an assistant. |
+| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool, "images": bool }` | After `cockpit.status`: the machine name, the Cockpit version, whether this Cockpit has an assistant, and whether the assistant sees images right now (§ 12). |
+| `attachment.refused` | `{ "attachmentId", "error": string }` | An image was dropped (§ 12). |
 
 A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "truncated": bool }`. `kind` is one of
 `assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`. A row
-too big for one frame keeps the start of its text and says `truncated: true`. Attachments do not go over the line in v1.
+too big for one frame keeps the start of its text and says `truncated: true`. Images go from the phone to the Cockpit
+only (§ 12); nothing of an image comes back.
 
 **History comes from the host.** The Cockpit reads the page from the assistant's own transcript (`ReadRowsAsync`, host 0.171.0),
 which a resumed conversation repaints from its log, so it works after a restart of Cockpit as well and nothing is kept by this
@@ -340,11 +343,11 @@ not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
 | Direction | `type` | `body` |
 |---|---|---|
 | phone → Cockpit | `sessions.list` | `{}` |
-| Cockpit → phone | `sessions.list` | `{ "replyTo", "sessions": [{ "paneId", "name", "statusline", "state", "terminal", "readable" }] }` |
+| Cockpit → phone | `sessions.list` | `{ "replyTo", "sessions": [{ "paneId", "name", "statusline", "state", "terminal", "readable", "images" }] }` |
 | phone → Cockpit | `session.transcript` | `{ "paneId", "count" }` with `count` ≤ 200, or `{ "paneId", "since" }` |
 | Cockpit → phone | `session.transcript` | `{ "replyTo", "paneId", "total", "readable", "rows": [row], "pending": [{ "toolName", "summary" }] }` |
-| phone → Cockpit | `session.send` | `{ "paneId", "text" }` |
-| Cockpit → phone | `session.sent` | `{ "replyTo", "ok", "queued", "error" }` |
+| phone → Cockpit | `session.send` | `{ "paneId", "text", "attachmentIds"? }` |
+| Cockpit → phone | `session.sent` | `{ "replyTo", "ok", "queued", "error", "imagesRefused"? }` |
 
 **`sessions.list`.**
 
@@ -356,6 +359,8 @@ not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
   - `failed`.
 - `terminal` is `true` for a plain shell pane.
 - `readable` says whether the transcript can be read at all.
+- `images` says whether the session takes images with a message (§ 12): its model sees images and its route carries
+  them. Always `false` for a plain terminal and a TTY session.
 
 **`session.transcript`.**
 
@@ -384,5 +389,74 @@ not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
 - `ok: false` comes with an `error` when the message is empty, or the pane is unknown or the assistant. It also comes
   for a plain terminal (`terminal: true`): messages go to agent sessions, not to a shell. And it comes when the session
   did not take the message.
+- With `attachmentIds`, the images go along as in § 12. A session that cannot see them (`images: false`) still gets the
+  text, with `ok: true` and the reason in `imagesRefused`.
 
 No session content leaves the encrypted frame, and nothing of it reaches a log: only the message type and size.
+
+## 12. Images from the phone (AC-2265)
+
+The phone can send images with a message to the assistant (§ 10) or to a session (§ 11). An image does not fit in one
+frame, so it goes in chunks first, and the message that follows names it. Everything stays inside the encrypted stream;
+Depot sees frames of the usual size and nothing else.
+
+**A chunk.**
+
+```json
+{ "type": "attachment.chunk", "id": "p7", "body": { "attachmentId": "a1", "seq": 0, "total": 63, "mime": "image/jpeg", "data": "…" } }
+```
+
+- `attachmentId`: 1 to 64 characters, chosen by the phone, unique within the stream.
+- `seq`: 0, 1, 2, … up to `total − 1`, in order. Frames arrive in order (§ 5), so a chunk that is not the next one is
+  an error, never a reordering to repair.
+- `total`: the number of chunks, the same in every chunk of the attachment.
+- `mime`: `image/jpeg`, `image/png` or `image/webp`, the same in every chunk.
+- `data`: base64 (RFC 4648 § 4, with padding) of 1 to 48 000 bytes of the file. A 3 MB JPEG is 63 chunks. 48 000 bytes
+  is 64 000 base64 characters, which leaves room for the envelope within `MobileFrameCipher.MaxPlaintextBytes`.
+  Write `+` and `/` as they are: a JSON writer that escapes them (`+`) makes a full chunk too big for a frame.
+
+A chunk gets no answer. The attachment is complete when chunk `total − 1` has arrived.
+
+**The message.** `assistant.send` (§ 10) and `session.send` (§ 11) take `"attachmentIds": [string]`. The text may be
+empty when at least one image comes along. The images go to the host as one message with the text: the assistant by the
+same route as images from Slack or Discord (`IAssistantChannelGateway.SendAsync`), a session by
+`ICockpitHost.SendToSessionAsync` with images. The host checks every image again (`InboundImage`: it decodes it, refuses
+more than 8000 pixels a side and scales it to the model's size), so this section is a first gate, not the only one.
+
+A message uses up every attachment it names, whether it goes through or not. When images do not go along, the answer
+(`assistant.sent`, `session.sent`) says why in `imagesRefused`, and the text still arrives:
+
+- an id that is unknown, incomplete, expired or refused;
+- more than 4 ids (`AssistantChannelImageLimits.MaxPerMessage`): the first 4 complete ones go;
+- a target that cannot see images. The phone knows that in advance: `images` in `cockpit.status` for the assistant, and
+  per session in `sessions.list`. A missing `images` field means `false`, so an older Cockpit offers no button.
+
+**Limits.** Checked on the bytes as they come in, never on what the phone declares:
+
+| Limit | Value | Why |
+|---|---|---|
+| Size of one image | 8 MiB (`AssistantChannelImageLimits.MaxBytes`); a `total` above 175 is refused at the first chunk | The host refuses larger files anyway |
+| Images per message | 4 (`AssistantChannelImageLimits.MaxPerMessage`) | The host passes no more on |
+| Type | JPEG, PNG or WebP, and the first chunk starts with that format's signature (`FF D8 FF`, `89 50 4E 47 0D 0A 1A 0A`, `RIFF` + 4 bytes + `WEBP`) | A declared type is not believed |
+| Open attachments per phone | 10. The phone does not start an 11th while 10 are open (sent, but not yet named by a message, refused or expired) | Bounds the memory one phone holds |
+| Bytes held per phone | 20 MB, complete and incomplete together | idem |
+
+**Refusal.** Any of these refuses the whole attachment and frees what it held: a chunk out of order, a `mime` or `total`
+that changed, bad base64, an empty chunk or one over 48 000 bytes, a broken limit, a wrong signature. The Cockpit
+answers once:
+
+```json
+{ "type": "attachment.refused", "id": "c9", "body": { "attachmentId": "a1", "error": "a chunk arrived out of order" } }
+```
+
+`attachment.refused` is the last message about that `attachmentId`: the Cockpit ignores later chunks under that id within
+the stream, and the phone stops sending them. A message that names the id gets `imagesRefused`.
+
+**Clean-up.** An attachment that gets no chunk for 60 seconds expires, complete or not, and is refused with
+`"the image expired before it was sent"`. When the stream ends, every attachment of that phone is dropped without a
+message. Nothing of an image is written to disk or to a log; a log line names only the message type and size.
+
+**Compatibility.** An older Cockpit ignores `attachment.chunk` and `attachmentIds` (§ 6) and sends no `images`, so the
+phone offers no button there. An older phone never sends them, and text works as before.
+
+The vectors' `attachment` object is a two-chunk JPEG and the `assistant.send` that names it, as the phone sends them.

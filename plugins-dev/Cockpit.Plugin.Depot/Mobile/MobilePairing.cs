@@ -627,7 +627,7 @@ internal sealed class MobilePairing(
             Verbosity = AssistantChannelVerbosity.Everything,
         });
         channel = new MobileAssistantChannel(deviceId, gateway, plaintext => _SendToPhone(connectionId, deviceId, plaintext),
-            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger, host);
+            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger, host, _time);
         _channels[(connectionId, deviceId)] = channel;
         return channel;
     }

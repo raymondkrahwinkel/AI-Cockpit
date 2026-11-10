@@ -627,19 +627,43 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     {
         lock (_gate)
         {
-            var prompt = new QueuedPrompt(text, [.. _pendingImages]);
+            _Submit(new QueuedPrompt(text, [.. _pendingImages]));
             _pendingImages.Clear();
-            if (_host.IsBusy || _host.TurnsHeldBecause is not null)
-            {
-                _host.Queue.Add(prompt);
-            }
-            else
-            {
-                _host.DispatchInBackground(prompt);
-            }
         }
 
         _RaisePendingStateChange();
+    }
+
+    public bool AcceptsImages => CanPasteImages;
+
+    // AC-2265: these images go with this message only; whatever was pasted stays pending for the next send.
+    public Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages)
+    {
+        if (!AcceptsImages)
+        {
+            return Task.FromResult(false);
+        }
+
+        lock (_gate)
+        {
+            _Submit(new QueuedPrompt(text, [.. pngImages.Select(png => ImageAttachment.FromBytes(png, "image/png"))]));
+        }
+
+        _RaisePendingStateChange();
+        return Task.FromResult(true);
+    }
+
+    // Under _gate.
+    private void _Submit(QueuedPrompt prompt)
+    {
+        if (_host.IsBusy || _host.TurnsHeldBecause is not null)
+        {
+            _host.Queue.Add(prompt);
+        }
+        else
+        {
+            _host.DispatchInBackground(prompt);
+        }
     }
 
     public async Task<bool> CompactContextAsync()

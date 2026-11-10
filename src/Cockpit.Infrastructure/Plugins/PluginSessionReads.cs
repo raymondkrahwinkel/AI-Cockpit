@@ -14,6 +14,7 @@ public static class PluginSessionReads
             Statusline = _NullIfEmpty(handle.Statusline),
             IsTerminal = handle.IsTerminal,
             HasReadableTranscript = handle.HasReadableTranscript,
+            AcceptsImages = handle.AcceptsImages,
         };
 
     public static async Task<PluginTranscriptSlice?> ReadTranscriptAsync(ISessionRegistry registry, ISessionLauncher? launcher, string paneId, int count)

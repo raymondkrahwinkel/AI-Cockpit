@@ -7,7 +7,9 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Events;
 using Cockpit.Plugin.Depot.Mobile;
 using Cockpit.Plugin.Depot.Model;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests.Mobile;
@@ -23,7 +25,7 @@ public class MobileProtocolVectorTests
         "zeroPointPhonePub", "wrongLength", "wrongVersion", "unknownFlag", "pairingWithoutPending", "expiredPending",
         "secondPairingSamePending", "tamperedTag", "replay", "counterGap", "shortFrame", "mirroredFrame", "replayedHandshake",
         "assistantPairedPhone", "assistantForgottenPhone", "assistantWrongKey", "assistantOpenQuestion",
-        "replacedCockpitPub", "readyTimeout", "assistantBeforeReady",
+        "replacedCockpitPub", "readyTimeout", "assistantBeforeReady", "assistantImages",
     ];
 
     [Theory]
@@ -188,6 +190,11 @@ public class MobileProtocolVectorTests
         var gateway = Substitute.For<IAssistantChannelGateway>();
         gateway.SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>())
             .Returns(AssistantChannelSendResult.Sent());
+        gateway.AcceptsImages.Returns(true);
+        var host = Substitute.For<ICockpitHost>();
+        host.Sessions.OpenSessions.Returns([new OpenCockpitSession("pane", "Session")]);
+        host.SendToSessionAsync("pane", Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>())
+            .Returns(new SessionSendResult(true, "this session cannot see images"));
         var toPhone = new List<byte[]>();
         await using var pairing = new MobilePairing(() => [], _ => null!, _ => null!, storage, null!, _ => gateway,
             send: (_, _, frame) =>
@@ -198,7 +205,7 @@ public class MobileProtocolVectorTests
                 }
 
                 return Task.CompletedTask;
-            });
+            }, host: host);
 
         MobileFrameCipher? Connect(string streamId)
         {
@@ -230,6 +237,10 @@ public class MobileProtocolVectorTests
 
         using var first = Connect("stream-1");
         Say(first, "stream-1", "hallo");
+        if (@case == "assistantImages")
+        {
+            await _Images(first!, json => pairing.Frame(connection, "stream-1", device, first!.Seal(Encoding.UTF8.GetBytes(json))), toPhone, gateway, host, device);
+        }
         if (@case == "assistantForgottenPhone")
         {
             pairing.Forget(connection, device);
@@ -254,12 +265,103 @@ public class MobileProtocolVectorTests
             Say(first, "stream-1", "1");
         }
 
-        var expected = @case is "assistantWrongKey" or "assistantBeforeReady" ? 0 : 1;
+        var expected = @case switch
+        {
+            "assistantWrongKey" or "assistantBeforeReady" => 0,
+            "assistantImages" => 4,
+            _ => 1,
+        };
         await gateway.Received(expected).SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
-        if (expected == 1)
+        if (expected > 0)
         {
             await gateway.Received(1).SendAsync(device, "hallo", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
         }
+    }
+
+    // AC-2265: images in chunks (PROTOCOL.md § 12). The vectors' chunks and a 3 MB photo reach the assistant byte for byte;
+    // a session that cannot see images still gets the text and the reason; every broken attachment is refused once and
+    // dropped, so a phone that keeps opening attachments meets a limit instead of growing the Cockpit's memory.
+    // As a phone writes JSON: base64's + and / as they are, not as \u002B, which would not fit a full chunk in a frame.
+    private static readonly JsonSerializerOptions _Unescaped = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static async Task _Images(MobileFrameCipher phone, Action<string> send, List<byte[]> toPhone, IAssistantChannelGateway gateway, ICockpitHost host, string device)
+    {
+        // Frames 0 and 1 are the handshake reply and the ready the phone already opened.
+        var read = 2;
+        List<(string Type, JsonElement Body)> Replies()
+        {
+            List<(string Type, JsonElement Body)> replies = [];
+            for (; read < toPhone.Count; read++)
+            {
+                Assert.True(phone.TryOpen(toPhone[read], out var plaintext));
+                using var message = JsonDocument.Parse(plaintext);
+                replies.Add((message.RootElement.GetProperty("type").GetString()!, message.RootElement.GetProperty("body").Clone()));
+            }
+
+            return replies;
+        }
+
+        string Chunk(string attachmentId, int seq, int total, string mime, byte[] data) =>
+            JsonSerializer.Serialize(new { type = "attachment.chunk", id = "p", body = new { attachmentId, seq, total, mime, data = Convert.ToBase64String(data) } }, _Unescaped);
+        string Message(string type, object body) => JsonSerializer.Serialize(new { type, id = "p", body });
+        Replies();
+
+        var vectors = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Mobile", "protocol-vectors.json"))).RootElement.GetProperty("attachment");
+        foreach (var chunk in vectors.GetProperty("chunks").EnumerateArray())
+        {
+            send(chunk.GetString()!);
+        }
+
+        send(vectors.GetProperty("send").GetString()!);
+        var image = Convert.FromHexString(vectors.GetProperty("image").GetString()!);
+        await gateway.Received(1).SendAsync(device, "kijk", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1 && images[0].SequenceEqual(image)), Arg.Any<CancellationToken>());
+
+        var photo = new byte[3_000_000];
+        Random.Shared.NextBytes(photo);
+        photo[0] = 0xFF;
+        photo[1] = 0xD8;
+        photo[2] = 0xFF;
+        var pieces = photo.Chunk(MobileAttachments.MaxChunkBytes).ToArray();
+        Assert.Equal(63, pieces.Length);
+        for (var seq = 0; seq < pieces.Length; seq++)
+        {
+            send(Chunk("photo", seq, pieces.Length, "image/jpeg", pieces[seq]));
+        }
+
+        send(Message("assistant.send", new { text = "", attachmentIds = new[] { "photo" } }));
+        await gateway.Received(1).SendAsync(device, "", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1 && images[0].SequenceEqual(photo)), Arg.Any<CancellationToken>());
+
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0];
+        send(Chunk("shot", 0, 1, "image/jpeg", jpeg));
+        send(Message("session.send", new { paneId = "pane", text = "en dit", attachmentIds = new[] { "shot" } }));
+        await host.Received(1).SendToSessionAsync("pane", "en dit", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1));
+        var replies = Replies();
+        Assert.All(replies.Where(reply => reply.Type == "assistant.sent"), reply => Assert.True(reply.Body.GetProperty("ok").GetBoolean()));
+        var sessionSent = Assert.Single(replies, reply => reply.Type == "session.sent").Body;
+        Assert.True(sessionSent.GetProperty("ok").GetBoolean());
+        Assert.Equal("this session cannot see images", sessionSent.GetProperty("imagesRefused").GetString());
+
+        send(Chunk("late", 1, 2, "image/jpeg", jpeg));
+        send(Chunk("png", 0, 1, "image/png", jpeg));
+        send(Chunk("gif", 0, 1, "image/gif", jpeg));
+        send(Chunk("huge", 0, 176, "image/jpeg", jpeg));
+        send(Chunk("swap", 0, 2, "image/jpeg", jpeg));
+        send(Chunk("swap", 1, 2, "image/png", jpeg));
+        for (var open = 0; open < MobileAttachments.MaxOpen; open++)
+        {
+            send(Chunk($"open{open}", 0, 2, "image/jpeg", jpeg));
+        }
+
+        send(Chunk("eleventh", 0, 2, "image/jpeg", jpeg));
+        send(Chunk("late", 0, 2, "image/jpeg", jpeg));
+        send(Message("assistant.send", new { text = "zonder", attachmentIds = new[] { "png" } }));
+        await gateway.Received(1).SendAsync(device, "zonder", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 0), Arg.Any<CancellationToken>());
+        replies = Replies();
+        Assert.Equal(["late", "png", "gif", "huge", "swap", "eleventh"],
+            replies.Where(reply => reply.Type == "attachment.refused").Select(reply => reply.Body.GetProperty("attachmentId").GetString()));
+        var sent = Assert.Single(replies, reply => reply.Type == "assistant.sent").Body;
+        Assert.True(sent.GetProperty("ok").GetBoolean());
+        Assert.Equal("an attachment was missing, incomplete or refused", sent.GetProperty("imagesRefused").GetString());
     }
 
     private static async Task _KeyConfirmation(string @case)

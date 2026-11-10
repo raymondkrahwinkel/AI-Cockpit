@@ -2456,6 +2456,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         return true;
     }
 
+    // AC-2265: a message with images from outside (a plugin's channel) is the operator's own turn, sent apart from the
+    // composer so a draft and its pending attachments stay where they are; queued behind a turn in flight like a typed one.
+    public async Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages)
+    {
+        if (!_control.IsRunning || !CanPasteImages)
+        {
+            return false;
+        }
+
+        IReadOnlyList<Core.Sessions.ImageAttachment> images = [.. pngImages.Select(png => Core.Sessions.ImageAttachment.FromBytes(png, "image/png"))];
+        await _control.SubmitAsync(new QueuedPrompt(text, images));
+        return true;
+    }
+
     // AC-2256: text handed in from outside goes out alone; the operator's draft is set aside and put back (Send reads the
     // input before its first await and clears it only while it still holds what it sent). Pending images do ride along:
     // the assistant's channel adds a message's images right before it hands over the text.

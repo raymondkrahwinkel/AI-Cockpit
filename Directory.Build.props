@@ -457,7 +457,8 @@
     <!-- 0.172.0: sessions readable for plugins - statusline, transcript tail and open permissions (AC-2256, SDK 3.83.0); a plugin that uses them sets minHostVersion 0.172.0. -->
     <!-- 0.173.0: PluginTranscriptEntry.Index, a row's position in the whole transcript (AC-2257, SDK 3.84.0); a plugin that reads it sets minHostVersion 0.173.0. -->
     <!-- 0.174.0 (AC-2251): guard notifications from PluginGuardViolation and the TTY journal. -->
-    <VersionPrefix>0.174.0</VersionPrefix>
+    <!-- 0.175.0: images to a session from a plugin, and whether a session or the assistant takes them (AC-2265, SDK 3.86.0); a plugin that uses them sets minHostVersion 0.175.0. -->
+    <VersionPrefix>0.175.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

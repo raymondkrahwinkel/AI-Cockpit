@@ -17,6 +17,7 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.HeavyRuns;
+using Cockpit.Infrastructure.Images;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mentions;
 using Cockpit.Infrastructure.Mcp;
@@ -1205,6 +1206,31 @@ public class PluginBackendHost(
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
             : _ActOnSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
+
+    // AC-2265: the assistant channel's trust boundary and refusal shape. The images are decoded before the pane is looked
+    // up, off the UI thread; a session that cannot see them still gets the text, and the sender hears why they did not go.
+    public async Task<SessionSendResult> SendToSessionAsync(string paneId, string text, IReadOnlyList<byte[]> images)
+    {
+        var (accepted, refusal) = InboundImage.NormalizeAll(images);
+        var blind = false;
+        var delivered = await _ActOnSessionAsync(paneId, session =>
+        {
+            if (accepted.Count > 0 && session.AcceptsImages)
+            {
+                return session.SubmitWithImagesAsync(text, accepted);
+            }
+
+            blind = accepted.Count > 0;
+            return string.IsNullOrEmpty(text) ? Task.FromResult(false) : session.InjectAndSubmitAsync(text);
+        }).ConfigureAwait(false);
+
+        if (blind)
+        {
+            refusal = string.Join("; ", new[] { "this session cannot see images", refusal }.OfType<string>());
+        }
+
+        return new SessionSendResult(delivered, refusal);
+    }
 
     public Task<bool> InsertIntoSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)

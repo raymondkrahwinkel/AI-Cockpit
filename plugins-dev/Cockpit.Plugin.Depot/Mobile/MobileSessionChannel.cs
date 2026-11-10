@@ -34,6 +34,7 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
                 writer.WriteString("state", _State(session.Status));
                 writer.WriteBoolean("terminal", session.IsTerminal);
                 writer.WriteBoolean("readable", session.HasReadableTranscript);
+                writer.WriteBoolean("images", session.AcceptsImages);
                 writer.WriteEndObject();
             }
 
@@ -109,9 +110,10 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
         });
     }
 
-    public async Task SendAsync(string? id, string? paneId, string? text)
+    public async Task SendAsync(string? id, string? paneId, string? text, (IReadOnlyList<byte[]> Images, string? Refusal) attached)
     {
         var session = _Find(paneId);
+        var (images, imagesRefused) = attached;
         string? error = null;
         var queued = false;
         if (session is null)
@@ -123,17 +125,24 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
             // A shell from the phone is a power nobody asked for; the phone talks to agents.
             error = "Messages go to agent sessions, not to a plain terminal.";
         }
-        else if (string.IsNullOrWhiteSpace(text))
+        else if (string.IsNullOrWhiteSpace(text) && images.Count == 0)
         {
             error = "The message is empty.";
         }
         else
         {
-            // A busy session takes it after its turn, from the host's own send queue (AC-294).
+            // A busy session takes it after its turn, from the host's own send queue (AC-294). A session that cannot see
+            // images still gets the text; the host says why the images stayed behind (AC-2265).
             queued = _State(session.Status) == "working";
             try
             {
-                await host.SendToSessionAsync(session.PaneId, text).ConfigureAwait(false);
+                var result = await host.SendToSessionAsync(session.PaneId, text ?? string.Empty, images).ConfigureAwait(false);
+                imagesRefused = MobileAssistantChannel.Join(imagesRefused, result.ImagesRefused);
+                if (!result.Delivered)
+                {
+                    error = "The session did not take the message.";
+                    queued = false;
+                }
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -149,6 +158,10 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
             writer.WriteBoolean("ok", error is null);
             writer.WriteBoolean("queued", queued);
             writer.WriteString("error", error);
+            if (imagesRefused is not null)
+            {
+                writer.WriteString("imagesRefused", imagesRefused);
+            }
         });
     }
 

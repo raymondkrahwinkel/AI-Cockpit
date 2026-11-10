@@ -133,6 +133,13 @@ public sealed record OpenCockpitSession(
     /// predates this member.
     /// </summary>
     public bool HasReadableTranscript { get; init; }
+
+    /// <summary>
+    /// Whether this session takes images with a message (AC-2265): its model sees images and its route carries them,
+    /// as the composer's paste button decides. False for a TTY session, a plain terminal, and on a host that predates
+    /// this member.
+    /// </summary>
+    public bool AcceptsImages { get; init; }
 }
 
 /// <summary>
