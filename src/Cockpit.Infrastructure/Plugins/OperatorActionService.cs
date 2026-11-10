@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.Plugins;
 
 // The capability lives only in this channel's memory and never in a model-visible tool or transcript.
-public sealed class OperatorActionService : IOperatorActionService, ISingletonService
+public sealed partial class OperatorActionService : IOperatorActionService, ISingletonService
 {
     private readonly ILogger<OperatorActionService> _logger;
     private readonly IConsentBroker? _consent;
@@ -20,11 +21,14 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
     private readonly Dictionary<string, _Registration> _actions = new(StringComparer.Ordinal);
     private readonly HashSet<_Channel> _channels = [];
 
-    public OperatorActionService(ILogger<OperatorActionService> logger, IConsentBroker? consent = null, ISessionRegistry? sessions = null)
+    public OperatorActionService(ILogger<OperatorActionService> logger, IConsentBroker? consent = null, ISessionRegistry? sessions = null,
+        ISessionLauncher? launcher = null, ISessionProfileStore? profiles = null)
     {
         _logger = logger;
         _consent = consent;
         _sessions = sessions;
+        _launcher = launcher;
+        _profiles = profiles;
     }
 
     public IDisposable Register(OperatorAction action, Func<string, Task<bool>> respond, Func<bool> isCurrent)
@@ -42,10 +46,10 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         return registration;
     }
 
-    internal IOperatorActionChannel OpenChannel()
+    internal IOperatorActionChannel OpenChannel(string? deviceId = null)
     {
         // The returned object is the authenticated device binding; no response can select another channel by id.
-        var channel = new _Channel(this);
+        var channel = new _Channel(this, deviceId ?? Guid.NewGuid().ToString("N"));
         lock (_sourceGate)
         {
             lock (_gate)
@@ -232,8 +236,15 @@ public sealed class OperatorActionService : IOperatorActionService, ISingletonSe
         public void Dispose() => owner._Remove(this);
     }
 
-    private sealed class _Channel(OperatorActionService owner) : IOperatorActionChannel
+    private sealed class _Channel(OperatorActionService owner, string deviceId) : IOperatorActionChannel
     {
+        public string DeviceId { get; } = deviceId;
+        public string SessionCapability { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        public bool CanManageSessions => owner._launcher is not null && owner._profiles is not null;
+        public Task<OperatorSessionCatalog> SessionCatalogAsync() => owner._SessionCatalogAsync(this);
+        public Task<OperatorSessionResult> StartSessionAsync(string requestId, string capability, string deskId, string profileId) =>
+            owner._StartSessionAsync(this, requestId, capability, deskId, profileId);
+        public Task<OperatorSessionResult> StopSessionAsync(string capability, string paneId) => owner._StopSessionAsync(this, capability, paneId);
         public Dictionary<string, string> Capabilities { get; } = new(StringComparer.Ordinal);
         public IReadOnlyList<OperatorPendingAction> Snapshot => owner._Snapshot(this);
         public event EventHandler? Changed;

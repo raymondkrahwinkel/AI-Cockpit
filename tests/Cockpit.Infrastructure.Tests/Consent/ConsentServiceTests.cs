@@ -1,4 +1,8 @@
 using Cockpit.Core.Abstractions.Consent;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Workspaces;
 using Cockpit.Core;
 using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Consent;
@@ -144,6 +148,60 @@ public sealed class ConsentServiceTests
         Assert.True((await stranger.RespondAsync(afterRefusal.Id, afterRefusal.Revision, afterRefusal.Capability, "approve")).Ok);
         Assert.Equal(3, attempts);
         Assert.Empty(stranger.Snapshot);
+
+        // Category A: lifecycle authority stays on the authenticated channel, including retries after reconnect.
+        var launcher = Substitute.For<ISessionLauncher>();
+        var registry = Substitute.For<ISessionRegistry>();
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync().Returns(new[] { new SessionProfile("sdk", new ClaudeConfig(string.Empty)) });
+        launcher.Workspaces.Returns(new WorkspaceSettings { Workspaces = [new Workspace("desk", "Desk", WorkspaceType.Sessions)
+        {
+            Panes = [new WorkspacePane("agent", PaneKind.AiSession), new WorkspacePane("shell", PaneKind.Terminal)],
+        }] });
+        launcher.RunExclusiveAsync(Arg.Any<Func<bool>>()).Returns(call => Task.FromResult(call.Arg<Func<bool>>()()));
+        launcher.RunExclusiveAsync(Arg.Any<Func<OperatorSessionChoice[]>>()).Returns(call => Task.FromResult(call.Arg<Func<OperatorSessionChoice[]>>()()));
+        launcher.StartSessionAsync(Arg.Any<SessionLaunchRequest>()).Returns(new LaunchedSession("started", "SDK", null));
+        var agent = Substitute.For<ISessionHandle>();
+        registry.Find("agent").Returns(agent);
+        var shell = Substitute.For<ISessionHandle>();
+        shell.IsTerminal.Returns(true);
+        registry.Find("shell").Returns(shell);
+        var lifecycle = new OperatorActionService(NullLogger<OperatorActionService>.Instance, sessions: registry, launcher: launcher, profiles: profiles);
+        using var lifecycleServices = new ServiceCollection().AddSingleton(lifecycle).BuildServiceProvider();
+        var lifecycleHost = new PluginBackendHost("depot", "Depot", lifecycleServices, Substitute.For<IPluginStorage>(),
+            Substitute.For<ICockpitSessionObserver>(), Substitute.For<ICockpitActions>(), new PluginDiagnostics());
+        var lifecycleTransport = Assert.IsAssignableFrom<IOperatorActionTransport>(lifecycleHost.OperatorTransport);
+        using var owner = lifecycleTransport.OpenChannel("paired-phone");
+        using var other = lifecycleTransport.OpenChannel("other-phone");
+        var catalog = await owner.SessionCatalogAsync();
+        Assert.False((await other.StartSessionAsync("request", catalog.Capability, "desk", "sdk")).Ok);
+        Assert.False((await owner.StartSessionAsync("bad-desk", catalog.Capability, "unknown", "sdk")).Ok);
+        Assert.False((await owner.StartSessionAsync("bad-profile", catalog.Capability, "desk", "unknown")).Ok);
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            Assert.False((await owner.StartSessionAsync("mcp", catalog.Capability, "desk", "sdk")).Ok);
+            Assert.False((await owner.StopSessionAsync(catalog.Capability, "agent")).Ok);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+        Assert.True((await owner.StartSessionAsync("request", catalog.Capability, "desk", "sdk")).Ok);
+        owner.Dispose();
+        Assert.False((await owner.StopSessionAsync(catalog.Capability, "agent")).Ok);
+        using var reconnected = lifecycleTransport.OpenChannel("paired-phone");
+        var fresh = await reconnected.SessionCatalogAsync();
+        Assert.False((await reconnected.StartSessionAsync("request", catalog.Capability, "desk", "sdk")).Ok);
+        Assert.Equal("started", (await reconnected.StartSessionAsync("request", fresh.Capability, "desk", "sdk")).PaneId);
+        Assert.False((await reconnected.StartSessionAsync("request", fresh.Capability, "different", "sdk")).Ok);
+        await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(start => start.WorkspaceId == "desk" && start.Profile.Label == "sdk" && start.Kind == null));
+        Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "shell")).Ok);
+        Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "cockpit-assistant")).Ok);
+        Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "gone")).Ok);
+        Assert.True((await reconnected.StopSessionAsync(fresh.Capability, "agent")).Ok);
+        await launcher.Received(1).StopSessionAsync("agent");
+        await launcher.DidNotReceive().StopSessionAsync("shell");
     }
 
     /// <summary>The low-risk counterpart: once remembered, the second identical request is not asked again.</summary>

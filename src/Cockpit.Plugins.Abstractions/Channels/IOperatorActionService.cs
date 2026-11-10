@@ -22,6 +22,14 @@ public sealed record OperatorActionResult(bool Ok, string? Error);
 /// <summary>A transport adapter's revocable authority for one authenticated device; never exposed as an agent tool.</summary>
 public interface IOperatorActionChannel : IDisposable
 {
+    /// <summary>Whether this authenticated channel can control agent session lifecycle (host 0.177.0).</summary>
+    bool CanManageSessions => false;
+    /// <summary>Returns the current desks, profiles, host epoch and channel-bound lifecycle capability.</summary>
+    Task<OperatorSessionCatalog> SessionCatalogAsync() => throw new NotSupportedException();
+    /// <summary>Starts through the existing launcher; the device/request id retains its result across reconnect.</summary>
+    Task<OperatorSessionResult> StartSessionAsync(string requestId, string capability, string deskId, string profileId) => throw new NotSupportedException();
+    /// <summary>Stops exactly one grid agent pane after checking this live channel's capability.</summary>
+    Task<OperatorSessionResult> StopSessionAsync(string capability, string paneId) => throw new NotSupportedException();
     IReadOnlyList<OperatorPendingAction> Snapshot { get; }
     event EventHandler? Changed;
     Task<OperatorActionResult> RespondAsync(string id, string revision, string capability, string decision);
@@ -37,4 +45,6 @@ public interface IOperatorActionService
 public interface IOperatorActionTransport
 {
     IOperatorActionChannel OpenChannel();
+    /// <summary>Binds lifecycle retry results to the device identity verified by the transport handshake.</summary>
+    IOperatorActionChannel OpenChannel(string deviceId) => OpenChannel();
 }

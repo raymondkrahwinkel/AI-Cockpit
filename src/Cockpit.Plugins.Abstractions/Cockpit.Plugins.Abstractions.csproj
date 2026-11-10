@@ -688,7 +688,7 @@
     <!-- 3.85.0 (AC-2251): PluginGuardViolation; providers emitting it require host 0.174.0, contract stays 3. -->
     <!-- 3.86.0 (AC-2265): ICockpitHost.SendToSessionAsync(paneId, text, images) with SessionSendResult, OpenCockpitSession.AcceptsImages
          and IAssistantChannelGateway.AcceptsImages (defaults: text only, false); a plugin that uses them requires host 0.175.0, contract stays 3. -->
-    <Version>3.87.0</Version>
+    <Version>3.88.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

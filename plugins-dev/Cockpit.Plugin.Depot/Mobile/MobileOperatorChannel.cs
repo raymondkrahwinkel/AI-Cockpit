@@ -22,7 +22,7 @@ internal sealed partial class MobileAssistantChannel
             generation = _streamGeneration;
         }
 
-        var channel = _operatorTransport.OpenChannel();
+        var channel = _operatorTransport.OpenChannel(_deviceId);
         var installed = false;
         lock (_gate)
         {

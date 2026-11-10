@@ -464,6 +464,32 @@ The vectors' `attachment` object is a two-chunk JPEG and the `assistant.send` th
 ## 13. Pending decisions and structured answers (AC-2273)
 
 A new host advertises `operatorActions: true` in `cockpit.status`. Older hosts remain read-only.
+
+### Session lifecycle (AC-2275, Depot 0.63.0 / host 0.177.0)
+
+`cockpit.status.sessionLifecycle` advertises lifecycle support. These messages use the same host-authorised
+operator channel as decisions, available only to the Depot transport after the paired stream handshake.
+No lifecycle method is exposed as an agent tool; model callers are refused by the host. There is no extra consent click.
+
+| Phone request | Host response |
+| --- | --- |
+| `sessions.catalog {}` | `sessions.catalog {replyTo, capability, epoch, desks:[{id,name}], profiles:[{id,name}]}` |
+| `session.start {requestId, capability, deskId, profileId}` | `session.started {replyTo, ok, error, paneId}` |
+| `session.stop {capability, paneId}` | `session.stopped {replyTo, ok, error, paneId}` |
+
+The opaque lifecycle capability belongs to this live operator channel; discard it on stream closure and fetch a
+fresh catalog after reconnect. Host validation uses the current Sessions desks and profiles (profile ids are their
+labels), never phone-supplied executable paths, configuration or commands. Startup goes through the normal launcher
+and composer, choosing the profile's SDK/TTY route and applying its launch validation. A failure is acknowledged as
+a failure, including a start requiring a desktop worktree decision. Stop closes exactly one grid agent pane; terminal,
+assistant and embedded panes are refused. An already closed pane returns a clear error with no side effects.
+
+`requestId` is a unique nonempty start id, at most 128 characters, kept across reconnect/ack loss. The host retains
+the task and result for each paired device/id for its process lifetime; a different desk/profile under that id is
+refused. Replays use the fresh stream capability. The bounded store refuses further new starts when full (4096),
+rather than evicting ids and risking duplicate processes. A host restart closes the relay stream and starts a new
+deduplication lifetime, identified by the catalog's `epoch`; do not replay an unresolved start across a changed epoch. Refresh the list after a successful
+ack and open its returned pane. Older hosts hide lifecycle controls with an explanation; `session.send` still works.
 The phone requests `operator.pending` after each authenticated reconnect, independently of whether chat is open.
 Snapshots also publish when an action opens or closes. Every snapshot has `snapshotId`, `last` and `items`;
 the phone replaces its list only after the final batch of that snapshot arrives. An empty final batch clears it.

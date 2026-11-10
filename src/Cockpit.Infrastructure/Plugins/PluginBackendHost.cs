@@ -139,6 +139,7 @@ internal class PluginBackendHost(
     private sealed class _OperatorTransport(OperatorActionService service) : IOperatorActionTransport
     {
         public IOperatorActionChannel OpenChannel() => service.OpenChannel();
+        public IOperatorActionChannel OpenChannel(string deviceId) => service.OpenChannel(deviceId);
     }
 
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
