@@ -37,11 +37,11 @@ internal sealed partial class TabShareService
         _ => tool,
     };
 
-    private async Task<TabShareAnswer> _ControlAsync(TabShareRequest request)
+    private async Task<TabShareAnswer> _ControlAsync(TabShareRequest request, CancellationToken cancellationToken)
     {
         if (request.Tool == "control")
         {
-            return await _AskControlAsync(request);
+            return await _AskControlAsync(request, cancellationToken);
         }
 
         if (request.TabId is not { } tabId || _Controlled(request.PaneId, tabId) is not ({ } tab, { } grant))
@@ -81,8 +81,14 @@ internal sealed partial class TabShareService
 
         // Decided again on CEF's UI thread right before the input: the same grant, the same origin, and for keys a
         // focused frame on that origin. The answer, and so the audit line, comes only after the input went in.
-        var gate = new AgentGate(grant.Id, grant.Origin, request.Tool is "type" or "key", () => ReferenceEquals(Grants.Authorize(request.PaneId, tabId, control: true), grant));
+        cancellationToken.ThrowIfCancellationRequested();
+        var gate = new AgentGate(grant.Id, grant.Origin, request.Tool is "type" or "key", () => cancellationToken.IsCancellationRequested == false && ReferenceEquals(Grants.Authorize(request.PaneId, tabId, control: true), grant));
         var (done, refusal) = await _ActAsync(request, tab, grant, x, y, gate, frames);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_Controlled(request.PaneId, tabId) is not { } after || ReferenceEquals(after.Grant, grant) == false)
+        {
+            return _Refuse(request, NoControl);
+        }
         if (done == false)
         {
             return _Refuse(request, refusal ?? NoControl);
@@ -146,11 +152,11 @@ internal sealed partial class TabShareService
     }
 
     // The share card on the agent's behalf: the asking session fixed, Control picked, its reason shown as its own words.
-    private async Task<TabShareAnswer> _AskControlAsync(TabShareRequest request)
+    private async Task<TabShareAnswer> _AskControlAsync(TabShareRequest request, CancellationToken cancellationToken)
     {
         var tab = request.TabId is { } id ? _model.Tabs.FirstOrDefault(tab => tab.Id == id) : _model.Active;
-        var session = (await _OpenSessionsAsync()).FirstOrDefault(session => session.PaneId == request.PaneId);
-        if (tab is null || session is null || _IsWeb(tab.Address) == false)
+        var session = (await _OpenSessionsAsync(cancellationToken)).FirstOrDefault(session => session.PaneId == request.PaneId);
+        if (tab is null || session is null || tab.View.HostStopped.IsCancellationRequested || _IsWeb(tab.Address) == false)
         {
             return _Refuse(request, "There is no such web page open in the operator's browser to ask about.");
         }
@@ -178,9 +184,11 @@ internal sealed partial class TabShareService
             Never = NeverCovered,
         };
 
-        using var timeout = new CancellationTokenSource(CardTimeout);
-        var decision = await _host.RequestConsentAsync(consent, timeout.Token);
-        if (decision.IsApproved == false || decision.Chosen?.GetValueOrDefault("mode") is not { Count: > 0 } modes || _model.Tabs.Contains(tab) == false)
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(CardTimeout);
+        var decision = await _host.RequestConsentAsync(consent, timeout.Token).WaitAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (decision.IsApproved == false || decision.Chosen?.GetValueOrDefault("mode") is not { Count: > 0 } modes || _model.Tabs.Contains(tab) == false || tab.View.HostStopped.IsCancellationRequested)
         {
             return _Refuse(request, "The operator did not allow control of this tab.");
         }
@@ -193,6 +201,7 @@ internal sealed partial class TabShareService
     private (BrowserTab Tab, TabGrant Grant)? _Controlled(string paneId, string tabId) =>
         Grants.Authorize(paneId, tabId, control: true) is { } grant
         && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab
+        && tab.View.HostStopped.IsCancellationRequested == false
         && string.Equals(TabGrantRegistry.OriginOf(tab.Address), grant.Origin, StringComparison.OrdinalIgnoreCase)
             ? (tab, grant)
             : null;
