@@ -377,7 +377,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     public static ProjectDialogViewModel ForServer(
         Project? project, string server, IReadOnlyList<string> profiles, IReadOnlyList<string> knownCategories, Func<Project, Task<Project>> save)
     {
-        var viewModel = new ProjectDialogViewModel(project, worktreeManager: null) { ServerName = server, _saveOnServer = save };
+        // AC-2285: a server path never reaches this machine's folder pickers; the server never takes it from a save either.
+        var viewModel = new ProjectDialogViewModel(project, worktreeManager: null) { ServerName = server, _saveOnServer = save, SourceDirectory = "" };
+        viewModel.RepositoryRows.Clear();
         foreach (var category in knownCategories)
         {
             viewModel.CategoryChips.Add(new ProjectCategoryChipViewModel(
