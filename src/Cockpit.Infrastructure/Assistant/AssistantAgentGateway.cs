@@ -441,7 +441,16 @@ internal sealed partial class AssistantAgentGateway(
         // Held rather than dropped when the session is still coming up, and the caller is told which of the two
         // happened. Null when a pane still coming up already holds its one brief: a second one arriving first would
         // otherwise be misread as belonging to this call. Told plainly, so it doesn't read as an invitation to retry.
-        if (await pane.Session.SubmitPromptWhenReadyAsync(prompt).ConfigureAwait(false) is not { } delivered)
+        bool? accepted;
+        try
+        {
+            accepted = await pane.Session.SubmitPromptWhenReadyAsync(prompt).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return await _RefusePromptAsync(paneId, exception.Message, cancellationToken).ConfigureAwait(false);
+        }
+        if (accepted is not { } delivered)
         {
             return await _RefusePromptAsync(
                 paneId,

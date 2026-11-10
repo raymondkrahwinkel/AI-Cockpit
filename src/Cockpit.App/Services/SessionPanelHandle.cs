@@ -196,7 +196,18 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     // One dispatcher callback for the check and the hand-over: a pane still coming up holds exactly one brief, and a
     // second one arriving between the two would otherwise be held and misread as belonging to this call.
     public Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
-        UiThreadCall.RunAsync(() => _pane is not { } pane || pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt));
+        UiThreadCall.RunAsync(() =>
+        {
+            if (_pane is not { } pane)
+            {
+                return (bool?)null;
+            }
+            if (!_CanReceiveTask(pane))
+            {
+                throw new InvalidOperationException("This pane is working or waiting for a permission or question. Answer it on the desktop before sending a task.");
+            }
+            return pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt);
+        });
 
     public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => _pane is { } pane ? pane.WorktreeBranch = branch : null);
 
@@ -245,7 +256,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         _IsLive() && _pane is SessionViewModel sdk && _CanReceiveTask(sdk) ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
 
     private static bool _CanReceiveTask(SessionPanelViewModel pane) => pane.SessionStatus != SessionStatus.NeedsAttention
-        && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission);
+        && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission)
+        && (pane is not TtyViewModel || pane.SessionStatus is not (SessionStatus.Busy or SessionStatus.WorkingBackground));
 
     public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(pane => pane.InjectText(text));
 

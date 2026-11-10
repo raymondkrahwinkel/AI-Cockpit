@@ -185,7 +185,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             lock (_gate)
             {
-                return _host.Runtime is { IsRunning: true } && _host.TurnsHeldBecause is null;
+                return _host.Runtime is { IsRunning: true } && _host.TurnsHeldBecause is null
+                    && _host.LiveState.Status != SessionStatus.NeedsAttention && !_rows.Exists(row => row.IsPendingPermission);
             }
         }
     }
@@ -254,7 +255,17 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     // Nothing is ever held here: false says the prompt was not taken, and nothing will deliver it later.
-    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) => await SendPromptAsync(prompt).ConfigureAwait(false);
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt)
+    {
+        lock (_gate)
+        {
+            if (_host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
+            {
+                throw new InvalidOperationException("This pane is waiting for a permission or question. Answer it on the desktop before sending a task.");
+            }
+        }
+        return await SendPromptAsync(prompt).ConfigureAwait(false);
+    }
 
     public Task SetWorktreeBranchAsync(string? branch)
     {
@@ -660,6 +671,10 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
         lock (_gate)
         {
+            if (_host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
+            {
+                return Task.FromResult(false);
+            }
             _Submit(new QueuedPrompt(text, [.. pngImages.Select(png => ImageAttachment.FromBytes(png, "image/png"))]));
         }
 

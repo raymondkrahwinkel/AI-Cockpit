@@ -237,6 +237,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     private void _EmitTranscript(string text, Action<string>? sink)
     {
+        if (!_CanSubmitTask)
+        {
+            return;
+        }
         var typed = _AsTypedText(text);
         _lastTypedLength = typed.Length;
         if (typed.Length > 0)
@@ -252,13 +256,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // AC-1013: Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends...
     protected override void OnVoiceSubmitRequested()
     {
-        if (IsReadingChild)
+        if (!_CanSubmitTask)
         {
             return;
         }
         _scheduleAutoSubmit(AutoSubmitDelay(_lastTypedLength), () =>
         {
-            if (!IsReadingChild)
+            if (_CanSubmitTask)
             {
                 VoiceTranscriptReady?.Invoke("\r");
             }
@@ -870,7 +874,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // The pty sink is necessary but not sufficient: it exists once the process is spawned, but a prompt written to
     // it before the CLI reads stdin in raw mode is the exact failure AC-760 reports — text lands, Enter does not.
-    public override bool CanTakeAPrompt => PromptSink is not null && _hostedTuiReady;
+    private bool _CanSubmitTask => !IsReadingChild && PendingConsent is null
+        && SessionStatus is not (SessionStatus.NeedsAttention or SessionStatus.Busy or SessionStatus.WorkingBackground);
+
+    public override bool CanTakeAPrompt => PromptSink is not null && _hostedTuiReady && _CanSubmitTask;
 
     public override Task<bool> SendPromptAsync(string prompt)
     {
