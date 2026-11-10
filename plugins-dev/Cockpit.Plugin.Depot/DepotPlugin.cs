@@ -262,10 +262,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return Task.FromResult(JsonSerializer.SerializeToElement(_events.Registration(request.ConnectionId), DepotChannel.Json));
         }));
 
-        // AC-2224: pairing a phone and the phones paired, with the host-only depot.host token the relay and the pairing ask for.
+        // AC-2224: pairing a phone and the phones paired, with the host-only depot.host token the relay and the pairing ask for;
+        // the account id behind the relay comes from /cockpit/me, which takes the connection's plain token.
         var mobile = _mobile = new Mobile.MobilePairing(
             () => settings.Connections,
             connection => host.CreateAuthorizedHandler(connection.McpServerName, "depot.host"),
+            connection => host.CreateAuthorizedHandler(connection.McpServerName),
             host.Storage,
             _events,
             host.OpenAssistantChannel,

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2255: a phone paired from Settings › Depot now reaches this Cockpit: the Cockpit connects to the Depot relay right after pairing, instead of the phone reporting it offline and not paired.
+
 - AC-717: opt in to lowering other apps during assistant speech on Windows and Linux, relative to Cockpit's mixer volume, with automatic restore and crash recovery. macOS shows the option as unavailable.
 
 - AC-2242: the QR code in Pair phone is black on white in every theme, with a quiet zone of 4 modules, at least 240 px and sharp, so a phone camera can focus on it.
