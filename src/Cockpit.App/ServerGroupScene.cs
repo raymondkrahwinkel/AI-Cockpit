@@ -48,6 +48,31 @@ internal static class ServerGroupScene
         return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
     }
 
+    // AC-2281: the remote window's ordinary Projects page, listing the stand-in server's projects.
+    public static MainWindow RemoteProjects(int width, int height)
+    {
+        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns(), _ => Task.CompletedTask);
+        cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
+        return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    // AC-2281: the ordinary project editor over a server project: only what the server lets an admin key change.
+    public static ProjectDialog RemoteProjectEditor(bool existing)
+    {
+        var project = existing
+            ? new Cockpit.Core.Projects.Project("depot", "depot")
+            {
+                Description = "Depot on the server.",
+                Category = "Work",
+                GitUrl = "https://github.com/raymondkrahwinkel/depot.git",
+                DefaultProfileLabel = "work",
+                SourceDirectories = [new Cockpit.Core.Projects.ProjectRepository("/work/clones/github.com/raymondkrahwinkel/depot")],
+            }
+            : null;
+        var editor = ProjectDialogViewModel.ForServer(project, "huis-cockpit", ["work", "personal"], ["Work"], Task.FromResult);
+        return new ProjectDialog { DataContext = editor, Height = 1000 };
+    }
+
     // AC-2279: the remote window's ordinary Options on one page: the server's parts shown, this device's own hidden.
     public static OptionsDialog RemoteOptions(string category)
     {

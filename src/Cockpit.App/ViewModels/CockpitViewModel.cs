@@ -6766,6 +6766,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // decides when, or whether, to send it. Without a job this is the plain route, unchanged.
     private async Task _NewSessionForProjectAsync(Project? project, ProjectJob? job)
     {
+        if (project is not null && IsRemoteWindow)
+        {
+            await _StartServerProjectAsync(project);
+            return;
+        }
+
         if (project is null || _dialogService is null)
         {
             return;

@@ -85,9 +85,17 @@ public partial class CockpitViewModel
         Func<ServerAdminViewModel, Task> showServerAdmin,
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
         Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
-        Func<string, string, string, Task<bool>>? confirm = null)
+        Func<string, string, string, Task<bool>>? confirm = null,
+        Func<ProjectDialogViewModel, Task>? presentProjectDialog = null)
     {
-        var options = Composition.DesktopComposition.RemoteOptionsFor(() => servers.Servers.FirstOrDefault(target => target.Name == server));
+        IRemoteServer? Current() => servers.Servers.FirstOrDefault(target => target.Name == server);
+        var options = Composition.DesktopComposition.RemoteOptionsFor(Current);
+
+        // AC-2281: the ordinary Projects page, over the server's projects and its own profiles.
+        var serverProjects = new Composition.RemoteWindowProjects(() => Current()?.Projects);
+        var projectDialogs = presentProjectDialog is not null && confirm is not null
+            ? new RemoteProjectDialogs(server, Current, presentProjectDialog, confirm)
+            : null;
         var cockpit = new CockpitViewModel(
             sessionFactory: null, ttySessionFactory: null, dialogService: null,
             captureService: null, playbackService: null, attentionNotifier: null,
@@ -98,7 +106,8 @@ public partial class CockpitViewModel
             shortcutSettingsStore: options.Shortcuts, renderingSettingsStore: options.Rendering,
             usagePillSettingsStore: options.UsagePill, screenshotSettingsStore: options.Screenshots,
             quickNoteSettingsStore: options.QuickNotes,
-            heavyRunSettingsStore: options, deferOptionsLoad: true)
+            heavyRunSettingsStore: options, deferOptionsLoad: true,
+            projects: new ProjectsViewModel(serverProjects, serverProjects, projectDialogs) { ServerName = server })
         {
             RemoteWindowServer = server,
             _showServerAdmin = showServerAdmin,
@@ -109,7 +118,45 @@ public partial class CockpitViewModel
             Swarm = new SwarmOptionsViewModel(options.Swarm, options.SwarmLeadership, confirm),
         };
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
+
+        // The server is there once its group is: read its projects then, and again if it comes back as a new object.
+        cockpit.ServerGroups.CollectionChanged += (_, change) =>
+        {
+            if (change.NewItems is { Count: > 0 })
+            {
+                _ = cockpit._LoadServerProjectsAsync();
+            }
+        };
+        _ = cockpit._LoadServerProjectsAsync();
         return cockpit;
+    }
+
+    // AC-2281: a project's Start in the remote window is the server's own start card, on that project and its profile.
+    private async Task _StartServerProjectAsync(Cockpit.Core.Projects.Project project)
+    {
+        if (ServerGroups.FirstOrDefault() is not { } group)
+        {
+            return;
+        }
+
+        await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+        await OpenServerStartAsync(group);
+        var start = group.Start;
+        start.SelectedProject = start.Projects.FirstOrDefault(choice => choice.Id == project.Id) ?? start.SelectedProject;
+        start.SelectedProfile = start.Profiles.FirstOrDefault(choice =>
+            string.Equals(choice.Label, project.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase)) ?? start.SelectedProfile;
+    }
+
+    private async Task _LoadServerProjectsAsync()
+    {
+        try
+        {
+            await Projects.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not read the projects of {Server}.", RemoteWindowServer);
+        }
     }
 
     // The headless scenes' way in: the same wiring over a stand-in server, without the node tools behind the start card.
