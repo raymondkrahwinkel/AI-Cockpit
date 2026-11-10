@@ -474,7 +474,7 @@ No lifecycle method is exposed as an agent tool; model callers are refused by th
 | Phone request | Host response |
 | --- | --- |
 | `sessions.catalog {}` | `sessions.catalog {replyTo, capability, epoch, desks:[{id,name}], profiles:[{id,name}]}` |
-| `session.start {requestId, capability, deskId, profileId}` | `session.started {replyTo, ok, error, paneId}` |
+| `session.start {requestId, capability, epoch, deskId, profileId}` | `session.started {replyTo, ok, error, paneId}` |
 | `session.stop {capability, paneId}` | `session.stopped {replyTo, ok, error, paneId}` |
 
 The opaque lifecycle capability belongs to this live operator channel; discard it on stream closure and fetch a

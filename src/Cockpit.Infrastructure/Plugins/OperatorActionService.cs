@@ -242,8 +242,8 @@ public sealed partial class OperatorActionService : IOperatorActionService, ISin
         public string SessionCapability { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         public bool CanManageSessions => owner._launcher is not null && owner._profiles is not null;
         public Task<OperatorSessionCatalog> SessionCatalogAsync() => owner._SessionCatalogAsync(this);
-        public Task<OperatorSessionResult> StartSessionAsync(string requestId, string capability, string deskId, string profileId) =>
-            owner._StartSessionAsync(this, requestId, capability, deskId, profileId);
+        public Task<OperatorSessionResult> StartSessionAsync(string requestId, string capability, string epoch, string deskId, string profileId) =>
+            owner._StartSessionAsync(this, requestId, capability, epoch, deskId, profileId);
         public Task<OperatorSessionResult> StopSessionAsync(string capability, string paneId) => owner._StopSessionAsync(this, capability, paneId);
         public Dictionary<string, string> Capabilities { get; } = new(StringComparer.Ordinal);
         public IReadOnlyList<OperatorPendingAction> Snapshot => owner._Snapshot(this);

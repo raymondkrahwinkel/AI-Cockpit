@@ -38,7 +38,8 @@ internal sealed partial class MobileAssistantChannel
             var capability = _String(body, "capability") ?? string.Empty;
             var result = type == "session.start"
                 ? await channel.StartSessionAsync(_String(body, "requestId") ?? string.Empty, capability,
-                    _String(body, "deskId") ?? string.Empty, _String(body, "profileId") ?? string.Empty).ConfigureAwait(false)
+                    _String(body, "epoch") ?? string.Empty, _String(body, "deskId") ?? string.Empty,
+                    _String(body, "profileId") ?? string.Empty).ConfigureAwait(false)
                 : await channel.StopSessionAsync(capability, _String(body, "paneId") ?? string.Empty).ConfigureAwait(false);
             _SessionResult(type, id, result);
         }

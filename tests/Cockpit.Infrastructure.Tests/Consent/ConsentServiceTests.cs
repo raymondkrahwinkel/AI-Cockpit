@@ -174,27 +174,28 @@ public sealed class ConsentServiceTests
         using var owner = lifecycleTransport.OpenChannel("paired-phone");
         using var other = lifecycleTransport.OpenChannel("other-phone");
         var catalog = await owner.SessionCatalogAsync();
-        Assert.False((await other.StartSessionAsync("request", catalog.Capability, "desk", "sdk")).Ok);
-        Assert.False((await owner.StartSessionAsync("bad-desk", catalog.Capability, "unknown", "sdk")).Ok);
-        Assert.False((await owner.StartSessionAsync("bad-profile", catalog.Capability, "desk", "unknown")).Ok);
+        Assert.False((await owner.StartSessionAsync("old-host", catalog.Capability, "expired-epoch", "desk", "sdk")).Ok);
+        Assert.False((await other.StartSessionAsync("request", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
+        Assert.False((await owner.StartSessionAsync("bad-desk", catalog.Capability, catalog.Epoch, "unknown", "sdk")).Ok);
+        Assert.False((await owner.StartSessionAsync("bad-profile", catalog.Capability, catalog.Epoch, "desk", "unknown")).Ok);
         try
         {
             McpRequestContext.Set("cockpit-assistant");
-            Assert.False((await owner.StartSessionAsync("mcp", catalog.Capability, "desk", "sdk")).Ok);
+            Assert.False((await owner.StartSessionAsync("mcp", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
             Assert.False((await owner.StopSessionAsync(catalog.Capability, "agent")).Ok);
         }
         finally
         {
             McpRequestContext.Set(null);
         }
-        Assert.True((await owner.StartSessionAsync("request", catalog.Capability, "desk", "sdk")).Ok);
+        Assert.True((await owner.StartSessionAsync("request", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
         owner.Dispose();
         Assert.False((await owner.StopSessionAsync(catalog.Capability, "agent")).Ok);
         using var reconnected = lifecycleTransport.OpenChannel("paired-phone");
         var fresh = await reconnected.SessionCatalogAsync();
-        Assert.False((await reconnected.StartSessionAsync("request", catalog.Capability, "desk", "sdk")).Ok);
-        Assert.Equal("started", (await reconnected.StartSessionAsync("request", fresh.Capability, "desk", "sdk")).PaneId);
-        Assert.False((await reconnected.StartSessionAsync("request", fresh.Capability, "different", "sdk")).Ok);
+        Assert.False((await reconnected.StartSessionAsync("request", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
+        Assert.Equal("started", (await reconnected.StartSessionAsync("request", fresh.Capability, fresh.Epoch, "desk", "sdk")).PaneId);
+        Assert.False((await reconnected.StartSessionAsync("request", fresh.Capability, fresh.Epoch, "different", "sdk")).Ok);
         await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(start => start.WorkspaceId == "desk" && start.Profile.Label == "sdk" && start.Kind == null));
         Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "shell")).Ok);
         Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "cockpit-assistant")).Ok);

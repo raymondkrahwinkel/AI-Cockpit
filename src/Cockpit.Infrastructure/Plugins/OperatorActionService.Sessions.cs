@@ -38,9 +38,9 @@ public sealed partial class OperatorActionService
             profiles.Select(profile => new OperatorSessionChoice(profile.Label, profile.Label)).ToArray());
     }
 
-    private Task<OperatorSessionResult> _StartSessionAsync(_Channel channel, string requestId, string capability, string deskId, string profileId)
+    private Task<OperatorSessionResult> _StartSessionAsync(_Channel channel, string requestId, string capability, string epoch, string deskId, string profileId)
     {
-        if (!_CanManage(channel, capability) || string.IsNullOrWhiteSpace(requestId) || requestId.Length > 128)
+        if (!_CanManage(channel, capability) || epoch != _sessionEpoch || string.IsNullOrWhiteSpace(requestId) || requestId.Length > 128)
         {
             return Task.FromResult(new OperatorSessionResult(false, "This operator connection or request has expired."));
         }

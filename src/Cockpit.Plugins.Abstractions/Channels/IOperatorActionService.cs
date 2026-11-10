@@ -27,7 +27,7 @@ public interface IOperatorActionChannel : IDisposable
     /// <summary>Returns the current desks, profiles, host epoch and channel-bound lifecycle capability.</summary>
     Task<OperatorSessionCatalog> SessionCatalogAsync() => throw new NotSupportedException();
     /// <summary>Starts through the existing launcher; the device/request id retains its result across reconnect.</summary>
-    Task<OperatorSessionResult> StartSessionAsync(string requestId, string capability, string deskId, string profileId) => throw new NotSupportedException();
+    Task<OperatorSessionResult> StartSessionAsync(string requestId, string capability, string epoch, string deskId, string profileId) => throw new NotSupportedException();
     /// <summary>Stops exactly one grid agent pane after checking this live channel's capability.</summary>
     Task<OperatorSessionResult> StopSessionAsync(string capability, string paneId) => throw new NotSupportedException();
     IReadOnlyList<OperatorPendingAction> Snapshot { get; }
