@@ -5,10 +5,8 @@ namespace Cockpit.Plugin.Proxmox.Tests;
 
 public sealed class ProxmoxPermissionsTests
 {
-    // `{}` is a real answer, measured read-only with `pvesh get /access/permissions --userid 'root@pam!cockpit'` on the
-    // Proxmox host (2026-11-10): that token has privsep 1 and no ACL of its own, so it may do nothing, and the reads
-    // it makes come back as empty lists instead of an error. The other two follow the documented shape
-    // (path -> { privilege: 1 }); they are one test, not rows, because the test-count gate counts every row.
+    // AC-2260: `{}` was measured read-only with pvesh for `root@pam!cockpit` (privsep 1, no ACL, 2026-11-10); the
+    // other two follow the documented shape and live in this one test because the count gate counts every row.
     [Fact]
     public void HasPrivilege_ReadsTheEffectivePermissionsAnswer_AndTreatsTheMeasuredEmptyOneAsNoAccess()
     {
