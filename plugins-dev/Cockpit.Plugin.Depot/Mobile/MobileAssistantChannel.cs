@@ -347,7 +347,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
             }
 
             if (row is { Kind: AssistantChannelRowKind.Question, IsUpdate: true, Questions.Count: 0 }
-                && _question?.Id == row.Id.ToString("n"))
+                && _question?.Id == (row.CorrelationId ?? row.Id.ToString("n")))
             {
                 answered = _question?.Id;
                 _question = null;
@@ -373,7 +373,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         }
 
         _Queue(row);
-        if (answered is not null || asked is not null)
+        if (row.Kind == AssistantChannelRowKind.Question || answered is not null || asked is not null)
         {
             _SendPending();
         }

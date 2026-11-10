@@ -193,6 +193,11 @@ public class MobileProtocolVectorTests
         gateway.AcceptsImages.Returns(true);
         var host = Substitute.For<ICockpitHost>();
         host.Sessions.OpenSessions.Returns([new OpenCockpitSession("pane", "Session")]);
+        var operatorChannel = Substitute.For<IOperatorActionChannel>();
+        operatorChannel.Snapshot.Returns([]);
+        var operatorTransport = Substitute.For<IOperatorActionTransport>();
+        operatorTransport.OpenChannel().Returns(operatorChannel);
+        host.OperatorTransport.Returns(operatorTransport);
         host.SendToSessionAsync("pane", Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>())
             .Returns(new SessionSendResult(true, "this session cannot see images"));
         var toPhone = new List<byte[]>();
@@ -252,8 +257,7 @@ public class MobileProtocolVectorTests
 
         if (@case == "assistantOpenQuestion")
         {
-            // While the assistant's question waits, the host would read "1" as its answer: that stays on the desktop.
-            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, new AssistantChannelRow
+            var question = new AssistantChannelRow
             {
                 Id = Guid.NewGuid(),
                 Kind = AssistantChannelRowKind.Question,
@@ -261,7 +265,33 @@ public class MobileProtocolVectorTests
                 Timestamp = DateTimeOffset.UtcNow,
                 CorrelationId = "question",
                 Questions = [new AssistantChannelQuestion { Question = "Which one?", Options = [] }],
-            });
+            };
+            gateway.PendingQuestions.Returns([question]);
+            pairing.Frame(connection, "stream-1", device, first?.Seal("{\"type\":\"operator.pending\",\"id\":\"pending\",\"body\":{}}"u8) ?? []);
+
+            Assert.NotNull(first);
+            var read = 2;
+            JsonElement LatestPending()
+            {
+                JsonElement latest = default;
+                for (; read < toPhone.Count; read++)
+                {
+                    Assert.True(first.TryOpen(toPhone[read], out var plaintext));
+                    using var document = JsonDocument.Parse(plaintext);
+                    if (document.RootElement.GetProperty("type").GetString() == "operator.pending")
+                    {
+                        latest = document.RootElement.GetProperty("body").Clone();
+                    }
+                }
+                return latest.GetProperty("items");
+            }
+            Assert.Equal("question", Assert.Single(LatestPending().EnumerateArray()).GetProperty("id").GetString());
+            gateway.PendingQuestions.Returns([]);
+            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway,
+                question with { IsUpdate = true, Questions = [] });
+            Assert.Empty(LatestPending().EnumerateArray());
+            gateway.PendingQuestions.Returns([question]);
+            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, question);
             Say(first, "stream-1", "1");
         }
 
