@@ -55,6 +55,10 @@ internal static class ClaudePathGuard
         var decision = outside is null ? GuardDecision.Allow : mode == GuardrailMode.Strict
             ? new(true, $"'{outside}' is outside the session boundary; use $COCKPIT_SCRATCH or the worktree.")
             : new(false, $"Cockpit guard (warn): '{outside}' is outside the session boundary; use $COCKPIT_SCRATCH or the worktree.");
+        if (outside is not null)
+        {
+            decision = decision with { Violations = [new(mode.ToString(), toolName, outside, decision.Deny, "path")] };
+        }
         return killScope is not null && toolName is "Bash" or "PowerShell" && Text("command") is { } shellCommand
             ? decision.With(CommandGuard.EvaluateKill(shellCommand, killScope, mode))
             : decision;
@@ -95,6 +99,8 @@ internal static class ClaudePathGuard
         if (HookOutput(decision) is { } output)
         {
             stdout.Write(output);
+            GuardJournal.Record(Environment.GetEnvironmentVariable("COCKPIT_SUBAGENT_FILE"),
+                Environment.GetEnvironmentVariable(CommandGuard.PaneVariable), decision.Violations, stderr);
             stderr.WriteLine($"cockpit-guard session {Text("session_id")}: {decision.Message}");
         }
     }

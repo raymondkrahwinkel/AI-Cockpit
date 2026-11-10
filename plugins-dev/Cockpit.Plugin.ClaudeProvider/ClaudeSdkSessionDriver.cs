@@ -551,6 +551,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
                     {
                         Console.Error.WriteLine($"cockpit-guard session {_sessionId}: {decision.Message}");
                     }
+                    foreach (var violation in decision.Violations)
+                    {
+                        _events.Publish(new PluginGuardViolation(violation.Mode, violation.Tool, violation.Target, violation.Denied, violation.Kind) { SessionId = _sessionId });
+                    }
                     if (_readOnlyToolFilter is { } toolFilter && !toolFilter(hookToolName))
                     {
                         decision = new GuardDecision(true, "This turn is read-only; this tool is denied.");

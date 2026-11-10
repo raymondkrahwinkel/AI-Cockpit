@@ -8,10 +8,14 @@ namespace Cockpit.Plugins.Shared;
 internal sealed record GuardDecision(bool Deny, string? Message)
 {
     public static readonly GuardDecision Allow = new(false, null);
+    public IReadOnlyList<GuardViolation> Violations { get; init; } = [];
 
     // Deny wins; two warnings are both kept.
-    public GuardDecision With(GuardDecision other) =>
-        Deny ? this : other.Deny || Message is null ? other : other.Message is null ? this : new(false, Message + "\n" + other.Message);
+    public GuardDecision With(GuardDecision other)
+    {
+        var result = Deny ? this : other.Deny || Message is null ? other : other.Message is null ? this : new(false, Message + "\n" + other.Message);
+        return result with { Violations = [.. Violations, .. other.Violations] };
+    }
 }
 
 // What a session owns: the processes in its own tree and the containers labelled with its pane.
@@ -36,7 +40,10 @@ internal static class CommandGuard
         {
             return GuardDecision.Allow;
         }
-        return mode == GuardrailMode.Strict ? new(true, reason) : new(false, $"Cockpit guard (warn): {reason}");
+        return new GuardDecision(mode == GuardrailMode.Strict, mode == GuardrailMode.Strict ? reason : $"Cockpit guard (warn): {reason}")
+        {
+            Violations = [new(mode.ToString(), "shell", command, mode == GuardrailMode.Strict, "kill")],
+        };
     }
 
     // The real ownership of a session: its Windows job when there is one (it keeps orphans), else the tree below `rootPid`.

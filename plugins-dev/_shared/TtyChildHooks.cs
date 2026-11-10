@@ -28,6 +28,7 @@ internal static class TtyChildHooks
     {
         files.Add(Journal(statusFile));
         files.Add(Journal(statusFile) + ".tmp");
+        files.Add(GuardJournal.PathFor(Journal(statusFile)));
         files.Add(statusFile + ".tmp");
     }
 }

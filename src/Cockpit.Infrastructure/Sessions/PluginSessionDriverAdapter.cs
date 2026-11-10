@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // Wraps a plugin's narrow `IPluginSessionDriver` to satisfy the app's real `ISessionDriver`
 // contract (#45), the seam `SessionDriverFactory` uses. Claude-CLI-only live-control members
 // (permission mode/model/thinking-budget switch, always-allow persistence) are deliberate no-ops here.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, ISessionConversationSink? conversationSink = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null, IOrgPolicy? orgPolicy = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, ISessionConversationSink? conversationSink = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null, IOrgPolicy? orgPolicy = null, GuardNotifications? guardNotifications = null) : ISessionDriver
 {
     // #45 review finding 3: plan mode/thinking budget have no equivalent on the narrow surface, so always
     // unsupported here. SupportsVision maps straight through (every built-in plugin reports it false today, #64 fase 2).
@@ -720,6 +720,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 PluginToolUseRequested tool => tool with { ToolName = names?.ToCanonical(tool.ToolName) ?? tool.ToolName },
                 _ => incoming,
             };
+            if (pluginEvent is PluginGuardViolation violation)
+            {
+                if (_paneId is not null)
+                {
+                    guardNotifications?.Report(_paneId, new(violation.Mode, violation.Tool, violation.Target, violation.Denied, violation.Kind));
+                }
+                continue;
+            }
             _ReportConversationIfChanged();
 
             if (pluginEvent is PluginSessionError error)
