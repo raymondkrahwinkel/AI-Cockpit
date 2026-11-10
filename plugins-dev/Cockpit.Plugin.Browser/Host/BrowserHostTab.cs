@@ -7,7 +7,7 @@ using Xilium.CefGlue;
 
 namespace Cockpit.Plugin.Browser.Host;
 
-internal sealed class BrowserHostTab : IAsyncDisposable
+internal sealed partial class BrowserHostTab : IAsyncDisposable
 {
     private readonly BrowserIpcConnection _connection;
     private readonly string _storage;
@@ -198,6 +198,7 @@ internal sealed class BrowserHostTab : IAsyncDisposable
                 throw new InvalidDataException("Stale browser control.");
             }
             _controlRevision = control.Revision;
+            _CancelFiles();
             _controlOrigin = control.Origin is null ? null : ControlPolicy.OriginOf(control.Origin);
             _actingGrant = control.Grant;
             _DropHeld();
@@ -488,9 +489,15 @@ internal sealed class BrowserHostTab : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Task[] files = [];
         await OnCefAsync(() =>
         {
             _closing = true;
+            lock (_control)
+            {
+                _CancelFiles();
+                files = _fileDialogs.Values.Select(dialog => dialog.Task).ToArray();
+            }
             if (_browser is { } browser)
             {
                 browser.GetHost().CloseBrowser(true);
@@ -500,6 +507,7 @@ internal sealed class BrowserHostTab : IAsyncDisposable
                 _closed.TrySetResult();
             }
         }, CancellationToken.None);
+        await Task.WhenAll(files);
         _states.Writer.TryComplete();
         await _closed.Task.WaitAsync(BrowserIpcLimits.Deadline);
         await Task.WhenAll(_frameSender, _stateSender);
@@ -521,6 +529,8 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         private readonly LoadHandler _load = new(owner);
         private readonly RequestHandler _request = new(owner);
         private readonly DialogHandler _dialog = new(owner);
+        private readonly DownloadHandler _download = new(owner);
+        protected override CefDownloadHandler GetDownloadHandler() => _download;
         protected override CefDialogHandler GetDialogHandler() => _dialog;
         protected override CefLifeSpanHandler GetLifeSpanHandler() => _life;
         protected override CefRenderHandler GetRenderHandler() => _render;
@@ -554,6 +564,7 @@ internal sealed class BrowserHostTab : IAsyncDisposable
                 owner._controlOrigin = null;
                 owner._actingGrant = null;
                 owner._DropHeld();
+                owner._CancelFiles();
             }
             owner._closed.TrySetResult();
         }
@@ -638,11 +649,27 @@ internal sealed class BrowserHostTab : IAsyncDisposable
         protected override bool OnFileDialog(CefBrowser browser, CefFileDialogMode mode, string title, string defaultFilePath,
             string[] acceptFilters, string[] acceptExtensions, string[] acceptDescriptions, CefFileDialogCallback callback)
         {
-            if (owner._controlOrigin is null)
+            lock (owner._control)
             {
-                return false;
+                if (owner._controlOrigin is not null || owner._closing)
+                {
+                    callback.Cancel();
+                    return true;
+                }
+                _ = owner._ChooseFilesAsync(new BrowserTabFileDialog((int)mode, title, defaultFilePath, acceptFilters),
+                    paths =>
+                    {
+                        if (paths.Length == 0)
+                        {
+                            callback.Cancel();
+                        }
+                        else
+                        {
+                            callback.Continue(paths);
+                        }
+                        callback.Dispose();
+                    });
             }
-            callback.Cancel();
             return true;
         }
     }
