@@ -427,7 +427,7 @@ internal static class SessionsEndpoints
                 paneId = assistant.PaneId,
                 name = assistant.Title,
                 totalEntries = slice.TotalEntries,
-                entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult }),
+                entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult, timestamp = entry.Timestamp }),
                 rows = snapshot?.Rows,
                 seq = snapshot?.Seq,
             });

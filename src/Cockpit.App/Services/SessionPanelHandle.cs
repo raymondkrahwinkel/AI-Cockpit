@@ -459,7 +459,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         var transcript = sdk.Transcript;
         var skip = Math.Max(0, transcript.Count - count);
         return new SessionTranscriptSlice(
-            [.. transcript.Skip(skip).Select(entry => new SessionTranscriptEntry(entry.Kind.ToString(), entry.TextWithImageSuffix, entry.ResultText))],
+            [.. transcript.Skip(skip).Select(entry => new SessionTranscriptEntry(entry.Kind.ToString(), entry.TextWithImageSuffix, entry.ResultText) { Timestamp = entry.Timestamp })],
             transcript.Count);
     }
 }

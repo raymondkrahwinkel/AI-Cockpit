@@ -244,14 +244,20 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
         var result = entry.ToolResult;
         while (true)
         {
-            var encoded = JsonSerializer.SerializeToUtf8Bytes(new
+            var row = new Dictionary<string, object?>
             {
-                id = entry.Index,
-                kind = JsonNamingPolicy.CamelCase.ConvertName(entry.Kind.ToString()),
-                text,
-                resultText = result,
-                truncated = text.Length != entry.Text.Length || result?.Length != entry.ToolResult?.Length,
-            });
+                ["id"] = entry.Index,
+                ["kind"] = JsonNamingPolicy.CamelCase.ConvertName(entry.Kind.ToString()),
+                ["text"] = text,
+                ["resultText"] = result,
+                ["truncated"] = text.Length != entry.Text.Length || result?.Length != entry.ToolResult?.Length,
+            };
+            if (entry.Timestamp is { } timestamp)
+            {
+                row["timestamp"] = timestamp;
+            }
+
+            var encoded = JsonSerializer.SerializeToUtf8Bytes(row);
             if (encoded.Length <= budget || (text.Length == 0 && string.IsNullOrEmpty(result)))
             {
                 return encoded;

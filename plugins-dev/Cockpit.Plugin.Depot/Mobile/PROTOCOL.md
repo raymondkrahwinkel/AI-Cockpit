@@ -388,8 +388,10 @@ not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
 - A row has the shape of § 10. Its `id` is the row's index in the whole transcript, a number. Indices skip the host's
   own markers (turn end, divider), so they are not always consecutive. The index only rises.
 - `total` is the length of the whole transcript.
-- A `kind` is one of `userText`, `assistantText`, `toolUse`, `toolResult`, `thinking` and `error`. These rows carry no
-  `timestamp` and no `toolName`.
+- A `kind` is one of `userText`, `assistantText`, `toolUse`, `toolResult`, `thinking` and `error`. These rows carry no `toolName`.
+- `timestamp` is the host transcript entry time as an ISO-8601 DateTimeOffset, as in section 10, on both
+  `session.transcript` and `session.history` rows. It is omitted when the source has no time; no time is invented.
+  The field is optional, so older phones remain compatible.
 - A row too big for a frame is cut, with `truncated: true`, as in § 10. When the rows do not all fit in one frame, the
   oldest are left out, and `more: true` says that rows were left out before the first row.
 - `readable: false` with no rows: the session has no readable transcript (a plain terminal, a provider without a reader),

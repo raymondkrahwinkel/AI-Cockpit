@@ -511,7 +511,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
     {
         var transcript = await _client.GetAsync<RemoteTranscript>($"{_Path}/transcript?count={count}").ConfigureAwait(false);
         return new SessionTranscriptSlice(
-            [.. transcript.Entries.Select(entry => new SessionTranscriptEntry(entry.Kind, entry.Text, entry.ToolResult))],
+            [.. transcript.Entries.Select(entry => new SessionTranscriptEntry(entry.Kind, entry.Text, entry.ToolResult) { Timestamp = entry.Timestamp })],
             transcript.TotalEntries);
     }
 
@@ -524,7 +524,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
         }
 
         return new SessionTranscriptSlice(
-            [.. transcript.Entries.Select(entry => new SessionTranscriptEntry(entry.Kind, entry.Text, entry.ToolResult))],
+            [.. transcript.Entries.Select(entry => new SessionTranscriptEntry(entry.Kind, entry.Text, entry.ToolResult) { Timestamp = entry.Timestamp })],
             transcript.TotalEntries);
     }
 
@@ -809,7 +809,10 @@ internal sealed record RemoteTranscript(
     long? Seq = null,
     int? Before = null);
 
-internal sealed record RemoteTranscriptEntry(string Kind, string Text, string? ToolResult);
+internal sealed record RemoteTranscriptEntry(string Kind, string Text, string? ToolResult)
+{
+    public DateTimeOffset? Timestamp { get; init; }
+}
 
 internal sealed record RemoteRowEvent(long Seq, int Version, TranscriptSnapshotEntry? Row);
 

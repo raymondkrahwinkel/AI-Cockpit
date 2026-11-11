@@ -61,4 +61,7 @@ public sealed record SessionTranscriptSlice(IReadOnlyList<SessionTranscriptEntry
 // AC-1013: One already-written transcript row (AC-609), Kind/Text/ToolResult. Trimmed: Kind is a name
 // from the host's own coarse vocabulary (UserText/AssistantText/ToolUse/ToolResult/Thinking/Error), shared
 // across providers, so a reader never needs to know which provider produced the row.
-public sealed record SessionTranscriptEntry(string Kind, string Text, string? ToolResult);
+public sealed record SessionTranscriptEntry(string Kind, string Text, string? ToolResult)
+{
+    public DateTimeOffset? Timestamp { get; init; }
+}
