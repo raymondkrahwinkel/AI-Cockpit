@@ -124,6 +124,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The panes a start from this window asked to select, by the id it minted; selected when they land.
     private readonly HashSet<string> _selectOnLanding = new(StringComparer.Ordinal);
     private readonly ISessionDialogService? _dialogService;
+    private Func<CockpitViewModel, string?, Task>? _presentOptions;
+    private Func<PluginManagerViewModel, PluginStoreFilter?, Task>? _presentPluginStore;
+    private Func<WorktreesViewModel, Task>? _presentWorktrees;
+
+    // AC-2278 supplies the server settings transaction; absent adapters must never report a successful save.
+    public bool CanEditOptions => !IsRemoteWindow || _remoteOptionsLoaded;
+
+    private bool _remoteOptionsLoaded;
     // AC-512: "Run setup again" (Help menu) reopens it; null (design-time/tests, or nothing registered) is a no-op.
     private readonly IFirstRunWizard? _firstRunWizard;
     private readonly HelpService? _help;
@@ -454,7 +462,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Dictionary<string, List<Func<Task>>> _settingsSavedHandlers = [];
 
     // The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins.
-    public PluginManagerViewModel Plugins { get; }
+    public PluginManagerViewModel Plugins { get; private set; }
 
     // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }
@@ -646,6 +654,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // nothing can reach them, and their pty and child process outlive the desk they belonged to.
     public async Task CloseWorkspaceAsync(string workspaceId)
     {
+        if (IsRemoteWindow)
+        {
+            await Workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaceId);
+            return;
+        }
         // The last workspace is not closable, and killing the sessions of a workspace that then stays is worse
         // than doing nothing: the desk survives, its work does not. Ask before touching either.
         if (!Workspaces.CanClose(workspaceId))
@@ -681,8 +694,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public Task<string?> PickDashboardExportPathAsync(string suggestedName) =>
         _dialogService is null ? Task.FromResult<string?>(null) : _dialogService.PickDashboardExportPathAsync(suggestedName);
 
+    private Func<string, string, string, Task<bool>>? _presentConfirmation;
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
-        _dialogService is null
+        _presentConfirmation is { } present ? present(title, message, confirmLabel) : _dialogService is null
             ? Task.FromResult(false)
             : _dialogService.ShowConfirmationDialogAsync(title, message, confirmLabel);
 
@@ -3209,8 +3224,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var sessionsDesk = Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions;
         foreach (var pane in _remotePanes)
         {
-            pane.IsOnActiveDesk = sessionsDesk;
-            pane.IsPaneVisible = sessionsDesk && !simple && (!single || pane.IsSelected);
+            var here = sessionsDesk && (!IsRemoteWindow || BelongsToActiveWorkspace(pane));
+            pane.IsOnActiveDesk = here;
+            pane.IsPaneVisible = here && !simple && (!single || pane.IsSelected);
         }
     }
 
@@ -3284,8 +3300,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // appeared, keeping the operator's chosen order for everything already tracked.
     private void _ReconcileSidebarOrder()
     {
-        _sidebarOrder.RemoveAll(session => !Sessions.Contains(session));
-        foreach (var session in Sessions)
+        IReadOnlyList<SessionPanelViewModel> sessions = IsRemoteWindow ? _remotePanes : Sessions;
+        _sidebarOrder.RemoveAll(session => !sessions.Contains(session));
+        foreach (var session in sessions)
         {
             if (!_sidebarOrder.Contains(session))
             {
@@ -3323,7 +3340,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
 
         // AC-1456: an opened remote pane stands on whichever Sessions desk is showing, after this laptop's own.
-        if (Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions)
+        if (!IsRemoteWindow && (Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions))
         {
             target.AddRange(_remotePanes);
         }
@@ -3448,12 +3465,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
     // session behind each one (AC-953).
     public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, ISessionRegistration? sessionRegistry = null, IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
-        : this(dockPanelRegistry, sessionRegistry, withSamples: true, workspaceTypeRegistry)
-    {
-    }
-
-    // AC-1487: `withSamples: false` is the `--remote` window's, which shows the server's sessions and none of its own.
-    private CockpitViewModel(IDockPanelRegistry? dockPanelRegistry, ISessionRegistration? sessionRegistry, bool withSamples, IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
     {
         // A test that reads the panes through the registry passes one; the sample sessions below then reach it too.
         _sessionRegistry = sessionRegistry;
@@ -3473,18 +3484,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _MirrorSessionsIntoGrid();
         _WireWaitingSessions();
 
-        if (withSamples)
-        {
-            var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
-            var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
-            var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
+        var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
+        var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
+        var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
-            _AttachSession(waiting);
-            _AttachSession(busy);
-            _AttachSession(tty);
-            _sessionCounter = Sessions.Count;
-            SelectedSession = waiting;
-        }
+        _AttachSession(waiting);
+        _AttachSession(busy);
+        _AttachSession(tty);
+        _sessionCounter = Sessions.Count;
+        SelectedSession = waiting;
 
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
@@ -3511,7 +3519,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.
-    public AssistantOptionsViewModel AssistantOptions { get; }
+    public AssistantOptionsViewModel AssistantOptions { get; private set; }
 
     public ModelIntelligenceOptionsViewModel ModelIntelligence { get; internal set; } = new();
 
@@ -3549,18 +3557,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public DiagnosticsViewModel Diagnostics { get; }
 
     public CockpitViewModel(
-        Func<SessionViewModel> sessionFactory,
-        Func<TtyViewModel> ttySessionFactory,
-        ISessionDialogService dialogService,
-        IAudioCaptureService captureService,
-        IAudioPlaybackService playbackService,
-        IAttentionNotifier attentionNotifier,
-        INotificationSettingsStore notificationSettingsStore,
-        ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
-        ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
-        ILayoutSettingsStore layoutSettingsStore,
-        IVoiceSettingsStore voiceSettingsStore,
-        ITerminalSettingsStore terminalSettingsStore,
+        Func<SessionViewModel>? sessionFactory,
+        Func<TtyViewModel>? ttySessionFactory,
+        ISessionDialogService? dialogService,
+        IAudioCaptureService? captureService,
+        IAudioPlaybackService? playbackService,
+        IAttentionNotifier? attentionNotifier,
+        INotificationSettingsStore? notificationSettingsStore,
+        ITranscriptDisplaySettingsStore? transcriptDisplaySettingsStore,
+        ISessionBehaviorSettingsStore? sessionBehaviorSettingsStore,
+        ILayoutSettingsStore? layoutSettingsStore,
+        IVoiceSettingsStore? voiceSettingsStore,
+        ITerminalSettingsStore? terminalSettingsStore,
         IPluginRegistrationStore? pluginRegistrationStore = null,
         IPluginAdministration? pluginAdministration = null,
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
@@ -3692,7 +3700,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionMcpRestore? sessionMcpRestore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null,
-        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null)
+        IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null,
+        bool deferOptionsLoad = false)
     {
         MentionSources = mentionSources;
         _heavyRunSettingsStore = heavyRunSettingsStore;
@@ -3854,10 +3863,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = Worktrees.RefreshCountAsync();
         _worktreeSettingsStore = worktreeSettingsStore;
         WorktreeRootPlaceholder = worktreeSettingsStore?.DefaultRoot ?? string.Empty;
-        _ = LoadWorktreeSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadWorktreeSettingsAsync();
+        }
         _cloneSettingsStore = cloneSettingsStore;
         CloneRootPlaceholder = cloneSettingsStore?.DefaultRoot ?? string.Empty;
-        _ = LoadCloneSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadCloneSettingsAsync();
+        }
         _audioDeviceProvider = audioDeviceProvider;
         _audioCapture = audioCapture;
         IsAudioAvailable = audioAvailability?.IsAvailable ?? true;
@@ -3875,7 +3890,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the design-time manager is used, so the tab is inert.
         Plugins = pluginAdministration is not null && pluginRegistrationStore is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
-                && pluginDiagnostics is not null
+                && pluginDiagnostics is not null && dialogService is not null
             ? new PluginManagerViewModel(pluginAdministration, pluginRegistrationStore, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, this, appRestartService, workflowTemplateLibrary, pluginStoreSources)
             : new PluginManagerViewModel();
         // a plugin's fire-and-forget AddMcpServer completing on a background continuation) — without this, the banner
@@ -3955,19 +3970,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             RefreshPaneVisibility();
         };
 
-        _ = LoadNotificationSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadNotificationSettingsAsync();
+        }
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadUsagePillSettingsAsync();
-        _ = LoadSessionBehaviorSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadSessionBehaviorSettingsAsync();
+        }
         _ = LoadScreenshotSettingsAsync();
         _ = LoadQuickNoteSettingsAsync();
         _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
-        _ = LoadTerminalSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadTerminalSettingsAsync();
+        }
         // Construction cannot await policy metadata; the task logs failures and updates the bindings when ready.
         _ = LoadManagedSettingsAsync();
         _ = LoadShortcutSettingsAsync();
-        _ = LoadDebugSettingsAsync();
+        if (!deferOptionsLoad)
+        {
+            _ = LoadDebugSettingsAsync();
+        }
         _ = LoadRenderingSettingsAsync();
         _ = LoadPluginMenuPreferencesAsync(pluginRegistrationStore);
 
@@ -6213,7 +6240,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
     private void _BuildTerminalShellChoices(string configured)
     {
-        var shells = ShellCatalog.Detect();
+        var shells = _terminalSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
 
         TerminalShellChoices.Clear();
         var osDefaultLabel = shells.Count > 0 ? $"OS default ({shells[0].DisplayName})" : "OS default";
@@ -6493,6 +6520,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task NewSessionAsync()
     {
+        if (IsRemoteWindow)
+        {
+            if (ServerGroups.FirstOrDefault() is { } server)
+            {
+                await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+                await OpenServerStartAsync(server);
+            }
+
+            return;
+        }
+
         if (_sessionFactory is null || _ttySessionFactory is null || _dialogService is null)
         {
             return;
@@ -6508,9 +6546,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Runtime-only, exactly like an AI session (AC-25).
-    [RelayCommand]
+    private bool CanStartTerminal => _ttySessionFactory is not null || IsRemoteWindow;
+
+    [RelayCommand(CanExecute = nameof(CanStartTerminal))]
     private void NewTerminal()
     {
+        // AC-2288: a remote window's terminal is a shell on its server; nothing starts on this machine.
+        if (IsRemoteWindow)
+        {
+            _ = _OpenServerTerminalAsync();
+            return;
+        }
+
         if (_ttySessionFactory is null)
         {
             return;
@@ -6530,10 +6577,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // "New terminal (administrator)" (AC-967): the same shell as `NewTerminal`, but started elevated through
     // `ShellExecuteEx`+`runas`, which means its own OS console window instead of a pane — an elevated process
     // cannot be adopted into our ConPTY. Windows-only; nothing here runs on another platform.
-    [RelayCommand]
+    private bool CanStartLocalTerminal => _ttySessionFactory is not null;
+
+    [RelayCommand(CanExecute = nameof(CanStartLocalTerminal))]
     private void NewElevatedTerminal()
     {
-        if (!IsWindowsPlatform)
+        if (!IsWindowsPlatform || IsRemoteWindow)
         {
             return;
         }
@@ -6556,7 +6605,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // its path differs), otherwise the OS default — the first shell `ShellCatalog` detects.
     private ShellDescriptor? _ResolveDefaultShell()
     {
-        var shells = ShellCatalog.Detect();
+        var shells = _terminalSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote ? remote.Shells : ShellCatalog.Detect();
 
         // The effective configured value: the typed path/command when on "Custom…", else the picked shell's id.
         var configured = (IsTerminalShellCustom ? TerminalCustomShell : SelectedTerminalShell?.Value)?.Trim();
@@ -6736,6 +6785,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // decides when, or whether, to send it. Without a job this is the plain route, unchanged.
     private async Task _NewSessionForProjectAsync(Project? project, ProjectJob? job)
     {
+        if (project is not null && IsRemoteWindow)
+        {
+            await _StartServerProjectAsync(project);
+            return;
+        }
+
         if (project is null || _dialogService is null)
         {
             return;
@@ -6766,7 +6821,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void OpenProjectFolder(Project? project)
     {
-        if (project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
+        // AC-2285: a server project's folder is never looked up on this machine.
+        if (IsRemoteWindow || project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
         {
             return;
         }
@@ -7221,6 +7277,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task MoveSessionToWorkspaceAsync((SessionPanelViewModel Session, string TargetWorkspaceId) move)
     {
         var (session, targetWorkspaceId) = move;
+        if (IsRemoteWindow)
+        {
+            try
+            {
+                if (ServerGroups.FirstOrDefault() is { Server.Launcher: IWorkspaceCommands commands } group
+                    && group.Sessions.FirstOrDefault(row => ReferenceEquals(row.Pane, session)) is { } row)
+                {
+                    await commands.MoveSessionPaneAsync(row.Handle.PaneId, targetWorkspaceId);
+                }
+            }
+            catch (Exception exception)
+            {
+                ToastHost.Add($"Could not move this session: {exception.Message}", ToastSeverity.Error, null, null);
+            }
+            return;
+        }
         if (session.WorkspaceId == targetWorkspaceId)
         {
             return;
@@ -7319,6 +7391,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task EditAssistantProfileAsync()
     {
+        if (_editRemoteAssistantProfile is { } edit)
+        {
+            await edit();
+            await AssistantOptions.RefreshAsync();
+            return;
+        }
+
         if (_dialogService is null)
         {
             return;
@@ -7370,7 +7449,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _ShowOptionsAsync(string? category = null)
     {
-        if (_dialogService is null)
+        var present = _presentOptions ?? (_dialogService is { } dialogs ? dialogs.ShowOptionsDialogAsync : null);
+        if (present is null)
         {
             return;
         }
@@ -7379,7 +7459,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // may be editing.
         if (_optionsStaged)
         {
-            await _dialogService.ShowOptionsDialogAsync(this, category);
+            await present(this, category);
             return;
         }
 
@@ -7389,14 +7469,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The plugin list decides which plugin pages the dialog has at all, so it is read before the dialog is built.
         // With the closure hashes cached (AC-2018) that is a directory walk, not a read of every plugin byte.
         await Plugins.LoadAsync();
-        await LoadHeavyRunSettingsAsync();
+        if (IsRemoteWindow)
+        {
+            try
+            {
+                await (_remoteServers?.ReloadAsync() ?? Task.CompletedTask);
+                if (_prepareRemoteProfiles is { } prepare)
+                {
+                    await prepare();
+                }
+                await LoadNotificationSettingsAsync();
+                await LoadSessionBehaviorSettingsAsync();
+                await LoadTerminalSettingsAsync();
+                await LoadDebugSettingsAsync();
+                await LoadWorktreeSettingsAsync();
+                await LoadCloneSettingsAsync();
+                WorktreeRootPlaceholder = _worktreeSettingsStore?.DefaultRoot ?? string.Empty;
+                CloneRootPlaceholder = _cloneSettingsStore?.DefaultRoot ?? string.Empty;
+                await LoadHeavyRunSettingsAsync();
+                await Security.RefreshAsync();
+                await LoadRemoteServerKeysAsync();
+                _remoteOptionsLoaded = true;
+            }
+            catch (Exception)
+            {
+                _remoteOptionsLoaded = false;
+                NotificationSettingsStatus = "Could not load server settings. Reopen Options to retry.";
+            }
+            OnPropertyChanged(nameof(CanEditOptions));
+        }
+        else
+        {
+            await LoadHeavyRunSettingsAsync();
+        }
         _MarkOptionsOpen("plugins");
 
         // AC-2018: the rest is read after the dialog is on screen, each page covered by a loading state until its own
         // data is in. Profiles are re-read so that what Cancel reverts to is the store, not stale startup state.
         OptionsLoadingPages = new HashSet<string>(_OptionsPagesLoadedAfterOpen, StringComparer.Ordinal);
         BeginOptionsEdit();
-        var shown = _dialogService.ShowOptionsDialogAsync(this, category);
+        var shown = present(this, category);
         await Task.WhenAll(
             _LoadOptionsPageAsync("voice", _RefreshAudioDevicesAsync),
             _LoadOptionsPageAsync("profiles", () => Profiles?.LoadAsync() ?? Task.CompletedTask),
@@ -7481,13 +7593,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the full Options→Plugins tab. Skips the audio-device refresh `OptionsAsync` does since it is irrelevant here.
     public async Task OpenPluginStoreUpdatesAsync()
     {
-        if (_dialogService is null)
+        var present = _presentPluginStore ?? (_dialogService is { } dialogs ? dialogs.ShowPluginStoreDialogAsync : null);
+        if (present is null)
         {
             return;
         }
 
         await Plugins.LoadAsync();
-        await _dialogService.ShowPluginStoreDialogAsync(Plugins, PluginStoreFilter.UpdatesAvailable);
+        await present(Plugins, PluginStoreFilter.UpdatesAvailable);
     }
 
     // Opens the plugin store from the sidebar (AC-76) — on the Updates filter when updates are waiting (the sidebar
@@ -7495,13 +7608,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task OpenPluginStoreAsync()
     {
-        if (_dialogService is null)
+        var present = _presentPluginStore ?? (_dialogService is { } dialogs ? dialogs.ShowPluginStoreDialogAsync : null);
+        if (present is null)
         {
             return;
         }
 
         await Plugins.LoadAsync();
-        await _dialogService.ShowPluginStoreDialogAsync(Plugins, Plugins.HasUpdateBadge ? PluginStoreFilter.UpdatesAvailable : null);
+        await present(Plugins, Plugins.HasUpdateBadge ? PluginStoreFilter.UpdatesAvailable : null);
     }
 
     // Opens the About dialog (#46) from the sidebar: app name, version, description and links.
@@ -7621,12 +7735,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task ShowWorktreesAsync()
     {
-        if (_dialogService is null)
+        var present = _presentWorktrees ?? (_dialogService is { } dialogs ? dialogs.ShowWorktreesDialogAsync : null);
+        if (present is null)
         {
             return;
         }
 
-        await _dialogService.ShowWorktreesDialogAsync(Worktrees);
+        await present(Worktrees);
 
         // The dialog may have removed or reattached worktrees; bring the status-bar counter back in step.
         await Worktrees.RefreshCountAsync();
@@ -7736,28 +7851,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static string _PrettifyGesture(string gesture) =>
         string.IsNullOrWhiteSpace(gesture) ? string.Empty : gesture.Replace("+", " + ");
 
+    private string _optionsSavingCategory = "sessions";
+
     // Persists every options section in one go — the Options dialog's single footer Save (#13)
     // replaces the six per-section Save buttons the flyout used to have.
     [RelayCommand]
     private async Task SaveAllSettingsAsync()
     {
+        _optionsSavingCategory = "notifications";
         await SaveNotificationSettingsCommand.ExecuteAsync(null);
-        await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
-        await SaveUsagePillSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "sessions";
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
         await SaveHeavyRunSettingsAsync();
-        // Before the voice save, which is what raises VoiceSettingsSaved — the hotkey coordinator re-arms on that
-        // and reads both sections, so a screenshot key saved after it would not be armed until the next launch.
+        _optionsSavingCategory = "terminal";
+        await SaveTerminalSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "debug";
+        await SaveDebugSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "sessions";
+        await SaveWorktreeSettingsCommand.ExecuteAsync(null);
+        await SaveCloneSettingsCommand.ExecuteAsync(null);
+        if (_notificationSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote)
+        {
+            _optionsSavingCategory = "assistant";
+            await AssistantOptions.SaveStagedAsync();
+            _optionsSavingCategory = "appearance";
+            await remote.SaveClientPresentationAsync();
+        }
+
+        _optionsSavingCategory = "appearance";
+        await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
+        await SaveUsagePillSettingsCommand.ExecuteAsync(null);
+        // Screenshot settings precede voice: saving voice re-arms the hotkeys using both groups.
         await SaveScreenshotSettingsCommand.ExecuteAsync(null);
         await SaveQuickNoteSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "voice";
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
-        await SaveTerminalSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "shortcuts";
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
-        await SaveDebugSettingsCommand.ExecuteAsync(null);
+        _optionsSavingCategory = "appearance";
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
-        await SaveWorktreeSettingsCommand.ExecuteAsync(null);
-        await SaveCloneSettingsCommand.ExecuteAsync(null);
     }
 
     // What makes that safe to take back is that none of it reaches `cockpit.json` while the dialog is open:
@@ -7918,6 +8051,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _ApplyOptionsAsync(bool endEdit)
     {
+        if (!CanEditOptions)
+        {
+            return;
+        }
+
         var measurement = new OptionsMeasurement("apply");
         OptionsApplyBlocked = false;
         OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -8007,6 +8145,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 OptionsApplyBlocked = true;
             }
 
+            try
+            {
+                await SaveAllSettingsAsync();
+            }
+            catch (Exception error) when (IsRemoteWindow)
+            {
+                OptionsApplyBlocked = true;
+                OptionsApplyBlockedCategoryTag = _optionsSavingCategory;
+                OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [_optionsSavingCategory] = error is Cockpit.Core.Abstractions.Remote.IRemoteCallFailure
+                        ? error.Message
+                        : "Could not save these settings. Check the connection and available storage, then retry.",
+                };
+                return;
+            }
+
             // Left running when blocked: `_EndOptionsEdit` clears `PluginOptionsRows`, which is exactly the row the
             // operator still needs to fix and retry — ending the edit here would make a second Apply silently skip
             // it instead of validating it again. AC-1287: an Apply that keeps the dialog open leaves it running too.
@@ -8015,7 +8170,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _EndOptionsEdit();
             }
 
-            await SaveAllSettingsAsync();
             measurement.Mark("core");
         }
 
@@ -8038,7 +8192,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         measurement.Mark("delegation");
 
-        await AssistantOptions.SaveStagedAsync();
+        if (!IsRemoteWindow)
+        {
+            await AssistantOptions.SaveStagedAsync();
+        }
         measurement.Mark("assistant");
         await ModelIntelligence.SaveStagedAsync();
         measurement.Mark("models");
@@ -8100,6 +8257,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // old values back out — a Cancel that saves.
     [RelayCommand]
     private async Task CancelOptionsAsync()
+    {
+        var remote = _notificationSettingsStore as Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores;
+        if (remote is not null)
+        {
+            remote.ReadConfirmedValues = true;
+        }
+
+        try
+        {
+            await _CancelOptionsFromStoresAsync();
+        }
+        finally
+        {
+            if (remote is not null)
+            {
+                remote.ReadConfirmedValues = false;
+            }
+        }
+    }
+
+    private async Task _CancelOptionsFromStoresAsync()
     {
         // AC-2018: nothing the fingerprint covers has moved, so the twenty re-reads of cockpit.json below would only put
         // back what is already there (1.6 s measured). The MCP servers are the one edited list it does not cover.
@@ -9912,6 +10090,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // resuming it under its own pane id, so the launcher repaints its recorded transcript. Refused for `ConversationRefusalAsync`'s reason.
     public async Task<ConversationReopenResult> ReopenConversationAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        if (IsRemoteWindow)
+        {
+            return await _ReopenServerConversationAsync(record);
+        }
         if (await ConversationRefusalAsync(record, cancellationToken) is { } refusal)
         {
             return new ConversationReopenResult(false, refusal);
@@ -9968,6 +10150,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-1532: why a conversation cannot be brought back, or null when it can — the one answer Continue and Reopen share.
     internal async Task<string?> ConversationRefusalAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        if (IsRemoteWindow)
+        {
+            return ServerGroups.FirstOrDefault()?.IsConnected != true ? "The server is not connected."
+                : record.IsAssistant || record.ProfileId is null || record.ConversationId is null ? "This conversation cannot be resumed." : null;
+        }
         if (Sessions.Any(session => session.PaneId == record.PaneId))
         {
             return null;

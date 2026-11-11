@@ -1645,12 +1645,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     internal async Task FollowRemoteAsync(ISessionHandle handle, string server)
     {
         RemoteServer = server;
+        // AC-2285: a step's folder or made file is on the server; opening that path here would open a local one.
+        OpenPath = _ => false;
         _remoteControl = handle.Control;
         _remoteHandle = handle;
         OnPropertyChanged(nameof(AllowLabel));
         Title = handle.Title;
         Statusline = handle.Statusline;
         ActiveProfileLabel = handle.ActiveProfileLabel;
+        ProjectId = handle.ProjectId;
+        StartedByTheAssistant = handle.StartedByTheAssistant;
         SessionStatus = handle.SessionStatus;
         Status = $"Runs on {server}.";
         SetRemoteLink(isUp: false, mayAnswerPermissions: false, allowsForSession: false);
@@ -1737,11 +1741,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         entry.PermissionDecision = $"Answering on {RemoteServer}…";
         try
         {
-            // The by-id route says whether the server took the answer; a structured answer has no such route.
             var answered = true;
-            if (answersJson is null && _remoteHandle is { } handle)
+            if (_remoteHandle is { } handle)
             {
-                answered = await handle.RespondToPermissionByIdAsync(entry.ToolUseId, allow, forSession).ConfigureAwait(true);
+                answered = await (answersJson is null
+                    ? handle.RespondToPermissionByIdAsync(entry.ToolUseId, allow, forSession)
+                    : handle.RespondToPermissionWithAnswersAsync(entry.ToolUseId, allow, answersJson)).ConfigureAwait(true);
             }
             else
             {
@@ -2448,6 +2453,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // agent on the tool result.
     public override async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
     {
+        if (_remoteHandle is { } remote)
+        {
+            return IsLinkUp && await remote.FeedVerifyResultAsync(caption, screenshotPng);
+        }
         if (!_control.IsRunning || !CanPasteImages)
         {
             return false;
@@ -2816,6 +2825,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-1476: a session-wide allow is the pane's own exact "Always".
         await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow, origin: origin));
+        return true;
+    }
+
+    internal async Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson)
+    {
+        if (_PendingRows().FirstOrDefault(row => row.ToolUseId == toolUseId) is not { } entry)
+        {
+            return false;
+        }
+        await RespondToPermissionAsync(entry, allow, answersJson);
         return true;
     }
 

@@ -28,9 +28,17 @@ internal static class StorageSettingsEndpoints
                 return body is null ? refused : BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The body names only automaticDockerCleanup.");
             }
 
-            var stored = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
-            await store().SaveAsync(stored with { AutomaticDockerCleanup = enabled }, cancellationToken).ConfigureAwait(false);
-            return Results.Json(new StorageSettingsBody(enabled), ConnectKeyEndpoints.Json);
+            await OptionsSettingsEndpoints.EditGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var stored = await store().LoadAsync(cancellationToken).ConfigureAwait(false);
+                await store().SaveAsync(stored with { AutomaticDockerCleanup = enabled }, cancellationToken).ConfigureAwait(false);
+                return Results.Json(new StorageSettingsBody(enabled), ConnectKeyEndpoints.Json);
+            }
+            finally
+            {
+                OptionsSettingsEndpoints.EditGate.Release();
+            }
         }).RequireAdmin().Audited("storage_settings", services);
     }
 }

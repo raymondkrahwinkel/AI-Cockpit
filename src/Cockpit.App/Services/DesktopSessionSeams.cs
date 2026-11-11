@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Workspaces;
 
@@ -11,14 +12,58 @@ namespace Cockpit.App.Services;
 // sessions, what it keeps about a project, and the assistant's window. Sessions and desks only change on the UI thread,
 // so that thread is the exclusion, with the deadlines the gateway always had (AC-1375).
 internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
-    : ISessionDesks, ISessionHosting, ISessionStartObserver, IAssistantSessionFactory
+    : ISessionDesks, ISessionHosting, ISessionStartObserver, IAssistantSessionFactory, IWorkspaceCommands
 {
+    private readonly Lock _workspaceGate = new();
+    private WorkspacesViewModel? _workspaces;
+
+    public event EventHandler? Changed;
+
+    // Observing the backend's events must not construct the desktop before its normal startup (AC-2286).
+    private WorkspacesViewModel _Workspaces
+    {
+        get
+        {
+            lock (_workspaceGate)
+            {
+                if (_workspaces is null)
+                {
+                    _workspaces = cockpit().Workspaces;
+                    _workspaces.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
+                }
+                return _workspaces;
+            }
+        }
+    }
+
+    public Task<Workspace> CreateWorkspaceAsync(Workspace workspace) =>
+        UiThreadCall.RunAsync(() => cockpit().Workspaces.CreateWorkspaceAsync(workspace));
+
+    public Task UpdateWorkspaceAsync(Workspace workspace) =>
+        UiThreadCall.RunAsync(() => cockpit().Workspaces.UpdateWorkspaceAsync(workspace));
+
+    public Task SelectWorkspaceAsync(string workspaceId) =>
+        UiThreadCall.RunAsync(() => cockpit().Workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaceId));
+
+    public Task MoveWorkspaceAsync(string workspaceId, int index) =>
+        UiThreadCall.RunAsync(() => cockpit().Workspaces.MoveWorkspaceToIndexAsync(workspaceId, index));
+
+    public Task<bool> MoveSessionPaneAsync(string paneId, string targetWorkspaceId) => UiThreadCall.RunAsync(async () =>
+    {
+        var desktop = cockpit();
+        if (desktop.Sessions.FirstOrDefault(session => session.PaneId == paneId) is not { } session)
+        {
+            return false;
+        }
+        await desktop.MoveSessionToWorkspaceCommand.ExecuteAsync((session, targetWorkspaceId));
+        return session.WorkspaceId == targetWorkspaceId;
+    });
     public Task<T> OnOwnerThreadAsync<T>(Func<Task<T>> action) =>
         Dispatcher.UIThread.CheckAccess() ? action() : Dispatcher.UIThread.InvokeAsync(action);
 
     public Task<T> RunExclusiveAsync<T>(Func<T> decision) => UiThreadCall.RunAsync(decision);
 
-    public WorkspaceSettings Workspaces => cockpit().Workspaces.Settings;
+    public WorkspaceSettings Workspaces => _Workspaces.Settings;
 
     // The Simple stand keeps its own selection (AC-1301), so the stand on screen decides which one counts.
     public string? SelectedPaneId => cockpit() is { SimpleView: var simple } desktop

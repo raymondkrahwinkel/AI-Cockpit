@@ -54,7 +54,7 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         _ = host.AddMcpEndpoint(ScheduleMcpTools.EndpointName, new ScheduleMcpTools(host, tasks, runs, _engine, agentPrompt, delivery, reminders));
 
         // AC-1546: the screen's operations, over the channel the UI part (or a remote one) talks to.
-        _handlers = new SchedulesChannelHandlers(host, tasks, runs, _engine, agentPrompt, delivery, settings, TimeProvider.System).Register();
+        _handlers = new SchedulesChannelHandlers(host, tasks, runs, _engine, agentPrompt, delivery, settings, TimeProvider.System, reminders).Register();
     }
 
     public void Dispose()

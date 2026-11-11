@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Composition;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Configuration;
@@ -16,10 +17,12 @@ internal sealed class RemoteStartup : IDisposable
     private readonly InstallationInstanceGuard _installation;
     private readonly ILoggerFactory _loggers;
     private RemoteInstanceConnection? _connection;
+    private readonly string _localRoot;
 
-    private RemoteStartup(string server, SingleInstanceGuard singleInstance, ILoggerFactory loggers, LocalRegistry? registry, string? refusal)
+    private RemoteStartup(string server, string localRoot, SingleInstanceGuard singleInstance, ILoggerFactory loggers, LocalRegistry? registry, string? refusal)
     {
         Server = server;
+        _localRoot = localRoot;
         _singleInstance = singleInstance;
         _loggers = loggers;
         Logger = loggers.CreateLogger("Cockpit.App.RemoteWindow");
@@ -66,11 +69,16 @@ internal sealed class RemoteStartup : IDisposable
             refusal = exception.Message;
         }
 
-        return new RemoteStartup(server, singleInstance, loggers, registry, refusal);
+        return new RemoteStartup(server, localRoot, singleInstance, loggers, registry, refusal);
     }
 
     // The window's view model over its one server, on the UI thread; null, with `Refusal` set, when there is no key for it.
-    public CockpitViewModel? Open(Func<ServerAdminViewModel, Task> showServerAdmin)
+    public CockpitViewModel? Open(
+        Func<CockpitViewModel, string?, Task>? presentOptions = null,
+        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
+        Func<string, string, string, Task<bool>>? confirm = null,
+        Func<ProjectDialogViewModel, Task>? presentProjectDialog = null,
+        RemoteWindowUi? ui = null)
     {
         if (Registry?.Connect(Server, _loggers) is not { } connection)
         {
@@ -80,7 +88,15 @@ internal sealed class RemoteStartup : IDisposable
 
         _connection = connection;
         return CockpitViewModel.ForRemoteWindow(
-            Server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), showServerAdmin);
+            Server, connection.Servers, connection.Nodes, new RemoteServerSignIns(connection.Servers), presentOptions, presentPluginStore, confirm, presentProjectDialog, ui);
+    }
+
+    internal async Task InitializeUiAsync(RemoteWindowUi ui, CockpitViewModel cockpit)
+    {
+        if (_connection is { } connection)
+        {
+            await ui.InitializeAsync(cockpit, connection.Servers, Server, _localRoot);
+        }
     }
 
     public void Dispose()

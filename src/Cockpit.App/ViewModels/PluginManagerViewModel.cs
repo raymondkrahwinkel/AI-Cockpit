@@ -20,12 +20,13 @@ public partial class PluginManagerViewModel : ViewModelBase
     // the menu preferences, and the store client for the logos and templates.
     private readonly IPluginAdministration? _administration;
     private readonly IPluginRegistrationStore? _registrationStore;
-    private readonly ISessionDialogService? _dialogService;
+    private readonly IPluginManagerDialogs? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
     private readonly IPluginStoreSources? _storeSources;
     private readonly bool _refreshSourcesOnDispatcher;
     private bool _sourcesDirty;
+    private readonly SemaphoreSlim _loading = new(1, 1);
 
     public IReadOnlyList<string> HiddenStoreSourceKeys => StoreInfos.Where(info => info.IsHidden)
         .Select(info => info.Store.Signed?.SourceKey).OfType<string>().ToList();
@@ -233,7 +234,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     public PluginManagerViewModel(
         IPluginAdministration administration,
         IPluginRegistrationStore registrationStore,
-        ISessionDialogService dialogService,
+        IPluginManagerDialogs dialogService,
         IPluginStoreConfigStore storeConfigStore,
         IPluginStoreClient storeClient,
         IReadOnlyDictionary<string, PluginSettingsRegistration> settingsRegistry,
@@ -263,15 +264,26 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     public PluginManagerViewModel(
         IPluginAdministration administration,
-        ISessionDialogService dialogService,
+        IPluginManagerDialogs dialogService,
         IReadOnlyList<PluginStoreConfig> stores,
         string? server = null,
-        IAppRestartService? restartService = null)
+        IAppRestartService? restartService = null,
+        IPluginContributionSink? contributionSink = null,
+        IReadOnlyDictionary<string, PluginSettingsRegistration>? settingsRegistry = null)
     {
         _administration = administration;
         _dialogService = dialogService;
         _server = server;
         _restartService = restartService;
+        _storeConfigStore = administration as IPluginStoreConfigStore;
+        _storeSources = administration as IPluginStoreSources;
+        _contributionSink = contributionSink;
+        _settingsRegistry = settingsRegistry;
+        _refreshSourcesOnDispatcher = SynchronizationContext.Current is AvaloniaSynchronizationContext;
+        if (_storeSources is not null)
+        {
+            _storeSources.SourcesChanged += _OnStoreSourcesChanged;
+        }
         foreach (var store in stores)
         {
             Stores.Add(store);
@@ -282,7 +294,13 @@ public partial class PluginManagerViewModel : ViewModelBase
         _WatchPluginsForPendingApprovalBadge();
     }
 
-    public bool CanManageStores => _administration is not IPluginStoreCatalog && _storeConfigStore is not null;
+    public bool CanManageStores => _storeConfigStore is not null;
+
+    public bool IsServer => _server is not null;
+
+    internal Func<IReadOnlyList<InstalledPlugin>, Task>? InstalledChanged { get; init; }
+
+    internal Func<string, IDisposable>? BeginUiChange { get; init; }
 
     // Browsing the stores rebuilds that collection, so the gate has to be re-raised from the collection itself —
     // notifying only from the install/update paths left the button hidden right after the store loaded, the one moment
@@ -355,9 +373,26 @@ public partial class PluginManagerViewModel : ViewModelBase
     // every change (AC-455).
     public async Task LoadAsync()
     {
+        await _loading.WaitAsync();
+        try
+        {
+            await _LoadAsync();
+        }
+        finally
+        {
+            _loading.Release();
+        }
+    }
+
+    private async Task _LoadAsync()
+    {
         if (_administration is not null)
         {
             var installed = await _administration.GetInstalledAsync();
+            if (InstalledChanged is { } changed)
+            {
+                await changed(installed);
+            }
 
             // AC-208: from here on PendingApprovalCount reads live off Plugins rather than the startup seed — a
             // real discovery just ran, so it is the fresher, and only source that drops to 0 as the operator acts.
@@ -398,7 +433,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             var offers = offered?.Where(pair => PluginFolderName.Normalize(pair.Key) == row.FolderId)
                 .SelectMany(pair => pair.Value).Select(offer => new InstalledPluginOffer(offer.Store, offer.Entry, offer.RevokedKeys)).ToList();
             row.Source = InstalledPluginSource.Build(
-                saved?.GetValueOrDefault(row.FolderId)?.Source,
+                saved?.GetValueOrDefault(row.FolderId)?.Source ?? row.InstalledSource,
                 row.Discovered.Manifest.Version,
                 sources,
                 offers,
@@ -416,12 +451,12 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        Stores.Clear();
-        StoreInfos.Clear();
+        _sourcesDirty = false;
         var sources = _storeSources is null
             ? (await _storeConfigStore.LoadAsync()).Select(store => new PluginStoreSourceInfo(store)).ToList()
             : await _storeSources.LoadAsync();
-        _sourcesDirty = false;
+        Stores.Clear();
+        StoreInfos.Clear();
         foreach (var source in sources)
         {
             if (!source.IsHidden && !source.IsWithdrawn)
@@ -445,7 +480,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             {
                 if (!IsBusy)
                 {
-                    await _LoadStoresAsync();
+                    await LoadAsync();
                     await BrowseStoresAsync();
                 }
             });
@@ -458,7 +493,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     }
 
     // Whether a zip install can be started — it reaches the same installer as a store install, so it is closed while the store is working (AC-420). Nothing queues: the button goes dead and the operator presses it again afterwards.
-    public bool CanInstallFromZip => !IsBusy;
+    public bool CanInstallFromZip => !IsBusy && !IsServer;
 
     [RelayCommand(CanExecute = nameof(CanInstallFromZip))]
     private async Task InstallFromZipAsync()
@@ -616,11 +651,12 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         // A live disable closes this plugin's workspaces at once, so what would ask on closing a tab asks here.
-        if (_server is null && _contributionSink is not null && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(row.FolderId))
+        if (_contributionSink is not null && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(row.FolderId))
         {
             return;
         }
 
+        using var uiChange = BeginUiChange?.Invoke(row.FolderId);
         var state = await _administration.SetEnabledAsync(row.FolderId, enabled: false, row.Discovered.Sha256);
         await LoadAsync();
         if (state is { IsLive: true })
@@ -653,11 +689,12 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        if (_server is null && _contributionSink is not null && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(row.FolderId))
+        if (_contributionSink is not null && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(row.FolderId))
         {
             return;
         }
 
+        using var uiChange = BeginUiChange?.Invoke(row.FolderId);
         var state = await _administration.RemoveAsync(row.FolderId);
         await LoadAsync();
         if (state is { IsLive: true })
@@ -726,7 +763,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                 return false;
             }
 
-            if (!Directory.Exists(folder))
+            if (!IsServer && !Directory.Exists(folder))
             {
                 error = "That folder does not exist.";
                 return false;
@@ -946,6 +983,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             _ExitBusy();
             if (_sourcesDirty)
             {
+                await LoadAsync();
                 await BrowseStoresAsync();
             }
         }
@@ -964,7 +1002,8 @@ public partial class PluginManagerViewModel : ViewModelBase
                 continue;
             }
 
-            var bound = PluginSourceBinding.Resolve(saved?.GetValueOrDefault(folderId)?.Source, offers.Select(offer => offer.Store.SourceKey));
+            var bound = PluginSourceBinding.Resolve(saved?.GetValueOrDefault(folderId)?.Source
+                ?? Plugins.FirstOrDefault(plugin => plugin.FolderId == folderId)?.InstalledSource, offers.Select(offer => offer.Store.SourceKey));
             if (bound is null)
             {
                 continue; // several stores, no recorded source: first store wins, as before
@@ -1421,6 +1460,14 @@ public partial class PluginManagerViewModel : ViewModelBase
     // walk for a fresh install, the registration re-pin for a staged update.
     private async Task<InstallOutcome> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null, bool interactive = true, bool switchSource = false)
     {
+        var folder = PluginFolderName.Normalize(row.Id);
+        if (row.IsInstalled && BeginUiChange is not null && interactive && _contributionSink is not null
+            && !await _contributionSink.ConfirmPluginWorkspacesCloseAsync(folder))
+        {
+            StatusMessage = "The plugin update was cancelled. Your workspace stays open.";
+            return new InstallOutcome(false, null);
+        }
+        using var uiChange = row.IsInstalled && interactive ? BeginUiChange?.Invoke(folder) : null;
         if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
         {
             StatusMessage = $"'{row.Name}' has no downloadable version in the store.";

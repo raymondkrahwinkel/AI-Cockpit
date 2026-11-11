@@ -40,6 +40,19 @@ public sealed record Workspace(string Id, string Name, WorkspaceType Type)
     public static Workspace Create(string name, WorkspaceType type) =>
         new(Guid.NewGuid().ToString("n"), name, type);
 
+    public Workspace WithPresentation(Workspace presentation) => this with
+    {
+        Layout = presentation.Layout.Clamped(),
+        SingleSessionLayout = presentation.SingleSessionLayout,
+        StackSessionsVertically = presentation.StackSessionsVertically,
+        FocusRailLayout = presentation.FocusRailLayout,
+        FocusRailWeight = presentation.FocusRailWeight,
+        IsPreview = presentation.IsPreview,
+        Panes = Type == WorkspaceType.Dashboard
+            ? [.. presentation.Panes.Select(pane => new WorkspacePane(pane.Id, PaneKind.Widget) { Cell = pane.Cell, WidgetId = pane.WidgetId })]
+            : Panes,
+    };
+
     // This workspace with `pane` added. Throws when the pane's kind does not belong in this
     // workspace's type — the invariant is enforced here rather than trusted to every caller, since a pane in
     // the wrong workspace has no view that can render it.

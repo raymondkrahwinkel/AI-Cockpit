@@ -47,7 +47,8 @@ internal sealed partial class CockpitUiHost(
     IPluginWindowActions actions,
     IPluginActiveSession activeSession,
     IReadOnlyList<string> declaredSecretKeys,
-    PluginRuntime? runtime = null) : ICockpitUiHost
+    PluginRuntime? runtime = null,
+    IPluginUiChannel? channel = null) : ICockpitUiHost
 {
     // AC-2024: the same rule as PluginBackendHost.Runtime. What the sink holds is keyed by plugin, so one undo covers it.
     private readonly PluginRuntime _runtime = _WithContributions(runtime ?? new PluginRuntime(pluginId), contributionSink, dialogHost);
@@ -62,11 +63,13 @@ internal sealed partial class CockpitUiHost(
     // AC-2024: a widget's settings dialog is the host's, so it is found by widget type rather than by plugin.
     internal static string WidgetDialogKeyPrefix(string widgetId) => $"widget:{widgetId}:";
 
-    public IPluginUiChannel Channel { get; } = new UiChannel(services.GetRequiredService<PluginChannelHub>(), pluginId);
+    public IPluginUiChannel Channel { get; } = channel ?? new UiChannel(services.GetRequiredService<PluginChannelHub>(), pluginId);
 
     private readonly HashSet<string> _ownDockPanelIds = [];
 
     public IPluginStorage Storage => host.Storage;
+
+    public string? RemoteServer => host is RemoteUiBackend backend ? backend.Target.RemoteServer : null;
 
     public void AddSettings(Func<Control> createView) =>
         contributionSink.AddPluginSettings(pluginId, pluginName, createView);
@@ -141,7 +144,7 @@ internal sealed partial class CockpitUiHost(
 
     public void AddProviderConfigView(string providerId, Func<string?, IPluginProviderConfigView> createView)
     {
-        if (services.GetRequiredService<IPluginProviderRegistry>().Resolve(providerId) is null)
+        if (channel is null && services.GetRequiredService<IPluginProviderRegistry>().Resolve(providerId) is null)
         {
             throw new InvalidOperationException(
                 $"Plugin '{pluginId}' registered a config view for provider '{providerId}', which no plugin registered as a session provider.");
@@ -511,25 +514,33 @@ internal sealed partial class CockpitUiHost(
         services.GetService<Cockpit.Core.Abstractions.Remote.IRemoteServers>() is { } servers
         && services.GetService<PluginManager>()?.LoadedParts.Select(part => part.Discovered)
             .FirstOrDefault(discovered => string.Equals(discovered.Manifest.Id, pluginId, StringComparison.Ordinal)) is { } own
-            ? ServerPluginTargets.ForAsync(servers, this, pluginId, pluginName, own.Manifest.Version, contributionSink.OpenServerPluginsAsync)
+            ? ServerPluginTargets.ForAsync(servers, this, pluginId, pluginName, own.Manifest.Version, server => contributionSink.OpenServerPluginsAsync(server, pluginId))
             : Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
 
     public Task SendToSessionAsync(string paneId, string text) => host.SendToSessionAsync(paneId, text);
 
     // AC-1397: what PluginActions.InjectIntoActiveSessionAsync does for the selected pane, for a named one — placed, not sent.
-    public Task InsertIntoSessionAsync(string paneId, string text)
+    public async Task InsertIntoSessionAsync(string paneId, string text)
     {
+        if (channel is not null)
+        {
+            if (!await host.InsertIntoSessionAsync(paneId, text))
+            {
+                throw new InvalidOperationException("The server session did not accept that text.");
+            }
+            return;
+        }
         var cockpit = _Service<CockpitViewModel>();
         cockpit?.Sessions.Append<SessionPanelViewModel?>(cockpit.AssistantPane)
             .FirstOrDefault(session => session is not null && string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
             ?.InjectText(text);
-        return Task.CompletedTask;
     }
 
     public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(async () =>
     {
         var cockpit = _Service<CockpitViewModel>();
-        var session = cockpit?.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
+        var session = (cockpit?.IsRemoteWindow == true ? cockpit.GridPanes : cockpit?.Sessions)
+            ?.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
         if (cockpit is null || session is null)
         {
             return false;

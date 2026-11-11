@@ -51,6 +51,7 @@
     <AssemblyMetadata Include="EchoProviderDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.Plugin.EchoProvider\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="GitStatusDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="WorkflowsDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Workflows\bin\$(Configuration)\$(TargetFramework)\" />
+    <AssemblyMetadata Include="SchedulesDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Schedules\bin\$(Configuration)\$(TargetFramework)\" />
   </ItemGroup>
 
   <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->

@@ -13,6 +13,11 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
 {
     private readonly IWorktreeManager? _manager;
     private readonly ISessionDialogService? _dialogs;
+    private IRemoteWorktrees? _remote;
+    private Func<string, string, string, Task<bool>>? _confirm;
+    private bool _isRemote;
+    private int _remoteRefreshGeneration;
+    private string? _remoteReadFailure;
 
     // Design-time/previewer: a couple of rows so the dialog renders without a live manager behind it.
     public WorktreesViewModel()
@@ -27,6 +32,42 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         _manager = manager;
         _dialogs = dialogs;
     }
+
+    internal WorktreesViewModel(IRemoteWorktrees? remote, Func<string, string, string, Task<bool>> confirm)
+    {
+        _remote = remote;
+        _confirm = confirm;
+        _isRemote = true;
+        if (remote is null)
+        {
+            RemoveFailure = _remoteReadFailure = "Worktrees are unavailable while the server is connecting.";
+        }
+    }
+
+    internal Task UseRemoteAsync(IRemoteWorktrees remote, Func<string, string, string, Task<bool>> confirm) => UiThreadCall.Uncapped(async () =>
+    {
+        _remote = remote;
+        _confirm = confirm;
+        _isRemote = true;
+        Worktrees.Clear();
+        RemoteProjects.Clear();
+        SelectedRemoteProject = null;
+        Count = 0;
+        OnPropertyChanged(nameof(IsRemote));
+        CreateWorktreeCommand.NotifyCanExecuteChanged();
+        await RefreshAsync();
+    });
+
+    public bool IsRemote => _isRemote;
+
+    public ObservableCollection<RemoteWorktreeProject> RemoteProjects { get; } = [];
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CreateWorktreeCommand))]
+    private RemoteWorktreeProject? _selectedRemoteProject;
+
+    [ObservableProperty]
+    private string? _newWorktreeLabel;
 
     public ObservableCollection<ManagedWorktreeRowViewModel> Worktrees { get; } = [];
 
@@ -79,6 +120,11 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     // The cheap refresh for the status-bar counter: how many worktrees exist, without asking git about each one's state.
     public async Task RefreshCountAsync()
     {
+        if (_remote is not null)
+        {
+            await RefreshAsync();
+            return;
+        }
         if (_manager is null)
         {
             return;
@@ -91,6 +137,11 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        if (_remote is not null)
+        {
+            await UiThreadCall.Uncapped(_RefreshRemoteAsync);
+            return;
+        }
         if (_manager is null)
         {
             return;
@@ -111,16 +162,60 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         Count = Worktrees.Count;
     }
 
+    private async Task _RefreshRemoteAsync()
+    {
+        var remote = _remote;
+        if (remote is null)
+        {
+            return;
+        }
+        var generation = ++_remoteRefreshGeneration;
+        try
+        {
+            var rows = await remote.RefreshAsync();
+            if (generation != _remoteRefreshGeneration || !ReferenceEquals(remote, _remote))
+            {
+                return;
+            }
+            var selected = SelectedRemoteProject?.Id;
+            RemoteProjects.Clear();
+            foreach (var project in remote.Projects)
+            {
+                RemoteProjects.Add(new RemoteWorktreeProject(project.Id, project.Name));
+            }
+            SelectedRemoteProject = RemoteProjects.FirstOrDefault(project => project.Id == selected) ?? RemoteProjects.FirstOrDefault();
+            Worktrees.Clear();
+            foreach (var row in rows)
+            {
+                Worktrees.Add(new ManagedWorktreeRowViewModel(row));
+            }
+            Count = Worktrees.Count;
+            if (RemoveFailure == _remoteReadFailure)
+            {
+                RemoveFailure = null;
+            }
+            _remoteReadFailure = null;
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            if (generation == _remoteRefreshGeneration && ReferenceEquals(remote, _remote))
+            {
+                RemoveFailure = _remoteReadFailure = _OneLine($"Worktrees unavailable: {error.Message}");
+            }
+        }
+    }
+
     // AC-1013: Removes a worktree, always after a confirmation. A tree with uncommitted changes gets the...
     [RelayCommand]
     private async Task RemoveAsync(ManagedWorktreeRowViewModel? row)
     {
-        if (_manager is null || row is null || row.IsOwnerLive)
+        if ((_manager is null && _remote is null) || row is null || row.IsOwnerLive)
         {
             return;
         }
+        var remote = _remote;
 
-        var (title, message, confirmLabel) = row.Status.HasUncommittedChanges
+        var (title, message, confirmLabel) = row.HasUncommittedChanges
             ? ("Delete worktree with unsaved changes?",
                 $"The worktree on branch '{row.Branch}' has uncommitted changes that will be lost. Its committed history stays on the branch.",
                 "Delete anyway")
@@ -128,14 +223,14 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
                 $"Remove the worktree on branch '{row.Branch}'? The branch itself is kept.",
                 "Remove");
 
-        if (_dialogs is null || !await _dialogs.ShowConfirmationDialogAsync(title, message, confirmLabel))
+        if (!await _ConfirmAsync(title, message, confirmLabel))
         {
             return;
         }
 
         try
         {
-            RemoveNotice = await _manager.RemoveAsync(row.Record, force: row.Status.HasUncommittedChanges) is { } notice
+            RemoveNotice = await _RemoveAsync(row, row.HasUncommittedChanges, remote) is { } notice
                 ? _OneLine(notice)
                 : null;
             RemoveFailure = null;
@@ -192,20 +287,21 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     [RelayCommand]
     private async Task CleanUpFinishedAsync()
     {
-        if (_manager is null)
+        if (_manager is null && _remote is null)
         {
             return;
         }
+        var remote = _remote;
 
         // A missing folder holds no work, even when a restored pane still claims its registry row.
         List<string> refusals = [];
         List<string> notices = [];
-        foreach (var row in Worktrees.Where(worktree => worktree.Status.Exists == false
-            || ((worktree.IsClean || worktree.Status.NothingToKeep) && worktree.IsOwnerLive == false)).ToList())
+        foreach (var row in Worktrees.Where(worktree => worktree.Exists == false
+            || ((worktree.IsClean || worktree.NothingToKeep) && worktree.IsOwnerLive == false)).ToList())
         {
             try
             {
-                if (await _manager.RemoveAsync(row.Record, force: false) is { } notice)
+                if (await _RemoveAsync(row, force: false, remote) is { } notice)
                 {
                     notices.Add(notice);
                 }
@@ -224,6 +320,55 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
         RemoveNotice = notices.Count > 0 ? _OneLine(string.Join(" ", notices)) : null;
 
         await RefreshAsync();
+    }
+
+    private bool _CanCreateWorktree() => _remote is not null && SelectedRemoteProject is not null;
+
+    [RelayCommand(CanExecute = nameof(_CanCreateWorktree))]
+    private async Task CreateWorktreeAsync()
+    {
+        if (_remote is not { } remote || SelectedRemoteProject is not { } project)
+        {
+            return;
+        }
+        try
+        {
+            await remote.CreateWorktreeAsync(project.Id, NewWorktreeLabel);
+            NewWorktreeLabel = null;
+            RemoveFailure = null;
+            await RefreshAsync();
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            RemoveFailure = _OneLine($"Could not create the worktree: {error.Message}");
+        }
+    }
+
+    private async Task<bool> _ConfirmAsync(string title, string message, string confirmLabel)
+    {
+        if (_confirm is not { } confirm)
+        {
+            return await (_dialogs?.ShowConfirmationDialogAsync(title, message, confirmLabel) ?? Task.FromResult(false));
+        }
+        try
+        {
+            return await UiThreadCall.Uncapped(() => confirm(title, message, confirmLabel));
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            RemoveFailure = _OneLine($"The worktree was not removed because confirmation is unavailable: {error.Message}");
+            return false;
+        }
+    }
+
+    private async Task<string?> _RemoveAsync(ManagedWorktreeRowViewModel row, bool force, IRemoteWorktrees? remote)
+    {
+        if (row.Remote is { } worktree)
+        {
+            await (remote ?? throw new InvalidOperationException("The worktree's server connection is unavailable.")).RemoveWorktreeAsync(worktree, force);
+            return null;
+        }
+        return await (_manager ?? throw new InvalidOperationException("No worktree manager is available.")).RemoveAsync(row.Record, force);
     }
 
     // AC-1013: git says why across several lines; the dialog shows it on one. Beyond reading better in a...

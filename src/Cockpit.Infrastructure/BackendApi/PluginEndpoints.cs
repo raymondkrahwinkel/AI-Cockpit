@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
@@ -23,7 +21,9 @@ internal static class PluginEndpoints
     public static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
         IPluginAdministration plugins() => services.GetRequiredService<IPluginAdministration>();
-        IPluginStoreConfigStore stores() => services.GetRequiredService<IPluginStoreConfigStore>();
+
+        PluginUiEndpoints.Map(api, services);
+        PluginStoreEndpoints.Map(api, services);
 
         api.MapGet("/plugins", async (CancellationToken cancellationToken) =>
         {
@@ -36,25 +36,6 @@ internal static class PluginEndpoints
         api.MapGet("/plugins/retired", async (CancellationToken cancellationToken) =>
             Results.Json(new { count = await plugins().GetRetiredLoadContextsAsync(cancellationToken).ConfigureAwait(false) }, ConnectKeyEndpoints.Json)).RequireAdmin();
 
-        api.MapGet("/plugins/store", async (CancellationToken cancellationToken) =>
-        {
-            var catalog = new List<PluginStoreReference>();
-            foreach (var store in await stores().LoadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                var id = _Id(store);
-                // A collision uses the first configured store, matching POST's first-match lookup.
-                if (catalog.Any(candidate => string.Equals(candidate.Id, id, StringComparison.Ordinal)))
-                {
-                    continue;
-                }
-
-                var index = await plugins().FetchStoreIndexAsync(store, cancellationToken).ConfigureAwait(false);
-                catalog.Add(new PluginStoreReference(id, _LocationWithoutCredentials(store.Location), index.Index));
-            }
-            await _AuditAsync(services, "api:list_plugin_stores", cancellationToken).ConfigureAwait(false);
-            return Results.Json(catalog, ConnectKeyEndpoints.Json);
-        }).RequireAdmin();
-
         api.MapPost("/plugins", async (HttpRequest request, CancellationToken cancellationToken) =>
         {
             if (await _TryReadInstallAsync(request, cancellationToken).ConfigureAwait(false) is not { } install)
@@ -62,8 +43,9 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin request is invalid.");
             }
 
-            var store = (await stores().LoadAsync(cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault(candidate => string.Equals(_Id(candidate), install.StoreId, StringComparison.Ordinal));
+            var sources = await PluginStoreEndpoints.SourcesAsync(services, cancellationToken).ConfigureAwait(false);
+            var store = sources.FirstOrDefault(source => !source.IsHidden && !source.IsWithdrawn
+                && string.Equals(PluginStoreEndpoints.Id(source.Store), install.StoreId, StringComparison.Ordinal))?.Store;
             if (store is null)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_store", "That plugin store is not configured on the server.");
@@ -77,10 +59,31 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_plugin", "That plugin version is not in the server's store.");
             }
 
-            var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version, index.Index?.RevokedKeys, AllowDowngrade: true), cancellationToken).ConfigureAwait(false);
+            PluginKeyConsentRequest? challenge = null;
+            var result = await plugins().InstallFromStoreAsync(new PluginProvisionRequest(entry.Id, entry.Name, store, version,
+                index.Index?.RevokedKeys, AllowDowngrade: install.AllowDowngrade, SwitchSource: install.SwitchSource), cancellationToken,
+                keyConsent: (consent, _) =>
+                {
+                    challenge = consent;
+                    return Task.FromResult(consent == install.PublisherConsent);
+                }).ConfigureAwait(false);
             await _AuditAsync(services, "api:install_plugin", cancellationToken).ConfigureAwait(false);
-            return Results.Json(PluginInstallResponse.From(result, install.Version), ConnectKeyEndpoints.Json);
+            if (result.IsSuccess)
+            {
+                if (result.FolderId is { } installedFolder && services.GetService<IPluginRegistrationStore>() is { } registrations)
+                {
+                    await registrations.SetVersionChosenAsync(installedFolder,
+                        install.AllowDowngrade && !string.Equals(install.Version, entry.LatestVersion, StringComparison.Ordinal), cancellationToken).ConfigureAwait(false);
+                }
+                PluginStoreEndpoints.Changed(services);
+            }
+            return Results.Json(PluginInstallResponse.From(result, install.Version,
+                result.Outcome == PluginProvisionOutcome.KeyNotConfirmed ? challenge : null), ConnectKeyEndpoints.Json);
         }).RequireAdmin();
+
+        api.MapGet("/plugins/{folderId}/publisher", async (string folderId, CancellationToken cancellationToken) =>
+            Results.Json(new { trust = await plugins().GetPublisherTrustAsync(folderId, cancellationToken).ConfigureAwait(false) },
+                ConnectKeyEndpoints.Json)).RequireAdmin();
 
         // AC-1525: the client names the bytes its operator consented to; the server pins them only when they are the bytes
         // it computed itself. Without a sha256 only a registered plugin is switched, on its own pin.
@@ -102,12 +105,13 @@ internal static class PluginEndpoints
             var pin = consented is null
                 ? plugin.Registration?.PinnedSha256
                 : string.Equals(consented, plugin.Discovered.Sha256, StringComparison.OrdinalIgnoreCase) ? plugin.Discovered.Sha256 : null;
-            if (pin is null)
+            if (string.IsNullOrEmpty(pin))
             {
                 return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "consent_required", "That plugin needs permission for its installed version. Supply its current sha256 to confirm consent.");
             }
 
             var state = await plugins().SetEnabledAsync(folderId, enabled, pin, cancellationToken).ConfigureAwait(false);
+            PluginStoreEndpoints.Changed(services);
             return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, notice = state.Notice, restartRequired = state.RestartRequired, takesEffectAfterServerRestarts = state.RestartRequired }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("set_plugin_enabled", services);
 
@@ -120,6 +124,7 @@ internal static class PluginEndpoints
             }
 
             var state = await plugins().RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
+            PluginStoreEndpoints.Changed(services);
             await _AuditAsync(services, "api:remove_plugin", cancellationToken).ConfigureAwait(false);
             return Results.Json(new { live = state.IsLive, restartReason = state.RestartReason, notice = state.Notice, restartRequired = state.RestartRequired, takesEffectAfterServerRestarts = state.RestartRequired }, ConnectKeyEndpoints.Json);
         }).RequireAdmin();
@@ -545,41 +550,25 @@ internal static class PluginEndpoints
         }
     }
 
+    private static readonly JsonSerializerOptions InstallJson = new(ConnectKeyEndpoints.Json)
+    {
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+    };
+
     private static async Task<PluginInstallRequest?> _TryReadInstallAsync(HttpRequest request, CancellationToken cancellationToken)
     {
         try
         {
-            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Any(property => property.Name is not ("storeId" or "pluginId" or "version")))
-            {
-                return null;
-            }
-
-            if (root.TryGetProperty("storeId", out var storeId)
-                && root.TryGetProperty("pluginId", out var pluginId)
-                && root.TryGetProperty("version", out var version)
-                && storeId.ValueKind == JsonValueKind.String
-                && pluginId.ValueKind == JsonValueKind.String
-                && version.ValueKind == JsonValueKind.String
-                && storeId.GetString() is string storeIdValue
-                && pluginId.GetString() is string pluginIdValue
-                && version.GetString() is string versionValue
-                && !string.IsNullOrWhiteSpace(storeIdValue)
-                && !string.IsNullOrWhiteSpace(pluginIdValue)
-                && !string.IsNullOrWhiteSpace(versionValue))
-            {
-                return new PluginInstallRequest(storeIdValue, pluginIdValue, versionValue);
-            }
-
-            return null;
+            var install = await JsonSerializer.DeserializeAsync<PluginInstallRequest>(request.Body, InstallJson, cancellationToken).ConfigureAwait(false);
+            return install is not null && !string.IsNullOrWhiteSpace(install.StoreId)
+                && !string.IsNullOrWhiteSpace(install.PluginId) && !string.IsNullOrWhiteSpace(install.Version)
+                ? install : null;
         }
         catch (JsonException)
         {
             return null;
         }
     }
-
     private static async Task<(bool Enabled, string? Sha256)?> _TryReadEnabledAsync(HttpRequest request, CancellationToken cancellationToken)
     {
         try
@@ -607,30 +596,17 @@ internal static class PluginEndpoints
         }
     }
 
-    private static string _Id(PluginStoreConfig store) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{store.Kind}\n{_LocationWithoutCredentials(store.Location)}")));
-
-    private static string _LocationWithoutCredentials(string location)
-    {
-        if (!Uri.TryCreate(location, UriKind.Absolute, out var uri))
-        {
-            return location;
-        }
-
-        var builder = new UriBuilder(uri) { UserName = string.Empty, Password = string.Empty, Query = string.Empty };
-        return builder.Uri.GetLeftPart(UriPartial.Path);
-    }
-
-    private sealed record PluginInstallRequest(string StoreId, string PluginId, string Version);
-
-    // AC-1525: a plugin installed here is live only after the server restarts, and its consent step needs the folder and the
-    // bytes the server computed.
-    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, bool TakesEffectAfterServerRestarts, string? RestartReason, bool RestartRequired = false, bool Live = false, bool Failed = false, bool RolledBack = false, string? Notice = null)
+    private sealed record PluginInstallRequest(string StoreId, string PluginId, string Version,
+        bool AllowDowngrade = false, bool SwitchSource = false, PluginKeyConsentRequest? PublisherConsent = null);
+    // The client confirms the server's publisher decision; activation consent uses the server's own closure hash.
+    private sealed record PluginInstallResponse(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, bool TakesEffectAfterServerRestarts, string? RestartReason, bool RestartRequired = false, bool Live = false, bool Failed = false, bool RolledBack = false, string? Notice = null,
+        string? Warning = null, bool InPlace = false, string? ConsentReason = null, PluginKeyConsentRequest? PublisherConsent = null)
     {
         // AC-2025: an update that went live, or failed and was rolled back, waits for no restart.
-        public static PluginInstallResponse From(PluginProvisionResult result, string version) =>
+        public static PluginInstallResponse From(PluginProvisionResult result, string version, PluginKeyConsentRequest? publisherConsent) =>
             new(result.Outcome, result.Id, result.Name, version, result.IsSuccess ? null : result.ErrorIsSafeToShow ? result.Error : "The server could not install the plugin.", result.FolderId, result.Sha256,
-            result.Live?.RestartRequired == true, result.Live?.RestartReason, result.Live?.RestartRequired == true, result.Live?.IsLive == true, result.Live?.Failed == true, result.Live?.RolledBack == true, result.Live?.Notice);
+            result.Live?.RestartRequired == true, result.Live?.RestartReason, result.Live?.RestartRequired == true, result.Live?.IsLive == true, result.Live?.Failed == true, result.Live?.RolledBack == true, result.Live?.Notice,
+            result.Warning, result.InPlace, result.ConsentReason, publisherConsent);
     }
 
     // AC-1525: what the consent dialog shows, the server's own hash of the bytes, and whether this run already reflects the
@@ -649,13 +625,16 @@ internal static class PluginEndpoints
         string? Author,
         string? Description,
         string? MinHostVersion,
-        string? RunningVersion = null)
+        string? RunningVersion = null,
+        string? Source = null,
+        string? RunningSha256 = null,
+        IReadOnlyList<string>? Capabilities = null)
     {
         public static PluginListEntry From(InstalledPlugin plugin, IReadOnlyList<DiscoveredPlugin>? loaded)
         {
             var discovered = plugin.Discovered;
-            var isLoaded = loaded?.Any(candidate => string.Equals(candidate.FolderId, discovered.FolderId, StringComparison.Ordinal)
-                && string.Equals(candidate.Sha256, discovered.Sha256, StringComparison.OrdinalIgnoreCase)) ?? false;
+            var running = loaded?.FirstOrDefault(candidate => string.Equals(candidate.FolderId, discovered.FolderId, StringComparison.Ordinal));
+            var isLoaded = running is not null && string.Equals(running.Sha256, discovered.Sha256, StringComparison.OrdinalIgnoreCase);
             return new(
                 discovered.FolderId,
                 discovered.Manifest.Id,
@@ -670,11 +649,14 @@ internal static class PluginEndpoints
                 discovered.Manifest.Author,
                 discovered.Manifest.Description,
                 discovered.Manifest.MinHostVersion,
-                plugin.RunningVersion);
+                running?.Manifest.Version ?? plugin.RunningVersion,
+                PluginStoreEndpoints.SafeSource(plugin.Registration?.Source),
+                running?.Sha256 ?? plugin.RunningSha256,
+                discovered.Manifest.Capabilities);
         }
     }
 
-    private sealed record PluginStoreReference(string Id, string Location, PluginStoreIndex? Index);
+
 }
 
 internal sealed record ManagedCliAutoUpdateBody(bool Enabled);

@@ -6,6 +6,8 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Remote;
+using System.Text.Json;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -203,6 +205,26 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         SelectedProfile = added;
     }
 
+    [RelayCommand(CanExecute = nameof(HasSelectedProfile))]
+    private void DuplicateProfile()
+    {
+        if (SelectedProfile is not { } source)
+        {
+            return;
+        }
+        var profile = source.ToProfile() with { Label = $"{source.Label} copy" };
+        var copy = new EditableProfileViewModel(profile, false, providers: _providers,
+            pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews,
+            availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator,
+            ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, orgPolicy: _orgPolicy,
+            hostRunsTty: _hostRunsTty, imageInput: _imageInput)
+        {
+            CopyFromLabel = source.CopyFromLabel ?? source.OriginalLabel,
+        };
+        Profiles.Add(copy);
+        SelectedProfile = copy;
+    }
+
     // True while a remove is awaiting confirmation, so the footer shows a "Remove 'X'?" prompt.
     [ObservableProperty]
     private bool _isConfirmingRemove;
@@ -250,6 +272,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     partial void OnSelectedProfileChanged(EditableProfileViewModel? value)
     {
         RemoveProfileCommand.NotifyCanExecuteChanged();
+        DuplicateProfileCommand.NotifyCanExecuteChanged();
         IsConfirmingRemove = false;
     }
 
@@ -292,7 +315,21 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 
         if (_profileStore is IProfileEditStore edits)
         {
-            await edits.SaveEditsAsync([.. Profiles.Select(profile => (profile.OriginalLabel, profile.ToProfile()))]);
+            try
+            {
+                await edits.SaveEditsAsync([.. Profiles.Select(profile => (profile.OriginalLabel, profile.ToProfile(), profile.CopyFromLabel))]);
+            }
+            catch (Exception exception) when (exception is ArgumentException or UnauthorizedAccessException or HttpRequestException or IOException or TaskCanceledException or JsonException or IRemoteCallFailure)
+            {
+                StatusMessage = exception.Message;
+                return false;
+            }
+            foreach (var profile in Profiles)
+            {
+                profile.OriginalLabel = profile.Label;
+                profile.CopyFromLabel = null;
+            }
+            StatusMessage = string.Empty;
             return true;
         }
 

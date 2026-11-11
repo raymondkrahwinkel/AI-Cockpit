@@ -87,17 +87,25 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public string Title => _Facts.Name;
 
-    public string WorkspaceId => RemoteBackend.NodeDeskId;
+    public string WorkspaceId => _Facts.WorkspaceId ?? string.Empty;
 
-    public string? PlacedWorkspaceId => RemoteBackend.NodeDeskId;
+    public string? PlacedWorkspaceId => _Facts.PlacedWorkspaceId;
 
+    // AC-2285: a server path, never handed to code that would open it on this machine; files go by project and branch.
     public string? WorkingDirectory => null;
 
-    public string? WorktreeBranch => null;
+    public string? WorktreeBranch => _Facts.WorktreeBranch;
 
     public string? ActiveProfileLabel => _Facts.Profile;
 
+    // AC-2288: a TTY session the server runs; its pane is a terminal over the server's pty, not a transcript.
+    public bool RunsInATerminal => _Facts.Kind == "tty";
+
     public string? ProjectId => _Facts.ProjectId;
+
+    public string? ProviderId => _Facts.ProviderId;
+
+    public bool StartedByTheAssistant => _Facts.StartedByTheAssistant;
 
     public bool IsTerminal => false;
 
@@ -118,13 +126,13 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
     public string Statusline => _Facts.Statusline ?? string.Empty;
 
     // The prompt route holds a prompt until the session can take it, so none is refused for being early.
-    public bool CanTakeAPrompt => true;
+    public bool CanTakeAPrompt => _Facts.CanTakeAPrompt;
 
     public bool DeliversInboxAtTurnStart => false;
 
     public bool HasPromptWaitingToBeDelivered => false;
 
-    public bool HasPendingConsent => false;
+    public bool HasPendingConsent => _Facts.HasPendingConsent;
 
     public int ProcessCount => 0;
 
@@ -344,12 +352,14 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public async Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson)
     {
-        if (!string.IsNullOrWhiteSpace(answersJson))
-        {
-            throw new NotSupportedException("The API does not expose structured permission answers.");
-        }
+        await (answersJson is null ? RespondToPermissionByIdAsync(toolUseId, allow)
+            : RespondToPermissionWithAnswersAsync(toolUseId, allow, answersJson)).ConfigureAwait(false);
+    }
 
-        await RespondToPermissionByIdAsync(toolUseId, allow).ConfigureAwait(false);
+    public async Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson)
+    {
+        var answer = await _client.SendAsync<JsonElement>(HttpMethod.Post, $"{_Path}/permissions/{Uri.EscapeDataString(toolUseId)}", new { allow, answersJson }).ConfigureAwait(false);
+        return answer.GetProperty("answered").GetBoolean();
     }
 
     // AC-1476: the server keeps the rule for the session, on the exact input; there is no wildcard over the API.
@@ -557,8 +567,11 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
         return answer.TryGetProperty("answered", out var answered) && answered.ValueKind == JsonValueKind.True;
     }
 
-    public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) =>
-        throw new NotSupportedException("The API has no route to hand a verify render to a session.");
+    public async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
+    {
+        var answer = await _client.SendAsync<JsonElement>(HttpMethod.Post, $"{_Path}/verify", new { caption, screenshotPng }).ConfigureAwait(false);
+        return answer.GetProperty("accepted").GetBoolean();
+    }
 
     // Read when asked, from the list the scope check already filters; the assistant's are not on it.
     public async Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync()
@@ -583,6 +596,12 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public Task<bool> SuggestNameAsync(string name) =>
         throw new NotSupportedException("The API has no route to name a session.");
+
+    public async Task<bool> SetNameAsync(string name)
+    {
+        var answer = await _client.SendAsync<JsonElement>(HttpMethod.Post, $"{_Path}/rename", new { name }).ConfigureAwait(false);
+        return answer.GetProperty("renamed").GetBoolean();
+    }
 
     public Task<SessionWakeState> ReadWakeStateAsync() =>
         throw new NotSupportedException("A wake decision reads its fields in one instant on the backend's own machine.");
@@ -670,6 +689,9 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
         lock (_gate)
         {
             _facts = facts;
+            _liveState = facts.LiveState;
+            _isBusy = facts.LiveState?.Status == SessionStatus.Busy;
+            _capabilities = facts.LiveState?.Capabilities;
             _usageStatus = facts.UsageStatus?.ToCore();
             _queue.Clear();
             _queue.AddRange((facts.Queue ?? []).Select(item => new QueuedPrompt(item.Text, [], wireId: item.WireId)));

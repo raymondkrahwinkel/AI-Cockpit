@@ -687,6 +687,7 @@ public sealed class CockpitBackend
                 workspaces.LoadAsync().GetAwaiter().GetResult(), workspaces, provider.GetRequiredService<ISessionRegistry>());
         });
         services.AddSingleton<ISessionHosting, BackendSessionHosting>();
+        services.AddSingleton<Cockpit.Infrastructure.Sessions.Tty.ServerTerminals>();
         services.AddSingleton<IAssistantSessionFactory, BackendAssistantSessions>();
         services.AddSingleton<ISessionLauncher, SessionLauncher>();
         services.AddSingleton<IProjectComposer, BackendProjectComposer>();

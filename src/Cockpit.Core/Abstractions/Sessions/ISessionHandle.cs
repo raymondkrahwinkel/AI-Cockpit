@@ -218,6 +218,11 @@ public interface ISessionHandle
         OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) => Task.FromResult(false);
 
     /// <summary>
+    /// Answers a pending structured question once; false when this handle cannot answer it.
+    /// </summary>
+    Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson) => Task.FromResult(false);
+
+    /// <summary>
     /// Hands a verify render back to the session as its next input; false when the session cannot take it.
     /// </summary>
     Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng);

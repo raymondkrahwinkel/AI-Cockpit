@@ -7,7 +7,7 @@ using Cockpit.Core.Abstractions.Remote;
 
 namespace Cockpit.App.Files;
 
-// A client is tied to the plugin/backend channel it was opened on, including a server-admin relay.
+// A client is tied to the plugin/backend channel it was opened on, including a remote server relay.
 internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
     public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel.Subscribe(name, handler);

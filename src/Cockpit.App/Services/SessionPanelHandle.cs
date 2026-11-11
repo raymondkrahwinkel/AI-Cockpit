@@ -216,6 +216,10 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(toolUseId, allow, forSession))
         : Task.FromResult(false);
 
+    public Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson) => _pane is SessionViewModel sdk
+        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionWithAnswersAsync(toolUseId, allow, answersJson))
+        : Task.FromResult(false);
+
     public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) => _pane is SessionViewModel sdk
         ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(expected.ToolUseId, allow, expected: expected, origin: origin))
         : Task.FromResult(false);

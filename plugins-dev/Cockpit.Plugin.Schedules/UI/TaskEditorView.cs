@@ -216,7 +216,7 @@ internal sealed class TaskEditorView : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 10,
             Margin = new Thickness(0, 0, 0, 12),
-            Children = { back, new StackPanel { Children = { Ui.Title(_existing is null ? "New scheduled task" : "Edit task"), Ui.Hint("Runs on this computer") } } },
+            Children = { back, new StackPanel { Children = { Ui.Title(_existing is null ? "New scheduled task" : "Edit task"), Ui.Hint(_host.RemoteServer is { } server ? $"Runs on {server}" : "Runs on this computer") } } },
         };
 
         var form = new StackPanel { Spacing = 4, MaxWidth = 860, HorizontalAlignment = HorizontalAlignment.Left };

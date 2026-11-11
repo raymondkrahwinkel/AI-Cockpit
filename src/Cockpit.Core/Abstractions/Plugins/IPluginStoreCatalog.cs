@@ -10,4 +10,6 @@ public interface IPluginStoreCatalog
     Task<IReadOnlyList<PluginStoreCatalogEntry>> GetStoresAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed record PluginStoreCatalogEntry(string Id, string Location, PluginStoreIndex? Index);
+public sealed record PluginStoreCatalogEntry(string Id, string Location, PluginStoreIndex? Index,
+    PluginStoreKind Kind = PluginStoreKind.Remote, string? Name = null, string? SourceKey = null,
+    string? Organization = null, bool IsHidden = false, bool IsWithdrawn = false, PluginStoreTarget? Target = null);

@@ -15,6 +15,12 @@ public interface ISessionHosting
     bool CanHost(PaneSessionKind kind);
 
     /// <summary>
+    /// Whether a start that did not ask for a kind may become TTY because its profile defaults to it (AC-2288: a server
+    /// hosts a TTY only when asked, so the assistant and the API keep the SDK session they read and prompt).
+    /// </summary>
+    bool HostsTtyByDefault => CanHost(PaneSessionKind.Tty);
+
+    /// <summary>
     /// The session <paramref name="request"/> describes, not yet registered or started.
     /// Null when this host cannot run that kind of session.
     /// </summary>

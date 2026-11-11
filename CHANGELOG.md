@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).
+
+- AC-2289: Schedules in a remote window stays on its server, including profiles and working folders. Reminders can be created, snoozed and marked done through the same server channel; open screens refresh missed changes after reconnect.
+
+- AC-2288: New terminal in a remote Cockpit window opens a shell on the server, not on this machine, and a server session can start in a terminal (TTY) with the server's profile and MCP. A shell needs an admin key and an organisation policy that allows terminal and shell access; a TTY session follows the key's session scope. Every keystroke is checked against the key again, so a revoked key types nothing more and its shells close. A dropped connection reattaches to the same terminal without starting a second one. Terminal contents are never logged.
+
+- AC-2280: Profiles and Assistant Options in a remote window edit the server's profiles and assistant with the ordinary editors. Duplicate and Copy from keep saved secrets on the server; login status, brains and roles come from the server. Editing leaves the assistant's current holder and the local Cockpit configuration unchanged.
+
+- AC-2286: remote windows use the server's workspaces and session placement. Create, rename, select and close workspaces, move sessions, and reopen the window with the same server layout. Changes reach other connected windows; closing a workspace with sessions is refused. Workspace management requires an admin key.
+
+- AC-2282: Options › MCP Servers in a remote Cockpit window edits the server's own MCP registry: add, change and remove HTTP and stdio servers, which run on the server, and sign an OAuth server in there with the browser step on this machine. Admin keys only, every change audited. A stored API key or header value is never shown again; sent back unchanged it stays, but not once the URL changes. The cockpit's own servers and the server's node connections stay off the page and are never overwritten. A session whose MCP gateway cannot be prepared now says why in a short line (such as a timeout or an upstream HTTP status), also in a remote window.
+
+- AC-2283: remote Cockpit windows load trusted plugin UI without starting local plugin engines or an MCP listener. Ordinary plugin menus, dialogs and workspaces use the server's storage and actions; missing or mismatched UI shows why it is unavailable. Files and Worktrees use the server's project paths, including guarded saves and confirmed removal.
+
+- AC-2281: Projects in a remote Cockpit window are the server's projects, in the ordinary Projects page and project editor. New project clones its git URL on the server with the server's own git credentials; editing changes name, category, description, profile, behavior and the worktree switch; Remove takes the project off the server. Start on a project opens the server's start card with that project and its profile picked. A project's links, plugin fields, MCP choice, extra rows and password stay on the server and never reach the window. Changes need an admin key.
+
+- AC-2279: Options › Security, Swarm and Servers in a remote Cockpit window manage the server itself. That covers agent terminal and shell access, the swarm's machines, leader and rank-return choice, removing a machine, leaving the swarm, and the server's own connect keys. Admin keys only, every change audited. A new extra internal network range must lie inside private address space. Pairing, encryption and screen lock stay on each device's own screen.
+
+- AC-2285: a server serves its projects' files and worktrees by project and relative path only: browse, read, save, create, rename and delete, plus listing, creating and removing a project's worktrees. A save made on an outdated version is refused and overwrites nothing. A path that leaves the project, or a link that points outside it, is refused. Sessions on a server show their worktree branch, and their file paths are no longer opened or previewed on this machine.
+
+- AC-2278: Options in a remote Cockpit window reads and saves the server's run limits, session behavior, clone/worktree roots, notifications, shell and diagnostics. Presentation stays on the client; webhook secrets remain on the server.
+
+- AC-2277: Open on a connected server starts its own Cockpit window, with ordinary navigation and session start on that server. The window starts no local backend; Options remain read-only until their server adapters are connected.
+
 - AC-2319: each paired phone in Depot settings shows a SHA-256 key fingerprint to compare with the phone's status sheet (Depot 0.66.0).
 
 - AC-2318: the start-up splash now plays the Wispslate entrance: the W arcs in with its streaks, the colour gradient runs once through the logo, then the name and the steps appear. It keeps moving while the main window is built, follows light and dark, and is a still image when Windows animation effects are off. The splash stays at least 1.4 s so the entrance is seen (host 0.180.2).
@@ -251,6 +275,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   keeps the tracker reference; the changelog stays clean.
 
 ## [Unreleased]
+
+- AC-2291: server Admin and plugin settings links open the ordinary Cockpit server window and its Options. The separate admin panel is gone; connect keys and the audit log remain under Servers. Existing connections, certificate pins and key scopes are preserved.
+
+- AC-2284: the ordinary Plugin store in a remote Cockpit window installs, updates, disables and removes plugins on the server. Store sources and publisher trust stay behind Admin access; the matching running UI is cached separately without changing local plugins or configuration. Protected workspaces keep their contents when an automatic UI replacement must wait.
+
+- AC-2287: remote SDK sessions support rename, scoped conversation search and resume, structured permission answers and verify screenshots. Resumes use the server's saved transcript and folder; names, status and session metadata survive reconnect.
 
 - AC-2309: retain saved phone keys when Depot's grant-scoped device list omits them after signing in again; log pairing phases and outcomes without credentials or phone names (Depot plugin 0.65.2).
 
