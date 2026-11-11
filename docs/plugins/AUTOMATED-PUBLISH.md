@@ -46,6 +46,27 @@ The **Publish plugin to store** workflow (`.github/workflows/publish-plugin.yml`
 
 Tick **dry_run** to do everything except open the PR — useful to see the diff and the hash first.
 
+## Publishing updates after a nightly
+
+**Publish updated plugins** compares every manifest version with the store index after a successful
+Nightly. One Linux build job prepares all missing versions in a loop, sharing its checkout, SDK setup
+and one restore. At most one Windows job restores and publishes all required Windows subprocesses
+first. Builds and subprocess publishes use `--no-restore`. Discovery reads only the store index;
+the store writer is the only automatic job that clones the store's zip history.
+
+The batch and the manual button share `scripts/plugin-publish.sh`, the index upsert and all package
+checks. Per-plugin success, failure, deferral or already-published results are recorded in the job
+summary and a result artifact; only successful plugins produce package candidates.
+
+One store job downloads the successful artifacts, re-hashes and checks each package against its
+proposed entry using the current store index, then publishes the accepted packages in one PR and merges
+it. It shares a concurrency group with manual publishing so both routes cannot rewrite the index at
+once. Versions published while the batch was running are skipped without changing their files.
+
+A failed host or package gate does not cancel other plugins. The store job still publishes their
+successful artifacts; rejected packages remain missing for the next nightly. With no accepted packages,
+it opens no PR. Source checkouts use the triggering commit throughout the run.
+
 ## One-time setup: the `STORE_PUBLISH_TOKEN` secret {#one-time-setup-the-store_publish_token-secret}
 
 The workflow runs in this repo but has to write to the *store* repo, which the default `GITHUB_TOKEN`
@@ -82,9 +103,10 @@ resolves for plugins this host ships with; it is meaningless (and harmlessly ign
 Any field `store.json` sets overrides the manifest/preserved value; `name`, `description` and `author` may be
 overridden there too, but default to the manifest.
 
-## Why manual, and what comes next {#why-manual-and-what-comes-next}
+## Why automatic publishing waits for the nightly {#why-manual-and-what-comes-next}
 
-A plugin and the host change it depends on often land together, and a human is the right judge of "is the
-host out yet". The gate + steps above would make an **auto-on-merge** trigger (publish when a plugin's
-`plugin.json` version changes on `main`) safe later — only the trigger changes; the safety logic stays. This
-manual button is deliberately the first half of that.
+A plugin and the host change it depends on often land together. Waiting for a successful Nightly lets
+the host ship first. If only a nightly satisfies `minHostVersion`, the containment gate also requires
+that nightly to contain the latest commit touching the plugin. Automatic publishing defers a plugin
+that is ahead of the nightly; a manual run reports the failed gate. The manual button remains available
+for publishing one plugin, with an optional dry run or automatic store-PR merge.

@@ -445,7 +445,7 @@ internal sealed partial class AssistantAgentGateway(
         {
             return await _RefusePromptAsync(
                 paneId,
-                $"'{pane.Title}' is still starting and already has a turn waiting. It gets the one it was given first; this one was not accepted.",
+                $"'{pane.Title}' cannot accept this task: it may be waiting for a permission or question, not ready, or already holding a task. This one was not accepted.",
                 cancellationToken).ConfigureAwait(false);
         }
 

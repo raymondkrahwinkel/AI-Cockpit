@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mentions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Assistant;
@@ -1179,6 +1180,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
 
             OnPropertyChanged(nameof(HasPendingPermission));
+            DeliverHeldPrompt();
         }
 
         if (sender is TranscriptEntryViewModel threaded)
@@ -1865,7 +1867,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Use `IsSessionReady` because a driver that never started can leave a runtime accepting sends into nothing.
     // AC-1321: a held pane is not a candidate for a wake either, so the gateway refuses it instead of the funnel.
-    public override bool CanTakeAPrompt => IsSessionReady && TurnsHeldBecause is null;
+    public override bool CanTakeAPrompt => IsSessionReady && TurnsHeldBecause is null
+        && SessionStatus != SessionStatus.NeedsAttention && PendingConsent is null && !HasPendingPermission;
 
     // AC-1321: why no new turn may start on this pane, else null — set by the assistant host while a paired
     // controller holds the line. The hold itself, and sending what waited behind it, is the session host's.
@@ -2469,7 +2472,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // composer so a draft and its pending attachments stay where they are; queued behind a turn in flight like a typed one.
     public async Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages)
     {
-        if (!_control.IsRunning || !CanPasteImages)
+        if (!_control.IsRunning || !CanPasteImages || SessionStatus == SessionStatus.NeedsAttention
+            || PendingConsent is not null || HasPendingPermission)
         {
             return false;
         }
@@ -2779,7 +2783,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await AllowAlwaysAsync(entry, PermissionRuleScope.Wildcard);
     }
 
-    private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null)
+    private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null,
+        OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
         if (RemoteServer is not null)
         {
@@ -2792,21 +2797,34 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        _MarkDecided(entry, answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied");
+        _MarkDecided(entry, (answersJson is not null ? "Answered" : allow ? "Allowed" : "Denied")
+            + (origin == OperatorDecisionOrigin.PhoneOperator ? " (phone operator)" : ""));
         await _control.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson);
     }
 
     // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
     // open here — answered already, or never asked — and then nothing is done.
-    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
+    internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false,
+        SessionPendingPermission? expected = null, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
     {
+        // A remote API has no revision-and-origin contract; it cannot accept a phone's local capability.
+        if (expected is not null && (RemoteServer is not null || !_control.IsAttached))
+        {
+            return false;
+        }
+
         if (PendingToolPermissionRows().FirstOrDefault(row => string.Equals(row.ToolUseId, toolUseId, StringComparison.Ordinal)) is not { } entry)
         {
             return false;
         }
 
+        if (expected is not null && ((entry.ToolName ?? "") != expected.ToolName || (entry.InputJson ?? "{}") != expected.InputJson || entry.Timestamp != expected.SinceUtc))
+        {
+            return false;
+        }
+
         // AC-1476: a session-wide allow is the pane's own exact "Always".
-        await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
+        await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow, origin: origin));
         return true;
     }
 

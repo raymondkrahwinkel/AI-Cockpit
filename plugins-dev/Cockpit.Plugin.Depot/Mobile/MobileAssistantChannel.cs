@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Depot.Mobile;
 // AC-2227: one paired phone as a door onto the assistant's own conversation, next to Slack and Discord. The gateway is
 // opened for this phone's device id alone, so the host refuses anything else. What goes over the line is decided here
 // (PROTOCOL.md § 10); nothing of a message reaches a log, only its type and size.
-internal sealed class MobileAssistantChannel : IDisposable
+internal sealed partial class MobileAssistantChannel : IDisposable
 {
     public const int HistoryLimit = 50;
 
@@ -26,6 +26,7 @@ internal sealed class MobileAssistantChannel : IDisposable
     private readonly MobileSessionChannel? _sessions;
     private readonly MobileAttachments _attachments;
     private readonly Lock _gate = new();
+    private readonly Lock _statusGate = new();
     private readonly Dictionary<Guid, AssistantChannelRow> _dirty = [];
     private readonly Dictionary<Guid, string> _prompts = [];
     private (string Id, string Text)? _question;
@@ -34,6 +35,10 @@ internal sealed class MobileAssistantChannel : IDisposable
     private bool _unseenAnswer;
     private bool _flushScheduled;
     private bool _disposed;
+    private string? _streamId;
+    private bool _hasStartedStream;
+    private string _statusReason = "first status";
+    private long _streamGeneration;
 
     public MobileAssistantChannel(
         string deviceId,
@@ -52,6 +57,7 @@ internal sealed class MobileAssistantChannel : IDisposable
         _cockpitVersion = cockpitVersion;
         _logger = logger;
         _sessions = host is null ? null : new MobileSessionChannel(host, _Send, logger);
+        _operatorTransport = host?.OperatorTransport;
         _attachments = new MobileAttachments((attachmentId, error) => _Send("attachment.refused", writer =>
         {
             writer.WriteString("attachmentId", attachmentId);
@@ -61,6 +67,7 @@ internal sealed class MobileAssistantChannel : IDisposable
         {
             gateway.RowChanged += _OnRowChanged;
             gateway.TurnEnded += _OnTurnEnded;
+            gateway.AcceptsImagesChanged += _OnAcceptsImagesChanged;
             gateway.ConsentPromptOpened += _OnConsentOpened;
             gateway.ConsentPromptClosed += _OnConsentClosed;
         }
@@ -68,11 +75,11 @@ internal sealed class MobileAssistantChannel : IDisposable
 
     // A frame from this phone that MobileFrameCipher opened. Anything that is not a message this version knows is
     // ignored, and the stream stays open (PROTOCOL.md § 6).
-    public void Receive(byte[] plaintext)
+    public void Receive(byte[] plaintext, string? streamId = null)
     {
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || (streamId is not null && streamId != _streamId))
             {
                 return;
             }
@@ -114,6 +121,16 @@ internal sealed class MobileAssistantChannel : IDisposable
 
         switch (type)
         {
+            case "operator.pending":
+                _StartOperatorChannel();
+                _SendPending();
+                break;
+            case "operator.respond":
+                _ = _RespondAsync(id, body);
+                break;
+            case "assistant.answer":
+                _ = _AnswerAsync(id, body);
+                break;
             case "attachment.chunk":
                 _attachments.Add(_String(body, "attachmentId"), _Int(body, "seq"), _Int(body, "total"), _String(body, "mime"), _String(body, "data"));
                 break;
@@ -127,17 +144,20 @@ internal sealed class MobileAssistantChannel : IDisposable
                 _Chat(body.ValueKind == JsonValueKind.Object && body.TryGetProperty("open", out var open) && open.ValueKind == JsonValueKind.True);
                 break;
             case "cockpit.status":
-                _Send("cockpit.status", writer =>
-                {
-                    _ReplyTo(writer, id);
-                    writer.WriteString("name", _cockpitName);
-                    writer.WriteString("version", _cockpitVersion);
-                    writer.WriteBoolean("assistant", _gateway is not null);
-                    writer.WriteBoolean("images", _gateway?.AcceptsImages == true);
-                });
+                _StartOperatorChannel();
+                _SendStatus(id);
+                _SendPending();
                 break;
             case "sessions.list" when _sessions is not null:
                 _sessions.List(id);
+                break;
+            case "sessions.catalog":
+            case "session.start":
+            case "session.stop":
+                _ = _SessionLifecycleAsync(type, id, body);
+                break;
+            case "session.history" when _sessions is not null:
+                _ = _sessions.HistoryAsync(id, _String(body, "paneId"), _Int(body, "before"), _Int(body, "count"));
                 break;
             case "session.transcript" when _sessions is not null:
                 _ = _sessions.TranscriptAsync(id, _String(body, "paneId"), _Int(body, "count"), _Int(body, "since"));
@@ -152,14 +172,27 @@ internal sealed class MobileAssistantChannel : IDisposable
     }
 
     // The phone's stream is gone: its chat counts as closed until a new stream says otherwise.
+    public void StreamStarted(string streamId)
+    {
+        lock (_gate)
+        {
+            _streamId = streamId;
+            _statusReason = _hasStartedStream ? "reconnect" : "first status";
+            _hasStartedStream = true;
+        }
+    }
+
     public void StreamEnded()
     {
         lock (_gate)
         {
             _chatOpen = false;
+            _streamId = null;
+            _streamGeneration++;
         }
 
         _attachments.Clear();
+        _StopOperatorChannel();
     }
 
     public void Dispose()
@@ -178,13 +211,71 @@ internal sealed class MobileAssistantChannel : IDisposable
         }
 
         _attachments.Dispose();
+        _StopOperatorChannel();
         if (_gateway is not null)
         {
             _gateway.RowChanged -= _OnRowChanged;
             _gateway.TurnEnded -= _OnTurnEnded;
+            _gateway.AcceptsImagesChanged -= _OnAcceptsImagesChanged;
             _gateway.ConsentPromptOpened -= _OnConsentOpened;
             _gateway.ConsentPromptClosed -= _OnConsentClosed;
             _gateway.Dispose();
+        }
+    }
+
+    private void _OnAcceptsImagesChanged(object? sender, EventArgs e)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _streamId is null)
+            {
+                return;
+            }
+        }
+
+        _SendStatus(null, "capability change");
+    }
+
+    private void _SendStatus(string? id, string? reason = null)
+    {
+        // Keep a delayed status snapshot from overtaking a newer capability update.
+        lock (_statusGate)
+        {
+            string? streamId;
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                streamId = _streamId;
+                reason ??= _statusReason;
+            }
+
+            bool images = _gateway?.AcceptsImages == true;
+            bool accepted = _TrySend("cockpit.status", writer =>
+            {
+                _ReplyTo(writer, id);
+                writer.WriteString("name", _cockpitName);
+                writer.WriteString("version", _cockpitVersion);
+                writer.WriteBoolean("assistant", _gateway is not null);
+                writer.WriteBoolean("images", images);
+                writer.WriteBoolean("operatorActions", _operatorTransport is not null);
+                writer.WriteBoolean("sessionLifecycle", _operatorChannel?.CanManageSessions == true);
+            });
+            _logger?.LogInformation("Mobile Status queued={Accepted}: images={Images}; reason={Reason}; device={DeviceId}; stream={StreamId}.",
+                accepted, images, reason, _deviceId, streamId);
+            if (accepted)
+            {
+                lock (_gate)
+                {
+                    if (_streamId == streamId)
+                    {
+                        _statusReason = "requested";
+                    }
+                }
+            }
         }
     }
 
@@ -207,11 +298,10 @@ internal sealed class MobileAssistantChannel : IDisposable
         {
             result = AssistantChannelSendResult.Refused("The message is empty.");
         }
-        else if (_OpenQuestion() is not null)
+        else if (_OpenQuestion() is not null || _gateway.PendingQuestions.Count > 0)
         {
-            // While the assistant's question waits, the host reads a text reply as its answer (AC-1553); in v1 that is
-            // decided on the desktop only, like a permission prompt.
-            result = AssistantChannelSendResult.Refused("Answer the question on the desktop first.");
+            // A chat message or dictated text must never implicitly answer an operator card.
+            result = AssistantChannelSendResult.Refused("Answer the question card first.");
         }
         else
         {
@@ -318,6 +408,13 @@ internal sealed class MobileAssistantChannel : IDisposable
                 _question = null;
             }
 
+            if (row is { Kind: AssistantChannelRowKind.Question, IsUpdate: true, Questions.Count: 0 }
+                && _question?.Id == (row.CorrelationId ?? row.Id.ToString("n")))
+            {
+                answered = _question?.Id;
+                _question = null;
+            }
+
             if (row is { Questions.Count: > 0, CorrelationId: { } correlationId } && _question?.Id != correlationId)
             {
                 answered = _question?.Id ?? answered;
@@ -338,6 +435,10 @@ internal sealed class MobileAssistantChannel : IDisposable
         }
 
         _Queue(row);
+        if (row.Kind == AssistantChannelRowKind.Question || answered is not null || asked is not null)
+        {
+            _SendPending();
+        }
     }
 
     private (string Id, string Text)? _OpenQuestion()
@@ -511,9 +612,10 @@ internal sealed class MobileAssistantChannel : IDisposable
     {
         var text = row.Text;
         var result = row.ResultText;
+        var questionJson = row.QuestionJson;
         while (true)
         {
-            var truncated = text.Length != row.Text.Length || result?.Length != row.ResultText?.Length;
+            var truncated = text.Length != row.Text.Length || result?.Length != row.ResultText?.Length || questionJson != row.QuestionJson;
             var encoded = JsonSerializer.SerializeToUtf8Bytes(new
             {
                 id = row.Id.ToString("n"),
@@ -521,12 +623,25 @@ internal sealed class MobileAssistantChannel : IDisposable
                 text,
                 timestamp = row.Timestamp,
                 toolName = row.ToolName,
+                senderTitle = row.SenderTitle,
+                questionId = row.CorrelationId,
+                questionJson,
+                pendingQuestion = row.IsPendingQuestion,
                 resultText = result,
                 truncated,
             });
-            if (encoded.Length <= budget || (text.Length == 0 && string.IsNullOrEmpty(result)))
+            if (encoded.Length <= budget)
             {
                 return encoded;
+            }
+
+            if (text.Length == 0 && string.IsNullOrEmpty(result))
+            {
+                if (questionJson is null)
+                {
+                    return encoded;
+                }
+                questionJson = null;
             }
 
             text = Half(text);
@@ -540,7 +655,9 @@ internal sealed class MobileAssistantChannel : IDisposable
     internal static string Cut(string text, int length) =>
         length > 0 && char.IsHighSurrogate(text[length - 1]) ? text[..(length - 1)] : text[..length];
 
-    private void _Send(string type, Action<Utf8JsonWriter> body)
+    private void _Send(string type, Action<Utf8JsonWriter> body) => _TrySend(type, body);
+
+    private bool _TrySend(string type, Action<Utf8JsonWriter> body)
     {
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -558,10 +675,10 @@ internal sealed class MobileAssistantChannel : IDisposable
         if (plaintext.Length > MobileFrameCipher.MaxPlaintextBytes)
         {
             _logger?.LogWarning("A {Type} message for a phone came out at {Bytes} bytes, over a frame; not sent.", type, plaintext.Length);
-            return;
+            return false;
         }
 
-        _send(plaintext);
+        return _send(plaintext);
     }
 
     private static void _ReplyTo(Utf8JsonWriter writer, string? id) => writer.WriteString("replyTo", id);

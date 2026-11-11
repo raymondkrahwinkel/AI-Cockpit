@@ -22,7 +22,7 @@ internal static class SplashScene
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var step = sequence.AddOperatorStep("Unlocking…", _ => gate.Task);
         var run = sequence.RunPendingAsync();
-        var model = new SplashViewModel(sequence);
+        var model = new SplashViewModel(sequence) { StepsAppearAfter = TimeSpan.Zero };
         model.BeginUnlock(new UnlockViewModel
         {
             IsBusy = busy,
@@ -50,13 +50,13 @@ internal static class SplashScene
         }
 
         model.Refresh();
-        return new SplashWindow(model, null);
+        return new SplashWindow(model, null) { AnimateEntrance = false };
     }
 
     public static Window Loading() => _Build(scene =>
     {
         scene.Finish("Loading settings…", "Loading plugins…");
-        scene.Clock.Advance(TimeSpan.FromSeconds(1.2));
+        scene.Clock.Advance(TimeSpan.FromSeconds(1.6));
     });
 
     public static Window Slow() => _Build(scene =>
@@ -81,7 +81,7 @@ internal static class SplashScene
     public static Window Failed() => _Build(scene =>
     {
         scene.Finish("Loading settings…", "Loading plugins…");
-        scene.Clock.Advance(TimeSpan.FromSeconds(1));
+        scene.Clock.Advance(TimeSpan.FromSeconds(1.6));
         scene.Fail(PluginLabel);
         scene.WaitFor(PluginLabel, StartupStepState.Failed);
     });
@@ -93,7 +93,7 @@ internal static class SplashScene
         arrange(scene);
         viewModel.Refresh();
 
-        return new SplashWindow(viewModel, null);
+        return new SplashWindow(viewModel, null) { AnimateEntrance = false };
     }
 
     private sealed class Scene

@@ -26,6 +26,32 @@
 
 - AC-2277: Open on a connected server starts its own Cockpit window, with ordinary navigation and session start on that server. The window starts no local backend; Options remain read-only until their server adapters are connected.
 
+- AC-2319: each paired phone in Depot settings shows a SHA-256 key fingerprint to compare with the phone's status sheet (Depot 0.66.0).
+
+- AC-2318: the start-up splash now plays the Wispslate entrance: the W arcs in with its streaks, the colour gradient runs once through the logo, then the name and the steps appear. It keeps moving while the main window is built, follows light and dark, and is a still image when Windows animation effects are off. The splash stays at least 1.4 s so the entrance is seen (host 0.180.2).
+
+- AC-2301: paired phones can request byte-bounded older transcript pages without replacing the conversation (Depot 0.65.5, host 0.180.1, SDK 3.93.0).
+
+- AC-2312: a live Depot note that an agent edits while it is open no longer stays on "Not confirmed in Depot yet" with phantom "lines only in this Cockpit". Depot's saver now confirms the version the text is saved as, so formatting the note editor writes differently (tables, lists) no longer blocks the confirmation, and Retry sync says why when it cannot confirm yet (host 0.180.0, plugin SDK 3.92.0, Depot 0.65.4).
+
+- AC-2307: connected phones receive updated image support as soon as the assistant's capabilities change, including after a session replacement. Logs record capability decisions and each mobile Status value with its reason (host 0.179.1, SDK 3.91.0, Depot 0.65.3).
+
+- AC-2310: assistant MCP connections retain their brain scope and stay cached until their configuration or sign-in changes, preventing repeated reconnects and log flooding.
+
+- AC-2308: plugin updates share one Linux build batch and at most one Windows batch after a nightly, then publish together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.
+
+- AC-2304: the Depot gateway has its own sign-in so it cannot overwrite the Depot connection's authorization. A refused sign-in is remembered until its credential changes, without repeated warnings or sign-in toasts (Depot 0.65.1).
+
+- AC-2298: assistants and agent sessions can deliberately ping a connected phone with their verified session name and a target to open. Pings are limited to three per sender per minute and use the encrypted mobile relay (host 0.179.0, SDK 3.90.0, Depot 0.65.0).
+
+- AC-2296/AC-2297: paired phones show session mail as collapsible cards with sender names and answer assistant question cards through the device-bound operator channel. Closed cards retain their answer or resolution (host 0.178.0, plugin SDK 3.89.0, Depot 0.64.0).
+
+- Fixed paired phones staying offline after signing in to Depot again: the mobile relay reconnects without restarting Cockpit and keeps the saved phone keys (Depot plugin 0.62.2).
+- AC-2275: paired phones can send tasks from the session overview and start or stop agent sessions on a chosen desk through the authenticated operator channel. Retried starts reuse the host result (host 0.177.0, plugin SDK 3.88.0, Depot 0.63.0).
+- AC-2275: externally submitted tasks are refused while a session needs attention or has an open permission or question, so task text cannot approve a TTY permission dialog.
+
+- AC-2273: paired phones can view waiting questions, SDK permissions and the Autopilot epic gate and send a device-bound, one-use decision. Epic approval opens the existing pull request gate; it grants no permission to merge.
+
 - Fixed MCP tool calls with content annotations or resource icons failing during serialization; retained MCP SDK 2.3.0 pending an upstream fix.
 
 - AC-2265: a paired phone can send images with a message to the assistant or to a session, in chunks inside the encrypted channel (JPEG, PNG or WebP, at most 4 per message and 8 MB each). A target that cannot see images still gets the text, and the phone is told why the images stayed behind. Plugins get `SendToSessionAsync(paneId, text, images)` with `SessionSendResult`, plus `AcceptsImages` on `OpenCockpitSession` and `IAssistantChannelGateway` (plugin SDK 3.86.0, host 0.175.0, Depot plugin 0.61.0).
@@ -255,6 +281,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - AC-2284: the ordinary Plugin store in a remote Cockpit window installs, updates, disables and removes plugins on the server. Store sources and publisher trust stay behind Admin access; the matching running UI is cached separately without changing local plugins or configuration. Protected workspaces keep their contents when an automatic UI replacement must wait.
 
 - AC-2287: remote SDK sessions support rename, scoped conversation search and resume, structured permission answers and verify screenshots. Resumes use the server's saved transcript and folder; names, status and session metadata survive reconnect.
+
+- AC-2309: retain saved phone keys when Depot's grant-scoped device list omits them after signing in again; log pairing phases and outcomes without credentials or phone names (Depot plugin 0.65.2).
 
 ### Added
 

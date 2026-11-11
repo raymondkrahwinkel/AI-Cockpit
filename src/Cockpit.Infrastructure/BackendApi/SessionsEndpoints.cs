@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -106,10 +107,25 @@ internal static class SessionsEndpoints
             });
         }).RequireOperate();
 
-        api.MapGet("/sessions/{paneId}/transcript", async (string paneId, int? count) =>
+        api.MapGet("/sessions/{paneId}/transcript", async (string paneId, int? count, int? before) =>
         {
-            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || await read().ReadTranscriptAsync(paneId, _Count(count)).ConfigureAwait(false) is not { } transcript)
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
+            if (before is { } boundary)
+            {
+                if (boundary < 0 || sessions().Find(paneId) is not { IsTerminal: false, HasReadableTranscript: true } source)
+                {
+                    return Results.NotFound();
+                }
+
+                SessionTranscriptSlice page = await source.ReadTranscriptBeforeAsync(boundary, _Count(count)).ConfigureAwait(false);
+                return Results.Json(new { before = boundary, totalEntries = page.TotalEntries, entries = page.Entries });
+            }
+
+            if (await read().ReadTranscriptAsync(paneId, _Count(count)).ConfigureAwait(false) is not { } transcript)
             {
                 return Results.NotFound();
             }
@@ -560,7 +576,7 @@ internal static class SessionsEndpoints
                 paneId = assistant.PaneId,
                 name = assistant.Title,
                 totalEntries = slice.TotalEntries,
-                entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult }),
+                entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult, timestamp = entry.Timestamp }),
                 rows = snapshot?.Rows,
                 seq = snapshot?.Seq,
             });
@@ -581,7 +597,7 @@ internal static class SessionsEndpoints
 
             return await assistant.SubmitPromptWhenReadyAsync(body.Text).ConfigureAwait(false) is { } delivered
                 ? Results.Json(new { paneId = assistant.PaneId, delivered })
-                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant is still starting and already has a turn waiting; this one was not accepted.");
+                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant cannot accept this task: it may be waiting for a permission or question, not ready, or already holding a task.");
         }).RequireOperate().Audited("assistant_prompt", services).ForAssistantHolderOnly();
     }
 

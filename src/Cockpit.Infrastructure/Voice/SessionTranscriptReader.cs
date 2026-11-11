@@ -70,7 +70,7 @@ internal sealed class SessionTranscriptReader(
         var slice = reader.ReadEntries(statusFile, count);
         return new SessionTranscriptSlice(
             [.. slice.Entries.Select(entry => new SessionTranscriptEntry(
-                _MapEntryKind(entry.Kind), entry.Text, entry.ToolResult))],
+                _MapEntryKind(entry.Kind), entry.Text, entry.ToolResult) { Timestamp = entry.Timestamp })],
             slice.TotalEntries);
     }
 

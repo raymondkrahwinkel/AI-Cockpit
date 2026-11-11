@@ -1,5 +1,11 @@
 # AI-Cockpit
 
+`cockpit-operator-phone.notify_operator_phone` lets the assistant and live agent sessions ping connected phones
+with a title (80 characters), short text (240), urgency (`normal` or `important`) and target (`assistant` or a
+live pane id). The host supplies the sender name and limits each sender to three pings per minute. Never put
+secrets or transcript in these fields. Depot delivers through the encrypted relay; the result counts streams
+accepting a queued ping, not device delivery. There is no offline backlog or extra consent click.
+
 Profiles have `GuardrailMode` (`Strict`, `Warn`, `Off`) and `GuardrailAllowedPaths` in
 `cockpit.json`, editable under Manage profiles and Options. New profiles default to
 `Strict`; existing entries without the mode default to `Warn`. Allowed paths default
@@ -604,6 +610,8 @@ dotnet test
   `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView`, the `Sessions` and `Mcp` namespaces), with signatures,
   parameters and short examples.
 - **[Example store index](docs/plugins/example-store-index.json)** — a template for your own store's `index.json`.
+- **Publishing store updates:** [Maintainer workflow](docs/plugins/AUTOMATED-PUBLISH.md#publishing-updates-after-a-nightly)
+  prepares missing versions in one Linux batch and at most one Windows batch, then publishes one store PR.
 - **Official plugin store:**
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,

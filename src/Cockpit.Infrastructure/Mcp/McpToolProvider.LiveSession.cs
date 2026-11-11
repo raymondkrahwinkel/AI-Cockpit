@@ -240,6 +240,7 @@ internal sealed partial class McpToolProvider
                 }
                 var upstream = new Upstream(server);
                 _servers.Add(server.Name, upstream);
+                _provider._LogBrainQuery(server, _paneId);
                 upstream.Worker = Task.Run(() => _ownsToken ? _ConnectLocalAsync(upstream) : _RunGatewayAsync(upstream));
                 connecting = upstream.Initial.Task.WaitAsync(cancellationToken);
             }
@@ -368,7 +369,9 @@ internal sealed partial class McpToolProvider
                         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         deadline.CancelAfter(TimeSpan.FromSeconds(15));
                         var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection([server.Config.Name]), deadline.Token);
-                        var config = registry.FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
+                        // AC-2310: compare and connect with the same session query used by the binding's cache.
+                        var config = _provider._WithBrainQuery(registry, _paneId)
+                            .FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
                         if (_paneId is not null && _provider._mounts?.Set(_paneId)?.Context?.ConfineRoot is { } root)
                         {
                             config = _ConfinedServers([config], root)[0];

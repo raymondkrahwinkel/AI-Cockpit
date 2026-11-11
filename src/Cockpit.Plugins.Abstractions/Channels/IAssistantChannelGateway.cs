@@ -51,6 +51,16 @@ public enum AssistantChannelRowKind
     /// A rule across the transcript, e.g. "context cleared".
     /// </summary>
     Divider,
+
+    /// <summary>
+    /// Mail delivered by another session or agent.
+    /// </summary>
+    Inbox,
+
+    /// <summary>
+    /// A session status report.
+    /// </summary>
+    Status,
 }
 
 /// <summary>
@@ -88,6 +98,21 @@ public sealed record AssistantChannelRow
     /// What the tool came back with, once it has; null while the call is still running.
     /// </summary>
     public string? ResultText { get; init; }
+
+    /// <summary>
+    /// The visible sender name of an Inbox or Status row, without a pane identifier.
+    /// </summary>
+    public string? SenderTitle { get; init; }
+
+    /// <summary>
+    /// The original question payload, including saved answers or its resolution.
+    /// </summary>
+    public string? QuestionJson { get; init; }
+
+    /// <summary>
+    /// Whether the broker card still accepts an operator answer.
+    /// </summary>
+    public bool IsPendingQuestion { get; init; }
 
     /// <summary>
     /// False the first time a row is seen and true every time it is raised again because it changed — post on the
@@ -172,12 +197,29 @@ public sealed record AssistantChannelHistoryPage(IReadOnlyList<AssistantChannelR
 /// </summary>
 public interface IAssistantChannelGateway : IDisposable
 {
+    /// <summary>Questions still waiting when a transport reconnects.</summary>
+    IReadOnlyList<AssistantChannelRow> PendingQuestions => [];
+
+    /// <summary>Answers every question in a card with its own structured selection; requires host 0.176.0.</summary>
+    Task<AssistantChannelSendResult> AnswerQuestionsAsync(string senderUserId, string correlationId,
+        IReadOnlyList<IReadOnlyList<string>> answers, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantChannelSendResult.Refused("This host cannot take structured question answers."));
+
     /// <summary>
     /// Whether the assistant sees images right now (AC-2265), so a channel can offer an attach button only where it
     /// works. False while the assistant is not running, and on a host that predates this member; images sent anyway
     /// come back as <see cref="AssistantChannelSendResult.ImagesRefused"/>.
     /// </summary>
     bool AcceptsImages => false;
+
+    /// <summary>
+    /// Image support changed, including when the assistant starts or is replaced; read <see cref="AcceptsImages"/> again.
+    /// </summary>
+    event EventHandler? AcceptsImagesChanged
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Atomically claims an idle assistant for a host-enforced read-only turn; a refusal queues nothing.

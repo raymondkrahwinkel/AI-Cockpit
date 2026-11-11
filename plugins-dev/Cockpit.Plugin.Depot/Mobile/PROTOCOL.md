@@ -200,6 +200,19 @@ ciphertext ‖ tag = AES-256-GCM(key = k_pc or k_cp, nonce, plaintext, aad)
 
 ## 6. Messages inside a frame
 
+### Deliberate phone pings (AC-2298)
+
+`notify` may carry `kind: "targeted"`, `senderId` (verified pane id), `sender` (session name, at most 80 characters),
+`title` (1–80), `text` (1–240), `urgency` (`normal` or `important`) and `target` (`cockpit-assistant` or a live pane id).
+These fields travel inside the authenticated encrypted frame only; no transcript is attached. The core tool
+`cockpit-operator-phone.notify_operator_phone` derives the sender and limits each sender to three pings per minute.
+Its result counts streams accepting a queued frame, without claiming receipt or display on the phone. An offline
+phone has no backlog of pings. Existing `assistantMessage` notifications retain their payload and behavior.
+
+The app filters targeted pings with its independent Targeted notifications category and source mute. Important
+pings bypass app quiet hours and bundling, while category mutes and Android settings still apply. Normal pings
+bundle for one minute per Cockpit/sender/target; tapping opens the target through the existing navigation.
+
 The plaintext of a frame is one message as UTF-8 JSON:
 
 ```json
@@ -278,7 +291,7 @@ The two limits of the first draft, forward secrecy on one side only and a record
 again, are gone since the Cockpit's ephemeral key (§ 3, § 4). Zyra decided this on 09-11, from Raymond's requirement
 in DEP-618: Depot must not be able to interact with anybody's Cockpit in any way.
 
-## 10. Message types, v1 (AC-2227)
+## 10. Message types (AC-2227, AC-2273)
 
 Every message is an envelope as in § 6. A reply carries the `id` of the message it answers as `replyTo` in its body.
 The confirmation has id `ready`; the Cockpit's application ids are `c1`, `c2`, ….
@@ -312,11 +325,16 @@ phone only after the phone's `ready` opened (§ 9.4), apart from its own initial
 | `assistant.question` | `{ "questionId": string, "question": string }` | While the chat is open (and on opening it): the assistant asked a question that is answered on the desktop. Read-only in v1, like `assistant.consent`. |
 | `assistant.questionClosed` | `{ "questionId": string }` | The operator's next message, typed anywhere, moved past the question. |
 | `notify` | `{ "kind": "assistantMessage" }` | The assistant finished a turn with a new answer while the chat was not open. No text, nothing of the answer; only to a phone with an open stream. |
-| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool, "images": bool }` | After `cockpit.status`: the machine name, the Cockpit version, whether this Cockpit has an assistant, and whether the assistant sees images right now (§ 12). |
+| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool, "images": bool }` | After `cockpit.status`, and unsolicited with `replyTo: null` when image support changes: the machine name, the Cockpit version, whether this Cockpit has an assistant, and whether the assistant sees images right now (§ 12). |
 | `attachment.refused` | `{ "attachmentId", "error": string }` | An image was dropped (§ 12). |
 
-A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "truncated": bool }`. `kind` is one of
-`assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`. A row
+Status attempts are logged at Information with the exact `images` value, stream/device ids, queue acceptance and
+the reason: `first status`, `capability change`, `reconnect`, or `requested` for another request on the same stream.
+Queue acceptance does not prove delivery to the phone. Runtime image decisions log pane/runtime ids, model and source
+when first known or changed; neither log contains message content or keys, and ordinary frames add no log entries.
+
+A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "senderTitle"?, "questionId"?, "questionJson"?, "pendingQuestion": bool, "truncated": bool }`. `kind` is one of
+`assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`, `inbox`, `status`. Inbox and Status retain their real type and visible sender name in history and live rows; clients ignore unknown kinds. `questionJson` carries saved answers or a resolution, and `questionId` matches the current operator action. A row
 too big for one frame keeps the start of its text and says `truncated: true`. Images go from the phone to the Cockpit
 only (§ 12); nothing of an image comes back.
 
@@ -334,8 +352,7 @@ that keeps asking cannot hold up the relay for the others; a page that loses a f
 The phone also talks to the other sessions of the Cockpit it is paired with: their list, one session's transcript on
 request, and a message to that session. The messages go in the same encrypted stream as § 10, and the same rule applies
 to who may send: only a paired phone, over its current stream, after its keys opened the frame. After Forget or
-`deviceUnpaired`, nothing of that phone is handled any more. The Cockpit only answers. It sends nothing about sessions on
-its own and keeps nothing per session. The phone asks again when it wants to see more (polling).
+`deviceUnpaired`, nothing of that phone is handled any more. Session transcripts still use request/poll. Pending operator decisions also publish through section 13, independently of an open chat.
 
 The assistant pane (`cockpit-assistant`) is not in the list. Every message about it is answered as for a pane that does
 not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
@@ -371,8 +388,10 @@ not exist: the assistant has its own channel, one conversation (§ 10, AC-1092).
 - A row has the shape of § 10. Its `id` is the row's index in the whole transcript, a number. Indices skip the host's
   own markers (turn end, divider), so they are not always consecutive. The index only rises.
 - `total` is the length of the whole transcript.
-- A `kind` is one of `userText`, `assistantText`, `toolUse`, `toolResult`, `thinking` and `error`. These rows carry no
-  `timestamp` and no `toolName`.
+- A `kind` is one of `userText`, `assistantText`, `toolUse`, `toolResult`, `thinking` and `error`. These rows carry no `toolName`.
+- `timestamp` is the host transcript entry time as an ISO-8601 DateTimeOffset, as in section 10, on both
+  `session.transcript` and `session.history` rows. It is omitted when the source has no time; no time is invented.
+  The field is optional, so older phones remain compatible.
 - A row too big for a frame is cut, with `truncated: true`, as in § 10. When the rows do not all fit in one frame, the
   oldest are left out, and `more: true` says that rows were left out before the first row.
 - `readable: false` with no rows: the session has no readable transcript (a plain terminal, a provider without a reader),
@@ -460,3 +479,113 @@ message. Nothing of an image is written to disk or to a log; a log line names on
 phone offers no button there. An older phone never sends them, and text works as before.
 
 The vectors' `attachment` object is a two-chunk JPEG and the `assistant.send` that names it, as the phone sends them.
+
+
+## 13. Pending decisions and structured answers (AC-2273)
+
+A new host advertises `operatorActions: true` in `cockpit.status`. Older hosts remain read-only.
+
+### Session lifecycle (AC-2275, Depot 0.63.0 / host 0.177.0)
+
+`cockpit.status.sessionLifecycle` advertises lifecycle support. These messages use the same host-authorised
+operator channel as decisions, available only to the Depot transport after the paired stream handshake.
+No lifecycle method is exposed as an agent tool; model callers are refused by the host. There is no extra consent click.
+
+| Phone request | Host response |
+| --- | --- |
+| `sessions.catalog {}` | `sessions.catalog {replyTo, capability, epoch, desks:[{id,name}], profiles:[{id,name}]}` |
+| `session.start {requestId, capability, epoch, deskId, profileId}` | `session.started {replyTo, ok, error, paneId}` |
+| `session.stop {capability, paneId}` | `session.stopped {replyTo, ok, error, paneId}` |
+
+The opaque lifecycle capability belongs to this live operator channel; discard it on stream closure and fetch a
+fresh catalog after reconnect. Host validation uses the current Sessions desks and profiles (profile ids are their
+labels; ambiguous labels are excluded and refused case-insensitively), never phone-supplied executable paths,
+configuration or commands. Startup goes through the normal launcher
+and composer, choosing the profile's SDK/TTY route and applying its launch validation. A failure is acknowledged as
+a failure, including a start requiring a desktop worktree decision. Stop closes exactly one grid agent pane; terminal,
+assistant and embedded panes are refused. An already closed pane returns a clear error with no side effects.
+
+`requestId` is a unique nonempty start id, at most 128 characters, kept across reconnect/ack loss. The host retains
+the task and result for each paired device/id for its process lifetime; a different desk/profile under that id is
+refused. Replays use the fresh stream capability and expected host epoch. The store refuses further new starts
+when that device's 4096 entries are full,
+rather than evicting ids and risking duplicate processes. A host restart closes the relay stream and starts a new
+deduplication lifetime, identified by the catalog's `epoch`; do not replay an unresolved start across a changed epoch. Refresh the list after a successful
+ack and open its returned pane. Older hosts hide lifecycle controls with an explanation; `session.send` still works.
+
+The shared host send path refuses tasks while a session needs attention or has a pending consent, permission or
+question, for SDK and TTY alike. Text cannot answer a permission dialog; use the bound operator action or desktop.
+TTY tasks arriving while the agent works are held (at most one) until idle with the guard free; the delayed Enter
+rechecks the same guard. Gateway,
+REST, plugin and wake submissions share the session's own prompt guard, including SDK permission state.
+The phone requests `operator.pending` after each authenticated reconnect, independently of whether chat is open.
+Snapshots also publish when an action opens or closes. Every snapshot has `snapshotId`, `last` and `items`;
+the phone replaces its list only after the final batch of that snapshot arrives. An empty final batch clears it.
+A lost connection discards partial snapshots and capabilities. Responses are never persisted or retried on reconnect.
+
+Each item carries `id`, `revision`, `kind`, `target`, `summary`, `decisions` and `capability`.
+Consent also carries its exact `title`, `risk` and `sourcePlugin`; a missing pane is not attributed to the assistant.
+Dangerous consent is explicitly marked in the app.
+`target` is the session pane id, `cockpit-assistant`, or an Autopilot issue id. The source Cockpit is the authenticated
+stream, never the currently selected Cockpit in the UI. `decisions` are the exact allowed decision strings.
+The capability is unpredictable, held only in memory, and scoped to the authenticated device's current channel,
+request and revision. It never appears in a transcript, model input, MCP result or log.
+
+The phone sends `operator.respond` with `{id, revision, capability, decision}`. The host checks the capability,
+current registration and allowed decision and consumes authority atomically across every device before invoking
+the existing callback. It replies `operator.result` with `{replyTo, ok, error}`. A failed callback reoffers a still-current request with new capabilities; old capabilities stay consumed.
+A stale, wrong-device, replayed or
+closed-channel decision is refused without reaching the callback. Desktop answers, expiration and unpair revoke
+pending authority. One explicit button press is sufficient; there is no second consent prompt.
+
+Autopilot owns its registrations. Sub-PR merge-go is unavailable on the phone.
+`epic-go` only opens the existing PR-to-main gate and does not grant permission to merge that PR.
+The host records `phone operator` provenance in consent audit and session permission decisions without accepting
+a caller-supplied person name. Only the host-allowlisted Depot plugin receives the transport channel factory;
+other plugins may publish requests but cannot open an operator channel. The factory accepts no claimed device id.
+Chat text and `assistant.send`/`session.send` do not carry this authority; no MCP tool mints or submits it.
+
+Ordinary questions have `kind: question`, `questionId`, and `questions` containing every question's text, header,
+options (label and description), `multiSelect` and `allowOther`. They carry the same device-bound, one-use capability as other operator actions.
+They use `assistant.answer` with `{questionId, revision, capability, answers: [[string]]}` (one selection group per question),
+answered by `assistant.answered` with `{replyTo, ok, error}`. These are content answers, never operator approvals.
+The existing desktop question/consent messages remain available to older phone versions.
+
+
+## 14. Android request notifications (AC-2270)
+
+The complete `operator.pending` snapshot in Section 13 is also the notification source while chat is closed.
+An absent request withdraws its notification; disconnect/unpair clears all notification authority.
+No additional notification event, request store or session poller is required. Idle is not a request.
+
+A notification is scoped to Depot, Cockpit and request and deduplicated by revision. Its explicit private
+PendingIntent contains an opaque process-local reference, never a capability or an approval in text.
+Android requires authentication for response actions; the receiver also refuses a locked device.
+Only free-text RemoteInput intents are mutable; all other intents are immutable.
+The public lock-screen version contains no source, question, options or answer.
+
+Every response resolves the exact still-current in-memory item and uses Section 13's `operator.respond` or
+`assistant.answer`, including its existing request/revision/device binding and one-use host callback.
+Sending disables actions; acknowledgement or closure removes them. Nothing is persisted or retried.
+Multiple questions, multiselect and options beyond Android's action limit remain available through
+Open request, which opens the matching source's complete request card.
+Notifications require the existing Keep connection stream; no delivery is promised without it.
+
+
+### Older session pages (AC-2301, Depot 0.65.5 / host 0.180.1)
+
+`sessions.list.history: true` advertises `session.history`. Missing means unsupported: clients must not
+replace this request with another tail load. Existing `session.transcript` count/since behavior is unchanged.
+
+Phone request: `session.history { paneId, before, count? }`. `before` is a non-negative global source-row
+index, exclusive; count defaults to 50 and is clamped to 1..50 source entries. Host markers can leave fewer
+visible rows. The host reads strictly before this boundary, then keeps the newest part of that older page
+that fits one encrypted frame; it never includes newer rows to fill the page.
+
+Reply: `session.history { replyTo, paneId, readable, rows, nextBefore, more, error? }`. Rows are oldest first,
+with the original global indices as ids. The client prepends unseen ids, preserving all existing rows and
+live updates, and uses nextBefore for the next request. Even an empty page of filtered host markers advances
+the cursor; more is false at the beginning. Unreadable/error replies leave the existing conversation intact.
+
+The assistant channel already uses `assistant.history { before }` with byte-bounded multiple frames and
+`last`; it does not share the single-frame tail truncation of session.transcript.

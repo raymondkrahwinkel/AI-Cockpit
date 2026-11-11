@@ -29,7 +29,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     // AC-1553: the questions relayed, by correlation id, until answered; the newest is the one a bare text reply such
     // as "2" answers, until the operator's next message (here or in the app) moves the conversation on.
-    private readonly Dictionary<string, AssistantChannelQuestion> _questions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<AssistantChannelQuestion>> _questions = new(StringComparer.Ordinal);
     private string? _waiting;
 
     // AC-1544: where this channel's sending half is offered to other plugins, and their answers matched.
@@ -37,6 +37,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     private IAssistantSession? _observed;
     private bool _wasBusy;
+    private bool _acceptedImages;
     private bool _disposed;
 
     public AssistantChannelGateway(
@@ -51,6 +52,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         _consent = consent;
         _logger = logger;
         _messages = messages;
+        _acceptedImages = AcceptsImages;
 
         if (channel.Messages is { } sending)
         {
@@ -71,9 +73,63 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     public event EventHandler? TurnEnded;
 
+    public event EventHandler? AcceptsImagesChanged;
+
     public event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;
 
     public event EventHandler<Guid>? ConsentPromptClosed;
+
+    public IReadOnlyList<AssistantChannelRow> PendingQuestions
+    {
+        get
+        {
+            lock (_relayedRows)
+            {
+                return [.. _questions.Select(pair => new AssistantChannelRow
+                {
+                    Id = Guid.Parse(pair.Key), Kind = AssistantChannelRowKind.Question,
+                    Text = pair.Value[0].Question, Timestamp = DateTimeOffset.UtcNow,
+                    CorrelationId = pair.Key, Questions = pair.Value,
+                })];
+            }
+        }
+    }
+
+    public async Task<AssistantChannelSendResult> AnswerQuestionsAsync(string senderUserId, string correlationId,
+        IReadOnlyList<IReadOnlyList<string>> answers, CancellationToken cancellationToken = default)
+    {
+        if (_disposed || !_IsAllowed(senderUserId))
+        {
+            return AssistantChannelSendResult.Refused("This channel cannot take this answer.");
+        }
+
+        return await _AnswerQuestionAsync(correlationId, answers).ConfigureAwait(false);
+    }
+
+    private async Task<AssistantChannelSendResult> _AnswerQuestionAsync(string correlationId, IReadOnlyList<IReadOnlyList<string>> answers)
+    {
+        IReadOnlyList<AssistantChannelQuestion>? questions;
+        string? rowId;
+        lock (_relayedRows)
+        {
+            questions = _questions.GetValueOrDefault(correlationId);
+            rowId = _relayedRows.FirstOrDefault(pair => pair.Value.Id.ToString("n") == correlationId).Key;
+        }
+
+        if (questions is null || !StructuredQuestionJson.TakesAnswers(questions, answers))
+        {
+            return AssistantChannelSendResult.Refused("That is not an answer this question takes.");
+        }
+
+        if (rowId is null || _observed is not { } session || session.Rows.FirstOrDefault(row => row.Id == rowId) is not { } card
+            || !await session.AnswerQuestionAsync(rowId, card.InputJson, answers).ConfigureAwait(false))
+        {
+            return AssistantChannelSendResult.Refused("No question waits under this id.");
+        }
+
+        _Take(correlationId);
+        return AssistantChannelSendResult.Sent();
+    }
 
     public async Task<AssistantChannelTurn> TryStartReadOnlyTurnAsync(string senderUserId, string text, CancellationToken cancellationToken = default)
     {
@@ -124,7 +180,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         lock (_relayedRows)
         {
             waiting = _waiting;
-            question = waiting is null ? null : _questions.GetValueOrDefault(waiting);
+            question = waiting is null ? null : _questions.GetValueOrDefault(waiting)?.FirstOrDefault();
         }
 
         if (waiting is not null && question?.ReadReply(text) is { } chosen && _Take(waiting) is not null)
@@ -170,7 +226,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         AssistantChannelQuestion? question;
         lock (_relayedRows)
         {
-            question = _questions.GetValueOrDefault(correlationId);
+            question = _questions.GetValueOrDefault(correlationId)?.FirstOrDefault();
         }
 
         // AC-1544: not one of the assistant's, so perhaps a question another plugin sent through this channel.
@@ -212,7 +268,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     }
 
     // A question is answered once: the first answer takes it, so a second click or a late reply cannot answer again.
-    private AssistantChannelQuestion? _Take(string correlationId)
+    private IReadOnlyList<AssistantChannelQuestion>? _Take(string correlationId)
     {
         lock (_relayedRows)
         {
@@ -284,6 +340,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         if (e.PropertyName is nameof(IAssistantSessionHost.Session) && !_disposed)
         {
             _WatchSession(_host.Session);
+            _NotifyImageSupportChanged();
         }
     }
 
@@ -329,7 +386,13 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
             foreach (var row in baseline)
             {
-                _relayedRows.TryAdd(row.Id, (Guid.NewGuid(), _Content(row)));
+                _relayedRows.TryAdd(row.Id, (_RowId(row), _Content(row)));
+                if (row.Kind == "Question" && row.IsPendingBrokerAnswer && StructuredQuestionJson.Parse(row.InputJson) is { Count: > 0 } pending)
+                {
+                    var correlation = _relayedRows[row.Id].Id.ToString("n");
+                    _questions[correlation] = pending;
+                    _waiting = correlation;
+                }
             }
 
             _wasBusy = busyNow;
@@ -345,6 +408,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return;
         }
 
+        _NotifyImageSupportChanged();
         var busy = session.IsBusy;
         bool ended;
         lock (_relayedRows)
@@ -357,6 +421,22 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         {
             TurnEnded?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private void _NotifyImageSupportChanged()
+    {
+        bool acceptsImages = AcceptsImages;
+        lock (_relayedRows)
+        {
+            if (_acceptedImages == acceptsImages)
+            {
+                return;
+            }
+
+            _acceptedImages = acceptsImages;
+        }
+
+        AcceptsImagesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // A row's first version is a row arriving; any later one is the same row changing — including a row that was
@@ -374,7 +454,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         // A Question row is only the assistant's own card (AddQuestion); a native AskUserQuestion is a permission row.
         var questions = row.Kind == "Question" ? StructuredQuestionJson.Parse(row.InputJson) : [];
         Guid id;
-        AssistantChannelQuestion? asked;
+        IReadOnlyList<AssistantChannelQuestion>? asked;
         lock (_relayedRows)
         {
             // The operator's own next message answers or moves past every question asked before it, here or in the app.
@@ -395,16 +475,24 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             }
             else
             {
-                id = Guid.NewGuid();
+                id = _RowId(row);
             }
 
             _relayedRows[row.Id] = (id, _Content(row));
 
-            // Only the first question, on the row's first sight: the assistant's own card answers its first (AC-955).
-            if (questions.Count > 0 && relayed.Id == Guid.Empty && upsert.Version <= 1)
+            // A card keeps all its questions so structured channels can answer each one independently.
+            if (questions.Count > 0 && (row.IsPendingBrokerAnswer || (relayed.Id == Guid.Empty && upsert.Version <= 1)))
             {
-                _questions[id.ToString("n")] = questions[0];
+                _questions[id.ToString("n")] = questions;
                 _waiting = id.ToString("n");
+            }
+            else if (row.Kind == "Question" && !row.IsPendingBrokerAnswer && upsert.Version > 1)
+            {
+                _questions.Remove(id.ToString("n"));
+                if (_waiting == id.ToString("n"))
+                {
+                    _waiting = null;
+                }
             }
 
             asked = _questions.GetValueOrDefault(id.ToString("n"));
@@ -413,7 +501,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         RowChanged?.Invoke(this, _ToChannelRow(row, id, _ChannelText(row), upsert.Version > 1, asked));
     }
 
-    private static AssistantChannelRow _ToChannelRow(TranscriptSnapshotEntry row, Guid id, string text, bool isUpdate, AssistantChannelQuestion? asked) => new()
+    private static AssistantChannelRow _ToChannelRow(TranscriptSnapshotEntry row, Guid id, string text, bool isUpdate, IReadOnlyList<AssistantChannelQuestion>? asked) => new()
     {
         Id = id,
         Kind = _Kind(row.Kind),
@@ -422,12 +510,16 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         Timestamp = row.Timestamp,
         ToolName = row.ToolName,
         ResultText = row.ResultText,
+        SenderTitle = row.SenderTitle != row.SenderPaneId && row.SenderTitle != row.SubjectPaneId ? row.SenderTitle : null,
+        QuestionJson = row.Kind == "Question" ? row.InputJson : null,
+        IsPendingQuestion = row.IsPendingBrokerAnswer,
         IsUpdate = isUpdate,
-        Questions = asked is null ? [] : [asked],
-        CorrelationId = asked is null ? null : id.ToString("n"),
+        Questions = asked ?? [],
+        CorrelationId = row.Kind == "Question" ? id.ToString("n") : null,
     };
 
-    private static int _Content(TranscriptSnapshotEntry row) => HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments);
+    private static int _Content(TranscriptSnapshotEntry row) =>
+        HashCode.Combine(row.Text, row.ResultText, row.ReplyAttachments, row.InputJson, row.IsPendingBrokerAnswer);
 
     private string _ChannelText(TranscriptSnapshotEntry row) =>
         row.StartsInsideTable && _observed is not null ? _TableText(row, _observed.Rows.TakeWhile(previous => previous.Id != row.Id)) : row.Text;
@@ -471,7 +563,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
                 var row = rows[index];
                 if (!_relayedRows.TryGetValue(row.Id, out var relayed))
                 {
-                    relayed = (Guid.NewGuid(), _Content(row));
+                    relayed = (_RowId(row), _Content(row));
                     _relayedRows[row.Id] = relayed;
                 }
 
@@ -482,6 +574,9 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return Task.FromResult(new AssistantChannelHistoryPage(page, start > 0 ? page[^1].Id.ToString("n") : null));
         }
     }
+
+    private static Guid _RowId(TranscriptSnapshotEntry row) =>
+        row.Kind == "Question" && Guid.TryParse(row.Id, out var id) ? id : Guid.NewGuid();
 
     // Newest first: a page back usually starts near the end. Under the _relayedRows lock.
     private int _IndexOf(IReadOnlyList<TranscriptSnapshotEntry> rows, Guid id)
@@ -508,6 +603,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         "TurnCompleted" => AssistantChannelRowKind.TurnCompleted,
         "Error" => AssistantChannelRowKind.Error,
         "Divider" => AssistantChannelRowKind.Divider,
+        "Inbox" => AssistantChannelRowKind.Inbox,
+        "Status" => AssistantChannelRowKind.Status,
         _ => AssistantChannelRowKind.AssistantText,
     };
 

@@ -159,12 +159,8 @@ public sealed class OperatorMessageRegistry(ILogger<OperatorMessageRegistry> log
 
     // One rule for the assistant's questions and a plugin's: one pick unless several are allowed, from the list
     // unless the operator's own words are welcome.
-    public static bool Takes(AssistantChannelQuestion question, IReadOnlyList<string> chosen)
-    {
-        var picks = chosen.Select(pick => pick.Trim()).Where(pick => pick.Length > 0).Distinct().ToList();
-        var outsideTheList = !question.AllowOther && picks.Any(pick => question.Options.All(option => option.Label != pick));
-        return picks.Count > 0 && (question.MultiSelect || picks.Count == 1) && !outsideTheList;
-    }
+    public static bool Takes(AssistantChannelQuestion question, IReadOnlyList<string> chosen) =>
+        StructuredQuestionJson.TakesAnswers([question], [chosen]);
 
     private void _Forget(string? correlationId)
     {

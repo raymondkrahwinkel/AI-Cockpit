@@ -166,6 +166,18 @@ public interface ISessionHandle
     Task<SessionTranscriptSlice> ReadTranscriptAsync(int count);
 
     /// <summary>
+    /// The tail of the transcript prefix strictly before its global row index; TotalEntries is the prefix length.
+    /// </summary>
+    async Task<SessionTranscriptSlice> ReadTranscriptBeforeAsync(int before, int count)
+    {
+        SessionTranscriptSlice transcript = await ReadTranscriptAsync(int.MaxValue).ConfigureAwait(false);
+        int end = Math.Clamp(before, 0, transcript.TotalEntries);
+        int first = transcript.TotalEntries - transcript.Entries.Count;
+        return new SessionTranscriptSlice(
+            [.. transcript.Entries.Take(Math.Max(0, end - first)).TakeLast(count)], end);
+    }
+
+    /// <summary>
     /// The host-owned transcript rows with the event-log seq <paramref name="lastSeq"/> gives in the same instant, so a reader following the log after it gets each later upsert once (AC-1388).
     /// Null for a handle whose session keeps no host-owned transcript.
     /// </summary>
@@ -185,7 +197,7 @@ public interface ISessionHandle
 
     /// <summary>
     /// Submits <paramref name="prompt"/> now (true) or holds it until the session is ready (false), in the same step
-    /// as checking that no earlier prompt is still held; null, accepting nothing, when one is (AC-1375).
+    /// as checking that no earlier prompt is still held; null accepts nothing when one is held or input is refused.
     /// </summary>
     Task<bool?> SubmitPromptWhenReadyAsync(string prompt);
 
@@ -200,6 +212,10 @@ public interface ISessionHandle
     /// rest of the session, and only means something on an allow.
     /// </summary>
     Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false);
+
+    /// <summary>Answers only this exact pending permission revision, atomically with the desktop answer.</summary>
+    Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow,
+        OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) => Task.FromResult(false);
 
     /// <summary>
     /// Answers a pending structured question once; false when this handle cannot answer it.

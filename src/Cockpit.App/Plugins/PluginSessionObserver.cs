@@ -95,6 +95,9 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
     public Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) =>
         Registry is not { } registry ? Task.FromResult<PluginTranscriptSlice?>(null) : PluginSessionReads.ReadTranscriptAsync(registry, Launcher, paneId, count);
 
+    public Task<PluginTranscriptSlice?> ReadTranscriptBeforeAsync(string paneId, int before, int count) =>
+        _registry is null ? Task.FromResult<PluginTranscriptSlice?>(null) : PluginSessionReads.ReadTranscriptAsync(_registry, _launcher, paneId, count, before);
+
     public Task<IReadOnlyList<PluginPendingPermission>> ReadPendingPermissionsAsync(string paneId) =>
         Registry is not { } registry ? Task.FromResult<IReadOnlyList<PluginPendingPermission>>([]) : PluginSessionReads.ReadPendingPermissionsAsync(registry, Launcher, paneId);
 

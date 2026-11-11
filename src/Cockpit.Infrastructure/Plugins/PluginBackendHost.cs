@@ -50,7 +50,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1392: the `ICockpitHost` a plugin's backend part receives, scoped by `pluginId`, with no window behind it.
 // Sessions are reached through ISessionRegistry/ISessionLauncher, which marshal for themselves. The window members
 // are no-ops that say so once per plugin; the desktop's DesktopPluginHost overrides them until F2.14 (AC-1369).
-public class PluginBackendHost(
+internal class PluginBackendHost(
     string pluginId,
     string pluginName,
     IServiceProvider services,
@@ -129,6 +129,20 @@ public class PluginBackendHost(
     }
 
     public ICockpitSessionObserver Sessions => sessions;
+
+    public IOperatorActionService? OperatorActions => services.GetService<OperatorActionService>();
+
+    public IOperatorPhoneNotifications? OperatorPhoneNotifications => services.GetService<OperatorPhoneNotifications>();
+
+    public IOperatorActionTransport? OperatorTransport => pluginId == "depot"
+        ? services.GetService<OperatorActionService>() is { } service ? new _OperatorTransport(service) : null
+        : null;
+
+    private sealed class _OperatorTransport(OperatorActionService service) : IOperatorActionTransport
+    {
+        public IOperatorActionChannel OpenChannel() => service.OpenChannel();
+        public IOperatorActionChannel OpenChannel(string deviceId) => service.OpenChannel(deviceId);
+    }
 
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
     // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a
@@ -1205,7 +1219,7 @@ public class PluginBackendHost(
     public Task SendToSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
-            : _ActOnSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
+            : _SendToSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
 
     // AC-2265: the assistant channel's trust boundary and refusal shape. The images are decoded before the pane is looked
     // up, off the UI thread; a session that cannot see them still gets the text, and the sender hears why they did not go.
@@ -1213,7 +1227,7 @@ public class PluginBackendHost(
     {
         var (accepted, refusal) = InboundImage.NormalizeAll(images);
         var blind = false;
-        var delivered = await _ActOnSessionAsync(paneId, session =>
+        var delivered = await _SendToSessionAsync(paneId, session =>
         {
             if (accepted.Count > 0 && session.AcceptsImages)
             {
@@ -1231,6 +1245,18 @@ public class PluginBackendHost(
 
         return new SessionSendResult(delivered, refusal);
     }
+
+    private Task<bool> _SendToSessionAsync(string paneId, Func<ISessionHandle, Task<bool>> send) =>
+        _ActOnSessionAsync(paneId, async session =>
+        {
+            // A task must never become an answer to an SDK question or a TTY's own permission dialog.
+            if (session.SessionStatus == SessionStatus.NeedsAttention || session.HasPendingConsent
+                || (await session.ReadPendingPermissionsAsync().ConfigureAwait(false)).Count > 0)
+            {
+                return false;
+            }
+            return await send(session).ConfigureAwait(false);
+        });
 
     public Task<bool> InsertIntoSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)

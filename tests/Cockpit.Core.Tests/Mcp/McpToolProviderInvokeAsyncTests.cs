@@ -39,7 +39,7 @@ public class McpToolProviderInvokeAsyncTests
         {
             AccessToken = "already-expired",
             RefreshToken = "a-refresh-token-this-server-never-issued",
-            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
             ResourceUrl = server.Url,
             ClientId = InProcessOAuthMcpServer.ClientId,
             AuthorizationServer = server.BaseUrl,
@@ -61,6 +61,11 @@ public class McpToolProviderInvokeAsyncTests
 
         var result = await provider.InvokeAsync(config.Name, "echo");
 
+        // AC-2304: the clock still accepts this token, but the SDK needs a browser. Remember that refusal.
+        await provider.InvokeAsync(config.Name, "echo");
+        Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(config));
+        Assert.Equal(["Depot: Work"], announced);
+
         // Same episode, now "never signed in" instead of "expired": still the one notice, not a second.
         await store.RemoveAsync("depot");
         await provider.InvokeAsync(config.Name, "echo");
@@ -68,6 +73,14 @@ public class McpToolProviderInvokeAsyncTests
         Assert.Empty(browserOpened);
         Assert.Equal(McpToolInvocationOutcome.AuthorizationRequired, result.Outcome);
         Assert.Equal(["Depot: Work"], announced);
+
+        await store.SaveAsync("depot", config.Name, new McpOAuthToken
+        {
+            AccessToken = InProcessOAuthMcpServer.AccessToken,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            ResourceUrl = server.Url,
+        });
+        Assert.Equal(McpAuthState.Authorized, (await coordinator.AcquireAsync(config, interactive: false)).State);
     }
 
     // --- callerFallbackServers (AC-499) ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -195,7 +196,18 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     // One dispatcher callback for the check and the hand-over: a pane still coming up holds exactly one brief, and a
     // second one arriving between the two would otherwise be held and misread as belonging to this call.
     public Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
-        UiThreadCall.RunAsync(() => _pane is not { } pane || pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt));
+        UiThreadCall.RunAsync(() =>
+        {
+            if (_pane is not { } pane)
+            {
+                return (bool?)null;
+            }
+            if (!_CanReceiveTask(pane))
+            {
+                return (bool?)null;
+            }
+            return pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt);
+        });
 
     public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => _pane is { } pane ? pane.WorktreeBranch = branch : null);
 
@@ -206,6 +218,10 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson) => _pane is SessionViewModel sdk
         ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionWithAnswersAsync(toolUseId, allow, answersJson))
+        : Task.FromResult(false);
+
+    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) => _pane is SessionViewModel sdk
+        ? UiThreadCall.RunAsync(() => sdk.RespondToPermissionByIdAsync(expected.ToolUseId, allow, expected: expected, origin: origin))
         : Task.FromResult(false);
 
     // Always dispatched, as `SessionVerifyGateway` does (AC-577): every caller arrives off the UI thread.
@@ -228,12 +244,27 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(pane => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => _WhileLiveAsync(pane => pane.InjectAndSubmit(text));
+    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(async () =>
+    {
+        if (!_IsLive() || _pane is not { } pane || !_CanReceiveTask(pane))
+        {
+            return false;
+        }
+        if (pane is TtyViewModel tty)
+        {
+            return await tty.SendPromptAsync(text);
+        }
+        pane.InjectAndSubmit(text);
+        return true;
+    });
 
     public bool AcceptsImages => _pane is SessionViewModel { CanPasteImages: true };
 
     public Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages) => UiThreadCall.RunAsync(() =>
-        _IsLive() && _pane is SessionViewModel sdk ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
+        _IsLive() && _pane is SessionViewModel sdk && _CanReceiveTask(sdk) ? sdk.SubmitWithImagesAsync(text, pngImages) : Task.FromResult(false));
+
+    private static bool _CanReceiveTask(SessionPanelViewModel pane) => !pane.IsReadingChild && pane.SessionStatus != SessionStatus.NeedsAttention
+        && pane.PendingConsent is null && (pane is not SessionViewModel sdk || !sdk.HasPendingPermission);
 
     public Task<bool> InsertTextAsync(string text) => _WhileLiveAsync(pane => pane.InjectText(text));
 
@@ -432,7 +463,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         var transcript = sdk.Transcript;
         var skip = Math.Max(0, transcript.Count - count);
         return new SessionTranscriptSlice(
-            [.. transcript.Skip(skip).Select(entry => new SessionTranscriptEntry(entry.Kind.ToString(), entry.TextWithImageSuffix, entry.ResultText))],
+            [.. transcript.Skip(skip).Select(entry => new SessionTranscriptEntry(entry.Kind.ToString(), entry.TextWithImageSuffix, entry.ResultText) { Timestamp = entry.Timestamp })],
             transcript.Count);
     }
 }
