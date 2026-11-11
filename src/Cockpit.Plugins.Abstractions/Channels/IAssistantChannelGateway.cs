@@ -213,6 +213,15 @@ public interface IAssistantChannelGateway : IDisposable
     bool AcceptsImages => false;
 
     /// <summary>
+    /// Image support changed, including when the assistant starts or is replaced; read <see cref="AcceptsImages"/> again.
+    /// </summary>
+    event EventHandler? AcceptsImagesChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Atomically claims an idle assistant for a host-enforced read-only turn; a refusal queues nothing.
     /// Cancellation before Started withdraws the claim. Completion carries the answer after TurnCompleted.
     /// </summary>

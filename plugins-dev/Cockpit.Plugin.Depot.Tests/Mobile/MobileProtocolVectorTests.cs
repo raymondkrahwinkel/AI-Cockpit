@@ -1,3 +1,12 @@
+using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using System.Buffers.Text;
 using System.Net;
 using System.Security.Cryptography;
@@ -397,6 +406,97 @@ public class MobileProtocolVectorTests
         var sent = Assert.Single(replies, reply => reply.Type == "assistant.sent").Body;
         Assert.True(sent.GetProperty("ok").GetBoolean());
         Assert.Equal("an attachment was missing, incomplete or refused", sent.GetProperty("imagesRefused").GetString());
+
+        await _ImageCapabilityChangesAsync();
+    }
+
+    // Category D: a connected phone must hear image capability changes without another request or turn.
+    private static async Task _ImageCapabilityChangesAsync()
+    {
+        SessionCapabilities capabilities = SessionCapabilities.ClaudeCli with { SupportsVision = false };
+        var runtime = Substitute.For<ISessionRuntime>();
+        runtime.Capabilities.Returns(_ => capabilities);
+        var manager = Substitute.For<ISessionManager>();
+        manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
+        var sessionHost = new SessionHost(() => "assistant", manager, TimeProvider.System);
+        sessionHost.Attach(null);
+        await using var session = new SessionHostHandle("assistant", "Assistant", false, "desk", null, null, sessionHost);
+        var host = Substitute.For<IAssistantSessionHost>();
+        host.Session.Returns(session);
+        var contribution = new AssistantChannelContribution
+        {
+            Id = "phone", Name = "Phone", Access = AssistantChannelAccess.ForSingleUser("device").Access
+                ?? throw new InvalidOperationException(),
+        };
+        var gateway = new AssistantChannelGateway(contribution, host, Substitute.For<IConsentBroker>(),
+            NullLogger<AssistantChannelGateway>.Instance);
+        var logger = Substitute.For<ILogger>();
+        List<byte[]> sent = [];
+        using var channel = new MobileAssistantChannel("device", gateway, bytes => { sent.Add(bytes); return true; }, "Laptop", "1", logger);
+        channel.StreamStarted("stream");
+        channel.Receive("{\"type\":\"cockpit.status\",\"id\":\"first\",\"body\":{}}"u8.ToArray(), "stream");
+        sent.Clear();
+
+        capabilities = capabilities with { SupportsVision = true };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.Equal("cockpit.status", status.RootElement.GetProperty("type").GetString());
+            Assert.True(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        sent.Clear();
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        Assert.Empty(sent);
+
+        capabilities = capabilities with { SupportsVision = false };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.False(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        sent.Clear();
+        capabilities = capabilities with { SupportsVision = true };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        sent.Clear();
+        host.Session.Returns((IAssistantSession?)null);
+        host.PropertyChanged += Raise.Event<System.ComponentModel.PropertyChangedEventHandler>(host,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(IAssistantSessionHost.Session)));
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.False(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        sent.Clear();
+        host.Session.Returns(session);
+        host.PropertyChanged += Raise.Event<System.ComponentModel.PropertyChangedEventHandler>(host,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(IAssistantSessionHost.Session)));
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.True(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        channel.StreamEnded();
+        sent.Clear();
+        capabilities = capabilities with { SupportsVision = false };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        Assert.Empty(sent);
+
+        channel.StreamStarted("reconnected");
+        channel.Receive("{\"type\":\"cockpit.status\",\"id\":\"again\",\"body\":{}}"u8.ToArray(), "reconnected");
+        var statusLogs = logger.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && call.GetArguments()[0] is LogLevel.Information)
+            .Select(call => call.GetArguments()[2]).OfType<IReadOnlyList<KeyValuePair<string, object?>>>()
+            .Where(entry => entry.Any(pair => pair.Key == "Images"))
+            .Select(entry => ((bool?)entry.Single(pair => pair.Key == "Images").Value,
+                (string?)entry.Single(pair => pair.Key == "Reason").Value));
+        Assert.Equal(new (bool?, string?)[]
+        {
+            (false, "first status"), (true, "capability change"), (false, "capability change"),
+            (true, "capability change"), (false, "capability change"), (true, "capability change"),
+            (false, "reconnect"),
+        }, statusLogs);
     }
 
     private static async Task _KeyConfirmation(string @case)

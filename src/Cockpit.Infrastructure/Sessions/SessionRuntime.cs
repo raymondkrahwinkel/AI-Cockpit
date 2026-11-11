@@ -46,6 +46,8 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly Lock _visionLock = new();
     private ImageInputFact? _serviceVision;
     private ImageInputFact? _publicVision;
+    private (bool SupportsVision, string? Model, string Source, string? FactSource)? _loggedVision;
+    private string? _paneId;
     private readonly ILogger? _logger;
     private readonly TimeProvider _clock;
     private ITimer? _visionTimer;
@@ -272,9 +274,16 @@ internal sealed class SessionRuntime : ISessionRuntime
             if (_driver?.Capabilities is { } transport)
             {
                 var decision = _VisionDecision(transport);
-                _logger?.LogInformation("Session {SessionId} image input for model {Model}: {SupportsVision}; source {Source}; fact {FactSource}",
-                    Id, _model, decision.SupportsVision, decision.Source,
-                    decision.Source == "service API" ? _serviceVision?.Source : decision.Source == "OpenRouter" ? _publicVision?.Source : null);
+                string? factSource = decision.Source == "service API" ? _serviceVision?.Source
+                    : decision.Source == "OpenRouter" ? _publicVision?.Source : null;
+                var vision = (decision.SupportsVision, _model, decision.Source, factSource);
+                if (_loggedVision != vision)
+                {
+                    string reason = _loggedVision is null ? "known" : "changed";
+                    _loggedVision = vision;
+                    _logger?.LogInformation("Session {SessionId} on pane {PaneId} image input {Reason} for model {Model}: SupportsVision={SupportsVision}; source {Source}; fact {FactSource}",
+                        Id, _paneId, reason, _model, decision.SupportsVision, decision.Source, factSource);
+                }
             }
         }
         if (capabilities is not null)
@@ -321,6 +330,11 @@ internal sealed class SessionRuntime : ISessionRuntime
         CancellationToken cancellationToken = default)
     {
         Profile = profile;
+        lock (_visionLock)
+        {
+            _paneId = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId);
+            _loggedVision = null;
+        }
         _lifetime = new CancellationTokenSource();
 
         // Worktree isolation is resolved by the cockpit before the session starts (AC-85), keyed on the pane the

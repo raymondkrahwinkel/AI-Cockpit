@@ -460,6 +460,8 @@
     <!-- 0.173.0: PluginTranscriptEntry.Index, a row's position in the whole transcript (AC-2257, SDK 3.84.0); a plugin that reads it sets minHostVersion 0.173.0. -->
     <!-- 0.174.0 (AC-2251): guard notifications from PluginGuardViolation and the TTY journal. -->
     <!-- 0.175.0: images to a session from a plugin, and whether a session or the assistant takes them (AC-2265, SDK 3.86.0); a plugin that uses them sets minHostVersion 0.175.0. -->
+    <!-- 0.179.1 (AC-2307): IAssistantChannelGateway.AcceptsImagesChanged (default no-op, SDK 3.91.0); a plugin that uses it sets minHostVersion 0.179.1. -->
+    <!-- 0.180.0 (AC-2312): LiveFileSnapshot.PersistedVersion (SDK 3.92.0); a plugin that sets it sets minHostVersion 0.180.0. -->
     <VersionPrefix>0.180.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
