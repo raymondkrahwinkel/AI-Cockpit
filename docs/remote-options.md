@@ -14,6 +14,14 @@ An extra internal CIDR the server does not already hold must lie fully inside 10
 
 Encryption, screen lock and Windows Hello protect the client device and are hidden in a remote window; its local security settings are not touched. The Servers page of a remote window shows the server's own connect keys over the existing `/api/v1/keys` contract. Revoking the key in use aborts its in-flight requests, including the `/events` stream, at once (`McpAuthMiddleware`).
 
+## MCP Servers (AC-2282)
+
+Only Admin keys can read or write `/api/v1/mcp/servers`, read `/api/v1/mcp/servers/{id}/auth-state`, or sign a server in or out (`/api/v1/mcp/servers/{id}/sign-in`, `/sign-out`). Every change is audited and waits on the shared edit gate, which checks the calling key again. The list holds the rows the ordinary MCP Servers page edits; node connections and names the server's own MCP servers use are left out and kept as stored. A save replaces exactly those rows, so a row it leaves out is removed.
+
+An API key or header value reads as the server-secret marker. Sent back as the marker it keeps the stored value, but only while the row keeps its URL; otherwise the key must be entered again. Fields the page does not edit (certificate pin, plugin wiring, host-only scopes) are carried over from the stored row, and `cockpitHosted` or `internal` cannot be set over the API. A stdio row needs a command and takes no URL, authentication or headers; an HTTP row needs an http(s) URL; header names must be HTTP tokens and no value may hold a control character. Both transports run on the server. Testing a server is the profile editor's tool count (`/api/v1/profiles/mcp-servers/{name}/estimate`), which connects from the server. A sign-in keeps its token on the server; the window only runs the browser step on its own loopback listener.
+
+A session start whose MCP gateway cannot be prepared stops, never falling back to the servers directly, and names a short cause such as `timeout: preparing took too long` or `upstream_http: HTTP 401 from upstream`. It never carries an exception text, URL, header or path; the server log keeps the detail.
+
 ## EditedProperties ownership
 
 | Property | Owner |
@@ -48,7 +56,7 @@ Encryption, screen lock and Windows Hello protect the client device and are hidd
 | `NotifyOnSessionIdle` | Server backend (AC-2278) |
 | `NotifyWhenAllSessionsIdle` | Server backend (AC-2278) |
 | `OpenInSimpleView` | Client presentation/device |
-| `OrchestratorMcpEnabled` | Server backend (AC-2282) |
+| `OrchestratorMcpEnabled` | Server backend (not over the API yet) |
 | `PluginRestartAdviceAfter` | Server backend (AC-2278) |
 | `QuickNoteGlobalHotkeyEnabled` | Client presentation/device |
 | `QuickNoteHotkeyKeyName` | Client presentation/device |

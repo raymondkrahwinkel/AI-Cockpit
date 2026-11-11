@@ -26,6 +26,8 @@ public interface IRemoteOptionsStores : IHeavyRunSettingsStore, ISessionBehavior
 {
     ISwarmOptions Swarm { get; }
     ISwarmLeadership SwarmLeadership { get; }
+    Mcp.IMcpServerStore McpServers { get; }
+    Mcp.IMcpOAuthCoordinator McpSignIns { get; }
     ILayoutSettingsStore Layout { get; }
     ITranscriptDisplaySettingsStore Transcript { get; }
     IUsagePillSettingsStore UsagePill { get; }

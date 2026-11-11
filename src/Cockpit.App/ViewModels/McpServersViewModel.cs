@@ -317,11 +317,11 @@ public partial class McpServersViewModel : ViewModelBase
             await _store.SaveAsync(await _MergedWithStoreAsync(_store, edited));
             _seenIds.UnionWith(edited.Select(server => server.Id));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // A sign-in relies on this to tell it a save did not happen (AC-499) — without a caught failure here it
-            // would go on to authorize a token under a name the store never received.
-            StatusMessage = "Couldn't save. Try again.";
+            // would go on to authorize a token under a name the store never received. AC-2282: a server says why.
+            StatusMessage = exception is Cockpit.Core.Abstractions.Remote.IRemoteCallFailure ? exception.Message : "Couldn't save. Try again.";
             return (false, null);
         }
 

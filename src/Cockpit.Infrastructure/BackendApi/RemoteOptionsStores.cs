@@ -57,6 +57,14 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
 
     public ISwarmLeadership SwarmLeadership => _Swarm;
 
+    private RemoteMcpRegistry? _mcp;
+
+    private RemoteMcpRegistry _Mcp => _mcp ??= new(() => Client, () => ReadConfirmedValues);
+
+    public Cockpit.Core.Abstractions.Mcp.IMcpServerStore McpServers => _Mcp;
+
+    public Cockpit.Core.Abstractions.Mcp.IMcpOAuthCoordinator McpSignIns => _Mcp;
+
     string ICloneSettingsStore.DefaultRoot => _cloneDefault;
     string IWorktreeSettingsStore.DefaultRoot => _worktreeDefault;
 
