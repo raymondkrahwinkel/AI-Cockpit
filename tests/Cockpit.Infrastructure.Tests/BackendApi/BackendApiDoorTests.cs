@@ -486,19 +486,35 @@ public sealed class BackendApiDoorTests
 
 
     // Criterion 5: after a revoke the key's next API call is the door's 401.
+    // AC-2288: a server shell is an admin key's own; once that key is revoked it types nothing more and the shell closes.
     [Fact]
     public async Task RevokingAKey_FailsItsNextApiCall()
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
+        var admin = await verifier.IssueAsync("desk", ConnectKeyCapability.Admin, 30, Operator);
 
         var before = await door.GetAsync(door.NodeBase, "/api/v1/whoami", operate.Secret);
+        var refusedShell = await door.SendAsync(HttpMethod.Post, "/api/v1/terminals", operate.Secret, "{}");
+        var opened = await door.SendAsync(HttpMethod.Post, "/api/v1/terminals", admin.Secret, "{}");
+        var terminal = $"/api/v1/terminals/{JsonNode.Parse(opened.Body)!["id"]}";
+        var typed = await door.SendAsync(HttpMethod.Post, terminal + "/input", admin.Secret, "whoami");
+        var othersShell = await door.SendAsync(HttpMethod.Post, terminal + "/input", operate.Secret, "id");
         await verifier.RevokeAsync(operate.Key.Prefix, Operator);
+        await verifier.RevokeAsync(admin.Key.Prefix, Operator);
         var after = await door.GetAsync(door.NodeBase, "/api/v1/whoami", operate.Secret);
+        var typedAfter = await door.SendAsync(HttpMethod.Post, terminal + "/input", admin.Secret, "id");
 
         Assert.Equal(HttpStatusCode.OK, before.Status);
         Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), after);
+        Assert.Equal(HttpStatusCode.Forbidden, refusedShell.Status);
+        Assert.Equal(HttpStatusCode.Created, opened.Status);
+        Assert.Equal(HttpStatusCode.NoContent, typed.Status);
+        Assert.Equal(HttpStatusCode.NotFound, othersShell.Status);
+        Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), typedAfter);
+        Assert.Equal("whoami", Encoding.UTF8.GetString(door.Pty.Typed.ToArray()));
+        Assert.True(await door.Pty.Closed.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     // AC-2285: the write routes keep to the key's project and root, and a stale revision writes nothing.
@@ -980,6 +996,8 @@ public sealed class BackendApiDoorTests
 
         public ServerRestartSignal Restart { get; } = new();
 
+        public _FakePty Pty { get; } = new();
+
         public string NodeBase { get; private set; } = "";
 
         public string LoopbackBase { get; private set; } = "";
@@ -1047,6 +1065,11 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(Registrations);
             services.AddSingleton(Substitute.For<IPluginSecretFieldStore>());
             services.AddSingleton(Restart);
+            var ttyLauncher = Substitute.For<ITtyLauncher>();
+            ttyLauncher.Launch(default!, default, default!, default, default, default, default, default, default, default, default, default, default)
+                .ReturnsForAnyArgs(Pty);
+            services.AddSingleton(ttyLauncher);
+            services.AddSingleton(new Cockpit.Infrastructure.Sessions.Tty.ServerTerminals(NullLogger<Cockpit.Infrastructure.Sessions.Tty.ServerTerminals>.Instance));
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
             var editor = ProjectEditor;
@@ -1197,5 +1220,32 @@ public sealed class BackendApiDoorTests
         }
 
         private static string _BaseOf(string mcpUrl) => mcpUrl[..^"/mcp".Length];
+    }
+
+    // AC-2288: a pty that keeps what was typed and reports being closed; its output ends when it is.
+    internal sealed class _FakePty : IConPtyProcess
+    {
+        private readonly System.IO.Pipelines.Pipe _output = new();
+        private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public MemoryStream Typed { get; } = new();
+
+        public Stream InputStream => Typed;
+
+        public Stream OutputStream => _output.Reader.AsStream();
+
+        public int ProcessId => 0;
+
+        public Task<bool> Closed => _closed.Task.ContinueWith(_ => true, TaskScheduler.Default);
+
+        public void Resize(short columns, short rows)
+        {
+        }
+
+        public void Dispose()
+        {
+            _output.Writer.Complete();
+            _closed.TrySetResult();
+        }
     }
 }

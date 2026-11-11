@@ -4,20 +4,34 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.HeavyRuns;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1439: the backend's own host for a launched session: an SDK host behind a `SessionHostHandle`. A TTY session needs
-// a pane to hold its pty, which only a frontend has.
-public sealed class BackendSessionHosting(SessionControlFactory controls, HeavyRunQueue? heavyRuns = null) : ISessionHosting
+// AC-1439: the backend's own host for a launched session: an SDK host behind a `SessionHostHandle`.
+// AC-2288: a TTY session's pty is held here too, for a remote window to read and type through.
+public sealed class BackendSessionHosting(
+    SessionControlFactory controls,
+    HeavyRunQueue? heavyRuns = null,
+    ITtyLauncher? ttyLauncher = null,
+    ITtySessionProviderResolver? ttyProviders = null,
+    ISessionResourceResolver? sessionResources = null) : ISessionHosting
 {
-    public bool CanHost(PaneSessionKind kind) => kind == PaneSessionKind.Sdk;
+    public bool CanHost(PaneSessionKind kind) =>
+        kind == PaneSessionKind.Sdk || (kind == PaneSessionKind.Tty && ttyLauncher is not null && ttyProviders is not null);
+
+    public bool HostsTtyByDefault => false;
 
     public IHostedSession? Host(SessionHostingRequest request)
     {
         if (!CanHost(request.Kind))
         {
             return null;
+        }
+
+        if (request.Kind == PaneSessionKind.Tty)
+        {
+            return new BackendTtySession(request, ttyLauncher!, ttyProviders!, sessionResources);
         }
 
         var paneId = request.PaneId;
@@ -31,8 +45,12 @@ public sealed class BackendSessionHosting(SessionControlFactory controls, HeavyR
         return handle;
     }
 
-    public Task StopAsync(IHostedSession session) =>
-        session is SessionHostHandle handle ? handle.DisposeAsync().AsTask() : Task.CompletedTask;
+    public Task StopAsync(IHostedSession session) => session switch
+    {
+        SessionHostHandle handle => handle.DisposeAsync().AsTask(),
+        BackendTtySession tty => tty.DisposeAsync().AsTask(),
+        _ => Task.CompletedTask,
+    };
 }
 
 // AC-1379: the assistant on no desk, as the registry's `Assistant`, never in `All`. Its host starts it and holds the only

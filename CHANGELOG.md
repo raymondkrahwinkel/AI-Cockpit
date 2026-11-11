@@ -4,6 +4,8 @@
 
 - AC-2289: Schedules in a remote window stays on its server, including profiles and working folders. Reminders can be created, snoozed and marked done through the same server channel; open screens refresh missed changes after reconnect.
 
+- AC-2288: New terminal in a remote Cockpit window opens a shell on the server, not on this machine, and a server session can start in a terminal (TTY) with the server's profile and MCP. A shell needs an admin key and an organisation policy that allows terminal and shell access; a TTY session follows the key's session scope. Every keystroke is checked against the key again, so a revoked key types nothing more and its shells close. A dropped connection reattaches to the same terminal without starting a second one. Terminal contents are never logged.
+
 - AC-2280: Profiles and Assistant Options in a remote window edit the server's profiles and assistant with the ordinary editors. Duplicate and Copy from keep saved secrets on the server; login status, brains and roles come from the server. Editing leaves the assistant's current holder and the local Cockpit configuration unchanged.
 
 - AC-2286: remote windows use the server's workspaces and session placement. Create, rename, select and close workspaces, move sessions, and reopen the window with the same server layout. Changes reach other connected windows; closing a workspace with sessions is refused. Workspace management requires an admin key.

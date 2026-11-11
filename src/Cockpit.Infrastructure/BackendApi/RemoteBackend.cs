@@ -135,7 +135,8 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
 
     public bool CanCloseWorkspace(string workspaceId) => Workspaces.CanClose(workspaceId);
 
-    public bool ProfileHasTtyRoute(SessionProfile profile) => false;
+    // AC-2288: the server hosts a TTY session itself and refuses one for a profile without a terminal route.
+    public bool ProfileHasTtyRoute(SessionProfile profile) => true;
 
     // AC-1472: as the server lists it for this key, so a project outside the key's scope is not found.
     public async Task<Project?> FindProjectByIdAsync(string projectId) =>
@@ -156,6 +157,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
                 HttpMethod.Post,
                 "api/v1/sessions",
                 new { profile = request.Profile.Label, projectId = request.ProjectId, prompt = request.Prompt, name = request.SessionName,
+                    kind = request.Kind == PaneSessionKind.Tty ? "tty" : null,
                     workspaceId = Workspaces.Workspaces.Count > 0 ? request.WorkspaceId : null }).ConfigureAwait(false);
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.Conflict)
@@ -437,7 +439,8 @@ internal sealed record RemoteSessionRow(
     bool CanSignIn = false,
     string? WorktreeBranch = null,
     string? WorkspaceId = null,
-    string? PlacedWorkspaceId = null);
+    string? PlacedWorkspaceId = null,
+    string? Kind = null);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);
 

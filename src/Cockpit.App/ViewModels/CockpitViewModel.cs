@@ -6546,11 +6546,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Runtime-only, exactly like an AI session (AC-25).
-    private bool CanStartTerminal => _ttySessionFactory is not null;
+    private bool CanStartTerminal => _ttySessionFactory is not null || IsRemoteWindow;
 
     [RelayCommand(CanExecute = nameof(CanStartTerminal))]
     private void NewTerminal()
     {
+        // AC-2288: a remote window's terminal is a shell on its server; nothing starts on this machine.
+        if (IsRemoteWindow)
+        {
+            _ = _OpenServerTerminalAsync();
+            return;
+        }
+
         if (_ttySessionFactory is null)
         {
             return;
@@ -6570,10 +6577,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // "New terminal (administrator)" (AC-967): the same shell as `NewTerminal`, but started elevated through
     // `ShellExecuteEx`+`runas`, which means its own OS console window instead of a pane — an elevated process
     // cannot be adopted into our ConPTY. Windows-only; nothing here runs on another platform.
-    [RelayCommand(CanExecute = nameof(CanStartTerminal))]
+    private bool CanStartLocalTerminal => _ttySessionFactory is not null;
+
+    [RelayCommand(CanExecute = nameof(CanStartLocalTerminal))]
     private void NewElevatedTerminal()
     {
-        if (!IsWindowsPlatform)
+        if (!IsWindowsPlatform || IsRemoteWindow)
         {
             return;
         }
