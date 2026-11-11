@@ -12,9 +12,6 @@ namespace Cockpit.App.Services;
 /// </summary>
 public interface ISessionDialogService : IProjectDialogs, IPluginManagerDialogs
 {
-    new Task<string?> PickFolderAsync(string title);
-    new Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
-
     /// <summary>
     /// Shows the New-session dialog — SDK vs TTY chosen inside it (#32) — returning the confirmed choices, or null
     /// if cancelled. <paramref name="prefill"/> (#AC-96) seeds fields; <paramref name="isolateInWorktree"/> turns on
