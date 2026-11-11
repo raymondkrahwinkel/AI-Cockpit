@@ -322,7 +322,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
             {
                 _projectEvent?.Invoke(evt);
             }
-            else if (evt.Kind == PluginEventsBridge.EventKind)
+            else if (evt.Kind is PluginEventsBridge.EventKind or PluginStoreEndpoints.EventKind)
             {
                 _pluginEvent?.Invoke(evt);
             }
@@ -436,7 +436,7 @@ internal sealed record RemoteSessionRow(
     RemoteUsageStatus? UsageStatus = null,
     bool CanSignIn = false,
     string? WorktreeBranch = null,
-    string WorkspaceId = "",
+    string? WorkspaceId = null,
     string? PlacedWorkspaceId = null);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);

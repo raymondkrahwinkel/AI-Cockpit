@@ -13,6 +13,7 @@ internal static class PluginUiEndpoints
 {
     internal static void Map(RouteGroupBuilder api, IServiceProvider services)
     {
+        PluginUiCacheEndpoints.Map(api, services);
         api.MapGet("/plugins/{folderId}/ui/intents", (string folderId) =>
             services.GetService<PluginManager>()?.HostOf(folderId) is not null
                 ? Results.Json(services.GetRequiredService<IPluginIntentRegistry>().Targets, ConnectKeyEndpoints.Json)

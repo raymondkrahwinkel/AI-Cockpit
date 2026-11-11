@@ -56,9 +56,9 @@
             <!-- Local store: a folder holding an index.json. -->
             <StackPanel Spacing="6" IsVisible="{Binding NewStoreIsLocal}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                    <TextBox Grid.Column="0" Text="{Binding NewStoreFolder}" IsReadOnly="True"
+                    <TextBox Grid.Column="0" Text="{Binding NewStoreFolder}" IsReadOnly="{Binding !IsServer}"
                              PlaceholderText="Choose a folder holding an index.json"/>
-                    <Button Grid.Column="1" Content="Browse…" Command="{Binding PickStoreFolderCommand}"/>
+                    <Button Grid.Column="1" Content="Browse…" Command="{Binding PickStoreFolderCommand}" IsVisible="{Binding !IsServer}"/>
                     <Button Grid.Column="2" Content="Add store" Classes="Accent" Command="{Binding AddStoreCommand}"/>
                 </Grid>
             </StackPanel>

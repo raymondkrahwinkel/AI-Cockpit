@@ -168,6 +168,12 @@ public partial class CockpitViewModel
         return cockpit;
     }
 
+    internal void UseRemotePlugins(PluginManagerViewModel manager)
+    {
+        Plugins = manager;
+        OnPropertyChanged(nameof(Plugins));
+    }
+
     // AC-2281: a project's Start in the remote window is the server's own start card, on that project and its profile.
     private async Task _StartServerProjectAsync(Cockpit.Core.Projects.Project project)
     {

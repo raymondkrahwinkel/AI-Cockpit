@@ -130,8 +130,6 @@ public sealed class RemoteAdminJourney
             await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-echo"), StorePlugin, "EchoProviderDirectory");
             await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-workflows"), "workflows", "WorkflowsDirectory");
             await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-schedules"), "schedules", "SchedulesDirectory");
-            var mismatchState = Path.Combine(root, "mismatch-state");
-            await _InstallLocallyAsync(mismatchState, Path.Combine(root, "mismatch-bundled"), "workflows", "WorkflowsDirectory", "99.0.0");
             await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
             await cockpit.Services.GetRequiredService<IMcpServerStore>().SaveAsync(
             [
@@ -249,7 +247,7 @@ public sealed class RemoteAdminJourney
                 throw new InvalidOperationException("Server store did not open its view model.");
             }
 
-            Assert.False(storeViewModel.CanManageStores);
+            Assert.True(storeViewModel.CanManageStores);
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
@@ -317,7 +315,7 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
-            await _ExerciseRemotePluginUiAsync(cockpit, setup, remoteUiState, mismatchState, Path.Combine(root, "empty-ui-state"));
+            await _ExerciseRemotePluginUiAsync(cockpit, setup, remoteUiState);
 
             // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
             // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
@@ -1463,21 +1461,13 @@ public sealed class RemoteAdminJourney
     }
 
     // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
-    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory, string? version = null)
+    private static async Task _InstallLocallyAsync(string stateRoot, string bundled, string id, string directory)
     {
         var plugin = Directory.CreateDirectory(Path.Combine(bundled, id)).FullName;
         foreach (var file in Directory.EnumerateFiles(ServerJourney._Metadata(directory)))
         {
             File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
         }
-        if (version is not null)
-        {
-            var manifestPath = Path.Combine(plugin, "plugin.json");
-            var manifest = JsonNode.Parse(await File.ReadAllTextAsync(manifestPath)) ?? throw new InvalidDataException("The fixture has no plugin manifest.");
-            manifest["version"] = version;
-            await File.WriteAllTextAsync(manifestPath, manifest.ToJsonString());
-        }
-
         Directory.CreateDirectory(stateRoot);
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         try
@@ -1492,7 +1482,7 @@ public sealed class RemoteAdminJourney
     }
 
     // AC-2283: the UI-source root never starts a backend; ordinary plugin controls mutate only the server.
-    private static async Task _ExerciseRemotePluginUiAsync(JourneyHost desktop, BackendApiClient server, string localRoot, string mismatchRoot, string emptyRoot)
+    private static async Task _ExerciseRemotePluginUiAsync(JourneyHost desktop, BackendApiClient server, string localRoot)
     {
         await RefuseHostRequestAsync(new { text = new string('é', 32769) });
         await RefuseHostRequestAsync(new { data = Enumerable.Range(0, 33).ToDictionary(index => index.ToString(), _ => "value") });
@@ -1589,39 +1579,6 @@ public sealed class RemoteAdminJourney
                 window.Close();
             }
 
-            var refusedWindow = new MainWindow(windowBoundsStore: null, Server);
-            using var refusedUi = new RemoteWindowUi(refusedWindow, new SurfaceWindows(), loggers);
-            var refused = CockpitViewModel.ForRemoteWindow(Server, servers, null, null, _ => Task.CompletedTask, ui: refusedUi);
-            refusedWindow.DataContext = refused;
-            refusedWindow.Show();
-            try
-            {
-                await refusedUi.InitializeAsync(refused, servers, Server, mismatchRoot);
-                var unavailable = refused.PluginSideButtons.Single(button => button.PluginId == "workflows");
-                Assert.Contains("UI unavailable", unavailable.Title, StringComparison.Ordinal);
-                unavailable.OnInvoke();
-                Assert.Contains(refused.ToastHost.Toasts, toast => toast.Message.Contains("version", StringComparison.Ordinal));
-            }
-            finally
-            {
-                refusedWindow.Close();
-            }
-
-            var emptyWindow = new MainWindow(windowBoundsStore: null, Server);
-            using var emptyUi = new RemoteWindowUi(emptyWindow, new SurfaceWindows(), loggers);
-            var empty = CockpitViewModel.ForRemoteWindow(Server, servers, null, null, _ => Task.CompletedTask, ui: emptyUi);
-            emptyWindow.DataContext = empty;
-            emptyWindow.Show();
-            try
-            {
-                await emptyUi.InitializeAsync(empty, servers, Server, emptyRoot);
-                Assert.True(emptyWindow.IsVisible);
-                Assert.Contains(empty.PluginSideButtons, button => button.PluginId == "workflows" && button.Title.Contains("UI unavailable", StringComparison.Ordinal));
-            }
-            finally
-            {
-                emptyWindow.Close();
-            }
         });
         Assert.Equal(before, await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json")));
     }

@@ -87,7 +87,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public string Title => _Facts.Name;
 
-    public string WorkspaceId => _Facts.WorkspaceId;
+    public string WorkspaceId => _Facts.WorkspaceId ?? string.Empty;
 
     public string? PlacedWorkspaceId => _Facts.PlacedWorkspaceId;
 

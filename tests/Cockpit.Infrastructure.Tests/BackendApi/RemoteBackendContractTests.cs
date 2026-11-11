@@ -83,6 +83,11 @@ public sealed class RemoteBackendContractTests : BackendContractTests
             var key = await services.GetRequiredService<ConnectKeyVerifier>().IssueAsync("contract", ConnectKeyCapability.Admin, 30, issuer, issuedToOwner: true);
             var nodeUrl = new Uri(Assert.Single(services.GetRequiredService<CockpitMcpEndpointHost>().GetNodeAddresses()).Url);
             client = new BackendApiClient(new Uri(nodeUrl, "/"), key.Secret, services.GetRequiredService<NodeSelfSignedCertificate>().Fingerprint, TimeProvider.System);
+            // A session summary can outlive its handle while removal is in progress.
+            var removed = new RemoteSessionHandle(client, "removed", isAssistant: false);
+            removed.Update(Assert.IsType<RemoteSessionRow>(JsonSerializer.Deserialize<RemoteSessionRow>(
+                """{"paneId":"removed","name":"Removed","workspaceId":null}""", new JsonSerializerOptions(JsonSerializerDefaults.Web))));
+            Assert.Empty(removed.WorkspaceId);
             remote = await RemoteBackend.ConnectAsync(client);
 
             // Criterion 4: a chosen pane or a resume is refused before a request leaves, so the backend starts nothing.
@@ -136,6 +141,15 @@ public sealed class RemoteBackendContractTests : BackendContractTests
             {
                 var refused = await Assert.ThrowsAsync<BackendApiException>(() => operateClient.SendAsync<JsonElement>(HttpMethod.Post, "api/v1/workspaces", desk));
                 Assert.Equal(HttpStatusCode.Forbidden, refused.Status);
+                var addSource = await Assert.ThrowsAsync<BackendApiException>(() => operateClient.SendAsync<JsonElement>(HttpMethod.Post,
+                    "api/v1/plugins/store", new { kind = "remote", location = "https://example.invalid/index.json" }));
+                Assert.Equal(HttpStatusCode.Forbidden, addSource.Status);
+                var removeSource = await Assert.ThrowsAsync<BackendApiException>(() => operateClient.SendAsync<JsonElement>(HttpMethod.Delete,
+                    "api/v1/plugins/store/source", null));
+                Assert.Equal(HttpStatusCode.Forbidden, removeSource.Status);
+                var hideSource = await Assert.ThrowsAsync<BackendApiException>(() => operateClient.SendAsync<JsonElement>(HttpMethod.Put,
+                    "api/v1/plugins/store/source/hidden", new { hidden = true }));
+                Assert.Equal(HttpStatusCode.Forbidden, hideSource.Status);
             }
 
             return new ContractBackend(remote, remote, remote, shutdown);
