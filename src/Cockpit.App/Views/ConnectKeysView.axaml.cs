@@ -5,9 +5,9 @@ using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
-public partial class ServerConnectKeysPage : UserControl
+public partial class ConnectKeysView : UserControl
 {
-    public ServerConnectKeysPage()
+    public ConnectKeysView()
     {
         InitializeComponent();
     }
@@ -15,7 +15,7 @@ public partial class ServerConnectKeysPage : UserControl
     // The clipboard is the view's: the key goes there from the view model's one copy and nowhere else.
     private async void OnCopyIssuedKey(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is ServerAdminViewModel { IssuedSecret: { } secret } admin && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        if (DataContext is ConnectKeysViewModel { IssuedSecret: { } secret } admin && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
             try
             {

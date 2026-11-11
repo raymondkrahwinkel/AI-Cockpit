@@ -6,7 +6,7 @@ namespace Cockpit.App.Services;
 /// <summary>
 /// The dialogs the Projects page opens (AC-2281): the desktop's dialog service, or the remote window's over its server.
 /// </summary>
-public interface IProjectDialogs
+public interface IProjectDialogs : ICommonDialogs
 {
     /// <summary>
     /// Shows the project editor (AC-160) for <paramref name="project"/>, or a new one when null; returns what was
@@ -30,15 +30,4 @@ public interface IProjectDialogs
     /// success, or null when cancelled.
     /// </summary>
     Task<Project?> ShowShareProjectDialogAsync(Project project, IReadOnlyList<string> publishSourceKeys);
-
-    /// <summary>
-    /// Opens a folder picker under <paramref name="title"/>; returns the chosen path or null if cancelled. Used by
-    /// a local plugin store's folder (AC-7) and by a starting point, whose only question is where the files are (AC-488).
-    /// </summary>
-    Task<string?> PickFolderAsync(string title);
-
-    /// <summary>
-    /// Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.
-    /// </summary>
-    Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
 }

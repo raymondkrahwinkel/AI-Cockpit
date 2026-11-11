@@ -2,11 +2,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:terms="using:Cockpit.Plugins.Abstractions"
-             x:Class="Cockpit.App.Views.ServerConnectKeysPage"
-             x:DataType="vm:ServerAdminViewModel">
+             x:Class="Cockpit.App.Views.ConnectKeysView"
+             x:DataType="vm:ConnectKeysViewModel">
 
-    <!-- AC-1446: Options › Connect keys on a server (mockup v2, tab 4). A key shows as its prefix and label only; the
-         full key appears once, in "Key issued", and Done forgets it. -->
+    <!-- A key shows as its prefix and label only; its full value appears once, and Done forgets it. -->
     <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
         <DockPanel>
             <Button DockPanel.Dock="Right" Classes="Accent" Content="Issue a key" Command="{Binding StartIssueCommand}"/>
@@ -52,13 +51,13 @@
                                         <TextBlock Text="Rotate in the secret" FontSize="11.5" IsVisible="{Binding IsBootstrap}"
                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         <Button Classes="Subtle Compact" Content="Scope" IsVisible="{Binding CanScope}"
-                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).StartScopeCommand}"
+                                                Command="{Binding $parent[UserControl].((vm:ConnectKeysViewModel)DataContext).StartScopeCommand}"
                                                 CommandParameter="{Binding}"/>
                                         <Button Classes="Subtle Compact" Content="Rotate" IsVisible="{Binding CanRotate}"
-                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).RotateCommand}"
+                                                Command="{Binding $parent[UserControl].((vm:ConnectKeysViewModel)DataContext).RotateCommand}"
                                                 CommandParameter="{Binding}"/>
                                         <Button Classes="Subtle Compact" Content="Revoke" IsVisible="{Binding CanRevoke}"
-                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).RevokeCommand}"
+                                                Command="{Binding $parent[UserControl].((vm:ConnectKeysViewModel)DataContext).RevokeCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </StackPanel>
                                 </Grid>
@@ -169,7 +168,7 @@
                                         <TextBlock Grid.Column="1" Text="{Binding Detail}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                         <Button Grid.Column="2" Classes="Subtle Compact" Content="Lift"
-                                                Command="{Binding $parent[UserControl].((vm:ServerAdminViewModel)DataContext).LiftCommand}"
+                                                Command="{Binding $parent[UserControl].((vm:ConnectKeysViewModel)DataContext).LiftCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </Grid>
                                 </DataTemplate>

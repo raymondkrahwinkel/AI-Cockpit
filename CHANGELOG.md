@@ -250,6 +250,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+- AC-2291: server Admin and plugin settings links open the ordinary Cockpit server window and its Options. The separate admin panel is gone; connect keys and the audit log remain under Servers. Existing connections, certificate pins and key scopes are preserved.
+
 - AC-2284: the ordinary Plugin store in a remote Cockpit window installs, updates, disables and removes plugins on the server. Store sources and publisher trust stay behind Admin access; the matching running UI is cached separately without changing local plugins or configuration. Protected workspaces keep their contents when an automatic UI replacement must wait.
 
 - AC-2287: remote SDK sessions support rename, scoped conversation search and resume, structured permission answers and verify screenshots. Resumes use the server's saved transcript and folder; names, status and session metadata survive reconnect.

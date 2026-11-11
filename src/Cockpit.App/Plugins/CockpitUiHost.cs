@@ -514,7 +514,7 @@ internal sealed partial class CockpitUiHost(
         services.GetService<Cockpit.Core.Abstractions.Remote.IRemoteServers>() is { } servers
         && services.GetService<PluginManager>()?.LoadedParts.Select(part => part.Discovered)
             .FirstOrDefault(discovered => string.Equals(discovered.Manifest.Id, pluginId, StringComparison.Ordinal)) is { } own
-            ? ServerPluginTargets.ForAsync(servers, this, pluginId, pluginName, own.Manifest.Version, contributionSink.OpenServerPluginsAsync)
+            ? ServerPluginTargets.ForAsync(servers, this, pluginId, pluginName, own.Manifest.Version, server => contributionSink.OpenServerPluginsAsync(server, pluginId))
             : Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
 
     public Task SendToSessionAsync(string paneId, string text) => host.SendToSessionAsync(paneId, text);

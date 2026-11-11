@@ -12,9 +12,6 @@ namespace Cockpit.App.Services;
 /// </summary>
 public interface ISessionDialogService : IProjectDialogs, IPluginManagerDialogs
 {
-    new Task<string?> PickFolderAsync(string title);
-    new Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
-
     /// <summary>
     /// Shows the New-session dialog — SDK vs TTY chosen inside it (#32) — returning the confirmed choices, or null
     /// if cancelled. <paramref name="prefill"/> (#AC-96) seeds fields; <paramref name="isolateInWorktree"/> turns on
@@ -47,16 +44,6 @@ public interface ISessionDialogService : IProjectDialogs, IPluginManagerDialogs
     /// <c>Tag</c> to open on, or null for the default — AC-1001's deep-link actions pass this instead of a new window.
     /// </summary>
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null);
-
-    /// <summary>
-    /// Shows the Options dialog opened on a server (AC-1446): only that server's admin pages, acting through <paramref name="viewModel"/>.
-    /// </summary>
-    Task ShowServerAdminDialogAsync(ServerAdminViewModel viewModel);
-
-    /// <summary>
-    /// Shows a plugin's own view for a server (AC-1511), over the Admin dialog it was opened from. Default does nothing.
-    /// </summary>
-    Task ShowServerPluginSettingsAsync(string title, Func<Avalonia.Controls.Control> createView, Func<Task<string?>>? persist = null) => Task.CompletedTask;
 
     /// <summary>
     /// Picks a dashboard file to import; returns the chosen path or null if cancelled.
