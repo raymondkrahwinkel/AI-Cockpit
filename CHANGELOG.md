@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2301: paired phones can request byte-bounded older transcript pages without replacing the conversation (Depot 0.65.5, host 0.180.1, SDK 3.93.0).
+
 - AC-2312: a live Depot note that an agent edits while it is open no longer stays on "Not confirmed in Depot yet" with phantom "lines only in this Cockpit". Depot's saver now confirms the version the text is saved as, so formatting the note editor writes differently (tables, lists) no longer blocks the confirmation, and Retry sync says why when it cannot confirm yet (host 0.180.0, plugin SDK 3.92.0, Depot 0.65.4).
 
 - AC-2307: connected phones receive updated image support as soon as the assistant's capabilities change, including after a session replacement. Logs record capability decisions and each mobile Status value with its reason (host 0.179.1, SDK 3.91.0, Depot 0.65.3).

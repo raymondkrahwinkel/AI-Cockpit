@@ -568,3 +568,22 @@ Sending disables actions; acknowledgement or closure removes them. Nothing is pe
 Multiple questions, multiselect and options beyond Android's action limit remain available through
 Open request, which opens the matching source's complete request card.
 Notifications require the existing Keep connection stream; no delivery is promised without it.
+
+
+### Older session pages (AC-2301, Depot 0.65.5 / host 0.180.1)
+
+`sessions.list.history: true` advertises `session.history`. Missing means unsupported: clients must not
+replace this request with another tail load. Existing `session.transcript` count/since behavior is unchanged.
+
+Phone request: `session.history { paneId, before, count? }`. `before` is a non-negative global source-row
+index, exclusive; count defaults to 50 and is clamped to 1..50 source entries. Host markers can leave fewer
+visible rows. The host reads strictly before this boundary, then keeps the newest part of that older page
+that fits one encrypted frame; it never includes newer rows to fill the page.
+
+Reply: `session.history { replyTo, paneId, readable, rows, nextBefore, more, error? }`. Rows are oldest first,
+with the original global indices as ids. The client prepends unseen ids, preserving all existing rows and
+live updates, and uses nextBefore for the next request. Even an empty page of filtered host markers advances
+the cursor; more is false at the beginning. Unreadable/error replies leave the existing conversation intact.
+
+The assistant channel already uses `assistant.history { before }` with byte-bounded multiple frames and
+`last`; it does not share the single-frame tail truncation of session.transcript.

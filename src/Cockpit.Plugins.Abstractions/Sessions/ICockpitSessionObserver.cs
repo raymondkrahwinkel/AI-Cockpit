@@ -87,6 +87,12 @@ public interface ICockpitSessionObserver
     Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) => Task.FromResult<PluginTranscriptSlice?>(null);
 
     /// <summary>
+    /// The last count source rows strictly before a global row index; TotalEntries is the prefix length.
+    /// Null when the session is unavailable or the host predates older transcript pages.
+    /// </summary>
+    Task<PluginTranscriptSlice?> ReadTranscriptBeforeAsync(string paneId, int before, int count) => Task.FromResult<PluginTranscriptSlice?>(null);
+
+    /// <summary>
     /// Every Allow/Deny question the session in <paramref name="paneId"/> is stopped on right now (AC-2256); empty once
     /// they are answered, for an unknown pane, for a session whose questions are its own CLI's, and on a host that
     /// predates this member. Read-only.

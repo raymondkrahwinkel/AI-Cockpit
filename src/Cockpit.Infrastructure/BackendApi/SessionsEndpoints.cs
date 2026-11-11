@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -93,10 +94,25 @@ internal static class SessionsEndpoints
             });
         }).RequireOperate();
 
-        api.MapGet("/sessions/{paneId}/transcript", async (string paneId, int? count) =>
+        api.MapGet("/sessions/{paneId}/transcript", async (string paneId, int? count, int? before) =>
         {
-            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || await read().ReadTranscriptAsync(paneId, _Count(count)).ConfigureAwait(false) is not { } transcript)
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
+            if (before is { } boundary)
+            {
+                if (boundary < 0 || sessions().Find(paneId) is not { IsTerminal: false, HasReadableTranscript: true } source)
+                {
+                    return Results.NotFound();
+                }
+
+                SessionTranscriptSlice page = await source.ReadTranscriptBeforeAsync(boundary, _Count(count)).ConfigureAwait(false);
+                return Results.Json(new { before = boundary, totalEntries = page.TotalEntries, entries = page.Entries });
+            }
+
+            if (await read().ReadTranscriptAsync(paneId, _Count(count)).ConfigureAwait(false) is not { } transcript)
             {
                 return Results.NotFound();
             }

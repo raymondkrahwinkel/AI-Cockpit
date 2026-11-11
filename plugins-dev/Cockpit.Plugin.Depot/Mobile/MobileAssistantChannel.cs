@@ -156,6 +156,9 @@ internal sealed partial class MobileAssistantChannel : IDisposable
             case "session.stop":
                 _ = _SessionLifecycleAsync(type, id, body);
                 break;
+            case "session.history" when _sessions is not null:
+                _ = _sessions.HistoryAsync(id, _String(body, "paneId"), _Int(body, "before"), _Int(body, "count"));
+                break;
             case "session.transcript" when _sessions is not null:
                 _ = _sessions.TranscriptAsync(id, _String(body, "paneId"), _Int(body, "count"), _Int(body, "since"));
                 break;

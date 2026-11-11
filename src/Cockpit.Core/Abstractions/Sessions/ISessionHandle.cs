@@ -166,6 +166,18 @@ public interface ISessionHandle
     Task<SessionTranscriptSlice> ReadTranscriptAsync(int count);
 
     /// <summary>
+    /// The tail of the transcript prefix strictly before its global row index; TotalEntries is the prefix length.
+    /// </summary>
+    async Task<SessionTranscriptSlice> ReadTranscriptBeforeAsync(int before, int count)
+    {
+        SessionTranscriptSlice transcript = await ReadTranscriptAsync(int.MaxValue).ConfigureAwait(false);
+        int end = Math.Clamp(before, 0, transcript.TotalEntries);
+        int first = transcript.TotalEntries - transcript.Entries.Count;
+        return new SessionTranscriptSlice(
+            [.. transcript.Entries.Take(Math.Max(0, end - first)).TakeLast(count)], end);
+    }
+
+    /// <summary>
     /// The host-owned transcript rows with the event-log seq <paramref name="lastSeq"/> gives in the same instant, so a reader following the log after it gets each later upsert once (AC-1388).
     /// Null for a handle whose session keeps no host-owned transcript.
     /// </summary>
