@@ -35,6 +35,9 @@ public sealed class PluginManager(
     // AC-2024: raised on the UI thread once the plugin's contributions are undone, for what holds its UI part.
     public event Action<DiscoveredPlugin, ICockpitPlugin?>? Deactivated;
 
+    // Stop begins on the UI thread; completion is awaited without blocking its dispatcher.
+    public Func<DiscoveredPlugin, ICockpitPlugin?, Task> StopUiPart { get; set; } = (_, _) => Task.CompletedTask;
+
     // AC-2025: what the UI holds open for a plugin that an update would close without asking (unsaved work in a
     // workspace): a reason, or null. The desktop sets it; a server has no workspaces.
     public Func<string, Task<string?>> UpdateBlocker { get; set; } = _ => Task.FromResult<string?>(null);
@@ -715,7 +718,7 @@ public sealed class PluginManager(
         {
             try
             {
-                RunOnUiThread(() => Deactivated?.Invoke(discovered, plugin)).GetAwaiter().GetResult();
+                _StopUiAsync(discovered, plugin).GetAwaiter().GetResult();
             }
             catch (Exception exception)
             {
@@ -811,7 +814,7 @@ public sealed class PluginManager(
 
         try
         {
-            await RunOnUiThread(() => _UndoContributions(discovered, plugin)).ConfigureAwait(false);
+            await _StopUiAsync(discovered, plugin).ConfigureAwait(false);
             lock (_lifecycleLock)
             {
                 if (_disposed)
@@ -835,7 +838,12 @@ public sealed class PluginManager(
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Plugin {PluginId} could not be deactivated; a restart unloads it.", folderId);
-            return new(PluginActivationStatus.NeedsRestart, _Reason(exception));
+            string reason = _Reason(exception);
+            lock (_lifecycleLock)
+            {
+                _restartReasons[folderId] = (discovered.Sha256, reason);
+            }
+            return new(PluginActivationStatus.NeedsRestart, reason);
         }
         finally
         {
@@ -846,9 +854,20 @@ public sealed class PluginManager(
         }
     }
 
-    private void _UndoContributions(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    private async Task _StopUiAsync(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
     {
-        RuntimeFor(discovered.FolderId).Dispose();
+        Task stopped = Task.CompletedTask;
+        await RunOnUiThread(() =>
+        {
+            RuntimeFor(discovered.FolderId).Dispose();
+            stopped = StopUiPart(discovered, plugin);
+            _NotifyDeactivated(discovered, plugin);
+        }).ConfigureAwait(false);
+        await stopped.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+    }
+
+    private void _NotifyDeactivated(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    {
         try
         {
             Deactivated?.Invoke(discovered, plugin);

@@ -378,6 +378,30 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
         return Task.CompletedTask;
     }
 
+    public Task<bool> DeleteMarkedFolderAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        string folder = Path.Combine(_pluginsRoot, folderId);
+        if (!Directory.Exists(folder))
+        {
+            return Task.FromResult(true);
+        }
+        if (!File.Exists(Path.Combine(folder, RemovalMarker)))
+        {
+            return Task.FromResult(false);
+        }
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+            PluginClosureHash.Forget(folder);
+            return Task.FromResult(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Task.FromResult(false);
+        }
+    }
+
     // A start that finds `.replaced-<id>.<guid>` next to a missing `<id>` is a crash between the two renames of an
     // in-place update: the old version goes back instead of the plugin vanishing. Otherwise it is only left-over.
     private void _RecoverReplaced()

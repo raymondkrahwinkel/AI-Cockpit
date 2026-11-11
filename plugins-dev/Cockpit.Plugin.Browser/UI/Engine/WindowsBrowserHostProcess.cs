@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.Browser.UI.Engine;
 [SupportedOSPlatform("windows")]
 internal static class WindowsBrowserHostProcess
 {
-    internal static (Process Process, SafeFileHandle Job) Start(string executable, IReadOnlyList<string> arguments, BrowserIpcPipes pipes)
+    internal static (Process Process, SafeFileHandle Job, SafeFileHandle CompletionPort) Start(string executable, IReadOnlyList<string> arguments, BrowserIpcPipes pipes)
     {
         SafeFileHandle job = _CreateJobObject(0, null);
         if (job.IsInvalid)
@@ -24,8 +24,19 @@ internal static class WindowsBrowserHostProcess
         nint attributes = 0;
         nint handles = 0;
         bool initialized = false;
+        SafeFileHandle? completionPort = null;
         try
         {
+            completionPort = _CreateIoCompletionPort(-1, 0, 0, 1);
+            if (completionPort.IsInvalid)
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError());
+            }
+            var association = new CompletionPortInformation { Port = completionPort.DangerousGetHandle() };
+            if (!_AssociateCompletionPort(job, 7, ref association, Marshal.SizeOf<CompletionPortInformation>()))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError());
+            }
             var limits = new ExtendedLimitInformation { Basic = new BasicLimitInformation { LimitFlags = 0x00002000 } };
             if (_SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<ExtendedLimitInformation>()) == false)
             {
@@ -72,7 +83,9 @@ internal static class WindowsBrowserHostProcess
                 {
                     throw new Win32Exception(Marshal.GetLastPInvokeError());
                 }
-                return (process, job);
+                SafeFileHandle port = completionPort;
+                completionPort = null;
+                return (process, job, port);
             }
             catch
             {
@@ -99,10 +112,92 @@ internal static class WindowsBrowserHostProcess
             }
             Marshal.FreeHGlobal(handles);
             Marshal.FreeHGlobal(attributes);
+            completionPort?.Dispose();
             GC.KeepAlive(pipes);
             GC.KeepAlive(job);
         }
     }
+
+    private static void _Terminate(SafeFileHandle job)
+    {
+        if (!_TerminateJobObject(job, 1))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+    }
+
+    internal static Task StopAsync(SafeFileHandle job, SafeFileHandle port) => Task.Run(() =>
+    {
+        using (job)
+        using (port)
+        {
+            _Terminate(job);
+            if (_IsEmpty(job))
+            {
+                return;
+            }
+            long deadline = Environment.TickCount64 + 5_000;
+            while (true)
+            {
+                uint remaining = (uint)Math.Max(0, deadline - Environment.TickCount64);
+                if (!_GetQueuedCompletionStatus(port, out uint message, out _, out _, remaining))
+                {
+                    int error = Marshal.GetLastPInvokeError();
+                    // Job notifications can be lost; accounting confirms exit without polling.
+                    if (error == 258 && _IsEmpty(job))
+                    {
+                        return;
+                    }
+                    throw new Win32Exception(error);
+                }
+                if (message == 7) // JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO includes every CEF descendant.
+                {
+                    return;
+                }
+                if (remaining == 0)
+                {
+                    throw new TimeoutException("The browser process tree did not confirm its shutdown.");
+                }
+            }
+        }
+    });
+
+    private static bool _IsEmpty(SafeFileHandle job)
+    {
+        if (!_QueryInformationJobObject(job, 1, out var accounting, Marshal.SizeOf<AccountingInformation>(), out _))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
+        }
+        return accounting.ActiveProcesses == 0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AccountingInformation
+    {
+        internal long UserTime, KernelTime, PeriodUserTime, PeriodKernelTime;
+        internal uint PageFaults, Processes, ActiveProcesses, TerminatedProcesses;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "TerminateJobObject", SetLastError = true)]
+    private static extern bool _TerminateJobObject(SafeFileHandle job, uint exitCode);
+
+    [DllImport("kernel32.dll", EntryPoint = "QueryInformationJobObject", SetLastError = true)]
+    private static extern bool _QueryInformationJobObject(SafeFileHandle job, int informationClass, out AccountingInformation information, int size, out int returned);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CompletionPortInformation
+    {
+        internal nint Key, Port;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateIoCompletionPort", SetLastError = true)]
+    private static extern SafeFileHandle _CreateIoCompletionPort(nint file, nint existing, nuint key, uint threads);
+
+    [DllImport("kernel32.dll", EntryPoint = "SetInformationJobObject", SetLastError = true)]
+    private static extern bool _AssociateCompletionPort(SafeFileHandle job, int informationClass, ref CompletionPortInformation information, int size);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetQueuedCompletionStatus", SetLastError = true)]
+    private static extern bool _GetQueuedCompletionStatus(SafeFileHandle port, out uint message, out nuint key, out nint overlapped, uint milliseconds);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct BasicLimitInformation

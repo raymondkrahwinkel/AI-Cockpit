@@ -13,7 +13,7 @@ namespace Cockpit.Plugin.Browser.UI;
 
 // The UI half of the browser plugin: the engine's version in the settings (AC-1727) and the user's browser as a tab
 // and in the rail, one browser in either place (AC-1711). The runtime owns its engine host until disposal.
-public sealed class BrowserUi : ICockpitPluginUi, IDisposable
+public sealed class BrowserUi : ICockpitPluginUi, IDisposable, IAsyncDisposable
 {
     public const string WorkspaceTypeId = "browser.tab";
 
@@ -36,6 +36,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     public void InitializeUi(ICockpitUiHost host)
     {
         _engine = BrowserEngine.Create();
+        _engine.ValidatePackage();
         _engine.IsHardwareAccelerationEnabled = new BrowserSettings(host.Storage).IsHardwareAccelerationEnabled;
         _agents = new AgentTabsModel(host.Channel);
         // AC-1714: up front, so an agent asking before the browser was ever opened gets a refusal at once, not a timeout.
@@ -87,6 +88,18 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     }
 
     internal Task ShutdownCompletion => _engine?.ShutdownCompletion ?? Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            Dispose();
+        }
+        finally
+        {
+            await ShutdownCompletion;
+        }
+    }
 
     // The agent side is the only thing the status bar still says about the browser; where it sits and how many
     // tabs it has are noise you read off the window itself.

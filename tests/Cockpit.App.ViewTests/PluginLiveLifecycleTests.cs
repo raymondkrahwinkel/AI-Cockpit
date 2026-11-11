@@ -104,7 +104,7 @@ public sealed class PluginLiveLifecycleTests
         ICockpitPluginUi ActivateUi(DiscoveredPlugin _, ICockpitPlugin? __) => new EveryUiContribution(disposed, () => bodiesClosed++);
 
         manager.StartUiPart = (plugin, backend, _) => UiThreadCall.Uncapped(() => Task.FromResult(uiParts.InitializeUiOne(plugin, backend, ActivateUi, UiHostFor)));
-        manager.Deactivated += uiParts.DeactivateUi;
+        manager.StopUiPart = uiParts.DeactivateUiAsync;
 
         var nothing = _Held(provider, cockpit);
         manager.LoadAndConfigure([discovered], new ServiceCollection(), Activate);
