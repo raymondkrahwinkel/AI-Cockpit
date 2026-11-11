@@ -24,6 +24,8 @@
                         Command="{Binding AddProfileCommand}"/>
 
                 <StackPanel Spacing="6" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Button Content="Duplicate" Classes="Subtle" HorizontalAlignment="Left"
+                            Command="{Binding DuplicateProfileCommand}"/>
                     <Button Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
                             Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                             Command="{Binding RemoveProfileCommand}"

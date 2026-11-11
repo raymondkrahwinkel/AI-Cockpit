@@ -3519,7 +3519,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.
-    public AssistantOptionsViewModel AssistantOptions { get; }
+    public AssistantOptionsViewModel AssistantOptions { get; private set; }
 
     public ModelIntelligenceOptionsViewModel ModelIntelligence { get; internal set; } = new();
 
@@ -7382,6 +7382,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task EditAssistantProfileAsync()
     {
+        if (_editRemoteAssistantProfile is { } edit)
+        {
+            await edit();
+            await AssistantOptions.RefreshAsync();
+            return;
+        }
+
         if (_dialogService is null)
         {
             return;
@@ -7458,6 +7465,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             try
             {
                 await (_remoteServers?.ReloadAsync() ?? Task.CompletedTask);
+                if (_prepareRemoteProfiles is { } prepare)
+                {
+                    await prepare();
+                }
                 await LoadNotificationSettingsAsync();
                 await LoadSessionBehaviorSettingsAsync();
                 await LoadTerminalSettingsAsync();
@@ -7852,6 +7863,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveCloneSettingsCommand.ExecuteAsync(null);
         if (_notificationSettingsStore is Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores remote)
         {
+            _optionsSavingCategory = "assistant";
+            await AssistantOptions.SaveStagedAsync();
             _optionsSavingCategory = "appearance";
             await remote.SaveClientPresentationAsync();
         }
@@ -8170,7 +8183,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         measurement.Mark("delegation");
 
-        await AssistantOptions.SaveStagedAsync();
+        if (!IsRemoteWindow)
+        {
+            await AssistantOptions.SaveStagedAsync();
+        }
         measurement.Mark("assistant");
         await ModelIntelligence.SaveStagedAsync();
         measurement.Mark("models");

@@ -9,6 +9,10 @@ namespace Cockpit.Core.Abstractions.Remote;
 /// </summary>
 public interface IServerProfiles
 {
+    /// <summary>Creates an edited copy using the scoped source's stored secrets for masked values.</summary>
+    Task<RemoteProfile> CopyProfileAsync(string sourceLabel, SessionProfile profile, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("The server does not support copying profiles.");
+
     /// <summary>
     /// Every profile on the server, without its secrets.
     /// </summary>

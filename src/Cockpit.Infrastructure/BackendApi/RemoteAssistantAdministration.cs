@@ -11,6 +11,16 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
 {
     private const string Route = "api/v1/assistant/settings";
 
+    public Task<RemoteAssistantSettings> SaveCopiedProfileAsync(string sourceLabel, SessionProfile profile, bool replacesStandingInstruction,
+        string? assistantRole, CancellationToken cancellationToken = default) =>
+        _CallAsync(HttpMethod.Patch, $"{Route}/profile", new RemoteAssistantProfilePatch
+        {
+            CopyFromLabel = sourceLabel,
+            ReplacesStandingInstruction = replacesStandingInstruction,
+            AssistantRole = assistantRole ?? string.Empty,
+            Profile = new RemoteProfilePatch { Profile = RemoteProfileWire.ToJson(profile) },
+        }, cancellationToken);
+
     public async Task<Cockpit.Core.Projects.RoleListResult> ListRolesAsync(string? brain, CancellationToken cancellationToken = default)
     {
         try

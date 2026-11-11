@@ -4,7 +4,13 @@ The ordinary Options dialog edits typed stores. Only Admin connect keys can read
 
 All server groups are saved before client presentation. A server failure keeps the dialog staged, shows the reason on the affected Options page, and writes no client presentation. Successful groups can already be committed, as in the ordinary Options section-save behavior. Cancel restores confirmed backend values even without a connection, and reloads client presentation. API writes share an edit gate, including cleanup, so preserving a hidden field cannot undo another concurrent API write. No settings keys are added; README key documentation and SettingsCarrierWhitelist are unchanged.
 
-Client presentation uses only the remote window's own state root, never the local Cockpit registry. A server shell must be empty (OS default) or the ID/absolute executable path of a shell detected on the server; arbitrary programs are refused. Host backup/image operations remain outside this feature. The later epic subtickets own Security/Swarm, profiles/assistant, MCP and plugin administration.
+Client presentation uses only the remote window's own state root, never the local Cockpit registry. A server shell must be empty (OS default) or the ID/absolute executable path of a shell detected on the server; arbitrary programs are refused. Host backup/image operations remain outside this feature.
+
+## Profiles and assistant (AC-2280)
+
+The ordinary Profiles page uses the server's providers, login flows, brains, model catalog and MCP choices. Provider panels come from the remote plugin UI. Duplicate and Assistant Profile's Copy from keep a source label until Save; the server checks access to that source and fills masked secrets under the profile edit gate. Cancel creates no copy. Apply updates the editor's original labels, so subsequent edits preserve renamed profiles.
+
+Admin keys edit assistant backend preferences through `/api/v1/options/assistant`: enabled, reading level, context compaction, speech profile and consent bypass. Device and speech presentation preferences stay in the remote window's own state. Assistant preferences are saved before any client presentation, and an error keeps Options staged. The existing assistant slot and role endpoints back the ordinary Assistant Profile dialog; editing does not claim the assistant chat line.
 
 ## Security and Swarm (AC-2279)
 

@@ -227,6 +227,10 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         // The label deliberately comes across too: a copied profile that kept the previous name would leave the
         // dialog claiming to be one thing and running another.
         Profile = _Editable(source);
+        if (_slotStore is ServerAssistantSlotStore server)
+        {
+            server.CopyFromLabel = source.Label;
+        }
         StatusMessage = $"Copied the settings from \"{source.Label}\". They belong to the assistant now — editing \"{source.Label}\" later changes nothing here.";
     }
 

@@ -52,6 +52,17 @@ internal sealed class RemoteWindowUi : IDisposable
     internal IWorkspaceTypeRegistry WorkspaceTypes => _services.GetRequiredService<IWorkspaceTypeRegistry>();
     internal IWidgetRegistry Widgets => _services.GetRequiredService<IWidgetRegistry>();
     internal IDockPanelRegistry DockPanels => _services.GetRequiredService<IDockPanelRegistry>();
+    internal IPluginProviderConfigViews ProviderConfigViews => _services.GetRequiredService<IPluginProviderConfigViews>();
+
+    internal async Task ShowAssistantProfileAsync(AssistantProfileDialogViewModel dialog)
+    {
+        if (_surfaces.TryActivateAsync(typeof(AssistantProfileDialog)) is { } pending)
+        {
+            await pending;
+            return;
+        }
+        await _surfaces.ShowAsync(typeof(AssistantProfileDialog), new AssistantProfileDialog { DataContext = dialog }, _owner);
+    }
 
     internal Task ShowWorktreesAsync(WorktreesViewModel worktrees) => RemoteFileUi.ShowWorktreesAsync(worktrees, _owner, _surfaces);
     internal Task<bool> ConfirmAsync(string title, string message, string confirmLabel) => new WindowActions(_owner).ConfirmAsync(title, message, confirmLabel);

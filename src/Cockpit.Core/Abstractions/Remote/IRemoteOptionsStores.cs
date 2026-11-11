@@ -24,6 +24,7 @@ public interface IRemoteOptionsStores : IHeavyRunSettingsStore, ISessionBehavior
     IWorktreeSettingsStore, INotificationSettingsStore, IDebugSettingsStore, ITerminalSettingsStore,
     ITerminalAccessSettingsStore, IShellAccessSettingsStore
 {
+    Assistant.IAssistantSettingsStore Assistant { get; }
     ISwarmOptions Swarm { get; }
     ISwarmLeadership SwarmLeadership { get; }
     Mcp.IMcpServerStore McpServers { get; }

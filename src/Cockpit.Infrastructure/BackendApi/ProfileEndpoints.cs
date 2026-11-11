@@ -174,7 +174,17 @@ internal static class ProfileEndpoints
             {
                 if (body.Settings?.Profile is { } whole)
                 {
-                    return await _WholeAsync(profiles, -1, whole, body.Provider, cancellationToken).ConfigureAwait(false);
+                    SessionProfile? source = null;
+                    if (body.CopyFromLabel is { } sourceLabel)
+                    {
+                        var sourceIndex = IndexOf(profiles, sourceLabel);
+                        if (sourceIndex < 0 || McpRequestContext.CurrentNodeCaller?.AllowsProfile(profiles[sourceIndex].Label, services.GetRequiredService<INodePairingBroker>()) != true)
+                        {
+                            return (null, NoProfile());
+                        }
+                        source = profiles[sourceIndex];
+                    }
+                    return await _WholeAsync(profiles, -1, whole, body.Provider, cancellationToken, source).ConfigureAwait(false);
                 }
 
                 if (string.IsNullOrWhiteSpace(body.Label) || string.IsNullOrWhiteSpace(body.Provider)
@@ -278,7 +288,7 @@ internal static class ProfileEndpoints
         }
 
         // AC-1585: a whole profile made (`index` -1) or put in place of the one at `index`, which may rename it.
-        async Task<(IReadOnlyList<SessionProfile>? Next, IResult Answer)> _WholeAsync(IReadOnlyList<SessionProfile> profiles, int index, JsonElement json, string? provider, CancellationToken cancellationToken)
+        async Task<(IReadOnlyList<SessionProfile>? Next, IResult Answer)> _WholeAsync(IReadOnlyList<SessionProfile> profiles, int index, JsonElement json, string? provider, CancellationToken cancellationToken, SessionProfile? source = null)
         {
             if (RemoteProfileWire.FromJson(json) is not { } incoming)
             {
@@ -293,7 +303,7 @@ internal static class ProfileEndpoints
             var choices = incoming.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId }
                 ? await ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
                 : null;
-            var (merged, refusal) = MergeWhole(index < 0 ? null : profiles[index], incoming, services, choices);
+            var (merged, refusal) = MergeWhole(index < 0 ? source : profiles[index], incoming, services, choices);
             if (merged is null)
             {
                 return (null, refusal);
