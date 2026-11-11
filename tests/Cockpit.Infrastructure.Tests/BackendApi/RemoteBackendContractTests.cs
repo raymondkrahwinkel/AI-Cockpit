@@ -90,12 +90,14 @@ public sealed class RemoteBackendContractTests : BackendContractTests
             Assert.Empty(removed.WorkspaceId);
             remote = await RemoteBackend.ConnectAsync(client);
 
-            // Criterion 4: a chosen pane or a resume is refused before a request leaves, so the backend starts nothing.
+            // AC-2287: the server refuses a pane or conversation absent from its index before launching anything.
             var registry = services.GetRequiredService<ISessionRegistry>();
             Assert.Contains(remote.Workspaces.Workspaces, workspace => workspace.Id == desk.Id);
             var launch = new SessionLaunchRequest(desk.Id, profile, null, null, null, PaneSessionKind.Sdk, null, null, null, false);
-            await Assert.ThrowsAsync<ArgumentException>(() => remote.StartSessionAsync(launch with { PaneId = "chosen" }));
-            await Assert.ThrowsAsync<ArgumentException>(() => remote.StartSessionAsync(launch with { Resume = SessionResume.MostRecent }));
+            var chosen = await Assert.ThrowsAsync<BackendApiException>(() => remote.StartSessionAsync(launch with { PaneId = "chosen" }));
+            var recent = await Assert.ThrowsAsync<BackendApiException>(() => remote.StartSessionAsync(launch with { Resume = SessionResume.MostRecent }));
+            Assert.Equal(HttpStatusCode.NotFound, chosen.Status);
+            Assert.Equal(HttpStatusCode.NotFound, recent.Status);
             Assert.Empty(registry.All);
 
             await using (var other = await RemoteBackend.ConnectAsync(client))

@@ -250,6 +250,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - AC-2284: the ordinary Plugin store in a remote Cockpit window installs, updates, disables and removes plugins on the server. Store sources and publisher trust stay behind Admin access; the matching running UI is cached separately without changing local plugins or configuration. Protected workspaces keep their contents when an automatic UI replacement must wait.
 
+- AC-2287: remote SDK sessions support rename, scoped conversation search and resume, structured permission answers and verify screenshots. Resumes use the server's saved transcript and folder; names, status and session metadata survive reconnect.
+
 ### Added
 
 - Plugin-provided stores now verify publisher signatures before installation, remember publisher consent across removal and restore, and warn when the current feed revokes an installed plugin's key.

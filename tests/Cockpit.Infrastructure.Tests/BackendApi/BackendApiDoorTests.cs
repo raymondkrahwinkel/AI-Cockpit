@@ -1004,7 +1004,7 @@ public sealed class BackendApiDoorTests
 
         public string Fingerprint => _certificate.Fingerprint;
 
-        public async Task<ConnectKeyVerifier> StartAsync()
+        public async Task<ConnectKeyVerifier> StartAsync(Action<IServiceCollection>? configure = null)
         {
             System.IO.Directory.CreateDirectory(ProjectDirectory);
             System.IO.Directory.CreateDirectory(Path.Combine(ProjectDirectory, "folder"));
@@ -1141,6 +1141,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(Health);
             services.AddSingleton(LoginHealth);
             services.AddSingleton<GitHubGitSignIns>();
+            configure?.Invoke(services);
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],

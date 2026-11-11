@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
 using Microsoft.Extensions.Logging;
@@ -111,6 +112,7 @@ public partial class CockpitViewModel
             usagePillSettingsStore: options.UsagePill, screenshotSettingsStore: options.Screenshots,
             quickNoteSettingsStore: options.QuickNotes,
             heavyRunSettingsStore: options, deferOptionsLoad: true,
+            conversationIndex: new Composition.RemoteWindowConversations(() => Current()?.Launcher),
             projects: new ProjectsViewModel(serverProjects, serverProjects, projectDialogs) { ServerName = server },
             workspaceTypeRegistry: ui?.WorkspaceTypes, widgetRegistry: ui?.Widgets, dockPanelRegistry: ui?.DockPanels,
             worktrees: new WorktreesViewModel(null, (title, message, label) => ui?.ConfirmAsync(title, message, label) ?? Task.FromResult(false)))
@@ -188,6 +190,44 @@ public partial class CockpitViewModel
         start.SelectedProject = start.Projects.FirstOrDefault(choice => choice.Id == project.Id) ?? start.SelectedProject;
         start.SelectedProfile = start.Profiles.FirstOrDefault(choice =>
             string.Equals(choice.Label, project.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase)) ?? start.SelectedProfile;
+    }
+
+    private async Task<ConversationReopenResult> _ReopenServerConversationAsync(ConversationRecord record)
+    {
+        if (ServerGroups.FirstOrDefault() is not { Server.Launcher: { } launcher } group || record.ProfileId is not { } profile)
+        {
+            return new(false, "The server is not connected.");
+        }
+        try
+        {
+            if (group.Sessions.FirstOrDefault(row => row.Handle.PaneId == record.PaneId) is { } open)
+            {
+                await OpenServerSessionAsync(open);
+                return new(true);
+            }
+            if (record.ConversationId is not { Length: > 0 } conversationId)
+            {
+                return new(false, "This conversation cannot be resumed.");
+            }
+            await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+            var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
+                Workspaces.Active?.Id ?? "", new SessionProfile(profile, new ServerProvider()), null, null, null,
+                PaneSessionKind.Sdk, null, false, record.ProjectId, false, SessionResume.BySessionId(conversationId), PaneId: record.PaneId));
+            if (started is null || started.FailureReason is not null)
+            {
+                return new(false, started?.FailureReason ?? "The conversation could not be resumed.");
+            }
+            _ReconcileServerGroup(group);
+            if (group.Sessions.FirstOrDefault(row => row.Handle.PaneId == started.PaneId) is { } resumed)
+            {
+                await OpenServerSessionAsync(resumed);
+            }
+            return new(true);
+        }
+        catch (Exception exception)
+        {
+            return new(false, exception.Message);
+        }
     }
 
     private async Task _LoadServerProjectsAsync()
@@ -460,6 +500,21 @@ public partial class CockpitViewModel
                     pane.WorkspaceId = handle.WorkspaceId;
                 }
                 pane.ShowsWhereItRuns = true;
+                pane.NameChanged += async (_, _) =>
+                {
+                    try
+                    {
+                        if (group.Server?.Launcher is { } launcher)
+                        {
+                            await launcher.SetSessionNameAsync(handle.PaneId, pane.Title);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        pane.Title = handle.Title;
+                        ToastHost.Add($"Could not rename the session: {exception.Message}", ToastSeverity.Error, null, null);
+                    }
+                };
                 if (pane is SessionViewModel chat)
                 {
                     _ApplyLink(chat, group);
