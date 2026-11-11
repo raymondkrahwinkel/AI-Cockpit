@@ -18,6 +18,8 @@ public sealed class ServerAssistantSlotStore(string server, IAssistantAdministra
     // Whether the server refused the key on a save; the page then reads as read-only, as after any refusal.
     public bool IsRefused { get; private set; }
 
+    public string? CopyFromLabel { get; set; }
+
     public Task<Cockpit.Core.Projects.RoleListResult> ListRolesAsync(SessionProfile? profile) => assistant.ListRolesAsync(profile?.Assistant);
 
     public async Task<AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) =>
@@ -27,7 +29,10 @@ public sealed class ServerAssistantSlotStore(string server, IAssistantAdministra
     {
         try
         {
-            Saved = await assistant.SaveProfileAsync(record, replacesStandingInstruction, cancellationToken, assistantRole);
+            Saved = CopyFromLabel is { } source
+                ? await assistant.SaveCopiedProfileAsync(source, record, replacesStandingInstruction, assistantRole, cancellationToken)
+                : await assistant.SaveProfileAsync(record, replacesStandingInstruction, cancellationToken, assistantRole);
+            CopyFromLabel = null;
         }
         catch (UnauthorizedAccessException exception)
         {

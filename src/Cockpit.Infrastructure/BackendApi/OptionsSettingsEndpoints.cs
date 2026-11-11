@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
@@ -31,6 +33,27 @@ internal static class OptionsSettingsEndpoints
         IDebugSettingsStore debug() => services.GetRequiredService<IDebugSettingsStore>();
         ITerminalSettingsStore terminal() => services.GetRequiredService<ITerminalSettingsStore>();
         ProvisionPolicy? policy() => services.GetService<IOrgPolicy>()?.Current;
+
+        _Map<AssistantServerOptions>("assistant", async ct =>
+            {
+                var value = await services.GetRequiredService<IAssistantSettingsStore>().LoadAsync(ct).ConfigureAwait(false);
+                return new(value.IsEnabled, value.ReadingLevel, value.ContextCompactionPercent, value.SpeechProfileLabel,
+                    value.ConsentBypassAll, value.ConsentBypassSources, value.ConsentBypassDangerousSources);
+            },
+            async (value, ct) =>
+            {
+                var store = services.GetRequiredService<IAssistantSettingsStore>();
+                await store.UpdateAsync(stored => stored with
+                {
+                    IsEnabled = value.IsEnabled, ReadingLevel = value.ReadingLevel,
+                    ContextCompactionPercent = value.ContextCompactionPercent, SpeechProfileLabel = value.SpeechProfileLabel,
+                    ConsentBypassAll = value.ConsentBypassAll, ConsentBypassSources = value.ConsentBypassSources,
+                    ConsentBypassDangerousSources = value.ConsentBypassDangerousSources,
+                }, ct).ConfigureAwait(false);
+                await services.GetRequiredService<IAssistantSessionHost>().ApplySettingsAsync(CancellationToken.None).ConfigureAwait(false);
+            }, value => value.ContextCompactionPercent is >= AssistantSettings.MinimumCompactionPercent and <= AssistantSettings.MaximumCompactionPercent
+                && Enum.IsDefined(value.ReadingLevel)
+                && value.ConsentBypassSources is not null && value.ConsentBypassDangerousSources is not null);
 
         _Map<RunOptions>("runs", async ct =>
         {

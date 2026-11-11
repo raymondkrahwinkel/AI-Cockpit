@@ -76,6 +76,9 @@ public partial class CockpitViewModel
         _ = _ReloadServersAsync();
     }
 
+    private Func<Task>? _prepareRemoteProfiles;
+    private Func<Task>? _editRemoteAssistantProfile;
+
     // AC-2277: use the runtime presentation graph with explicit server services and no desktop backend services.
     internal static CockpitViewModel ForRemoteWindow(
         string server,
@@ -125,6 +128,32 @@ public partial class CockpitViewModel
             _presentConfirmation = confirm ?? (ui is null ? null : ui.ConfirmAsync),
         };
         cockpit.Workspaces.UseRemoteWorkspaces(() => Current()?.Launcher);
+        cockpit._prepareRemoteProfiles = async () =>
+        {
+            var target = Current() ?? throw new InvalidOperationException("The server is not connected.");
+            var profiles = new ServerProfileServices(server, target.Profiles, signIns, configViews: ui?.ProviderConfigViews);
+            await profiles.PrepareAsync();
+            cockpit.Profiles = profiles.CreateEditor();
+            var slot = new ServerAssistantSlotStore(server, target.AssistantAdministration);
+            cockpit.AssistantOptions = new AssistantOptionsViewModel(options.Assistant, slot,
+                speechProfiles: new ServerProfileServices(server, target.Profiles));
+            await cockpit.AssistantOptions.RefreshAsync();
+            cockpit.OnPropertyChanged(nameof(AssistantOptions));
+            cockpit._editRemoteAssistantProfile = async () =>
+            {
+                if (ui is null)
+                {
+                    return;
+                }
+                var assistantProfiles = new ServerProfileServices(server, target.Profiles, signIns, configViews: ui.ProviderConfigViews);
+                await assistantProfiles.PrepareAsync();
+                var dialog = new AssistantProfileDialogViewModel(new ServerAssistantSlotStore(server, target.AssistantAdministration), assistantProfiles, loginChecker: assistantProfiles,
+                    pluginProviderRegistry: assistantProfiles, mcpServerCatalog: assistantProfiles, tokenEstimator: assistantProfiles,
+                    pluginConfigViews: assistantProfiles, canChooseProvider: false);
+                await dialog.LoadAsync();
+                await ui.ShowAssistantProfileAsync(dialog);
+            };
+        };
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
 
         // The server is there once its group is: read its projects then, and again if it comes back as a new object.

@@ -42,7 +42,12 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
             return;
         }
 
-        await editor.PersistAsync();
+        if (!await editor.PersistAsync())
+        {
+            Status = editor.StatusMessage;
+            StatusIsError = true;
+            return;
+        }
         await _ReloadAsync();
         Status = "Saved on the server.";
     });

@@ -1,4 +1,6 @@
 using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Remote;
@@ -19,7 +21,7 @@ using Cockpit.Core.Worktrees;
 namespace Cockpit.Infrastructure.BackendApi;
 
 // Resolve the connection on use: the ordinary remote window is composed before its registry has connected.
-public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOptionsStores
+public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOptionsStores, IAssistantSettingsStore
 {
     private BackendApiClient Client => server() is RemoteServer remote
         ? remote.OptionsClient
@@ -37,6 +39,32 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
     private bool _confirmedCleanup;
 
     public bool ReadConfirmedValues { get; set; }
+
+    public IAssistantSettingsStore Assistant => this;
+
+    private readonly Assistant.AssistantSettingsStore _assistant = new();
+    private AssistantSettings _clientAssistant = new();
+
+    async Task<AssistantSettings> IAssistantSettingsStore.LoadAsync(CancellationToken cancellationToken)
+    {
+        _clientAssistant = await _assistant.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var value = await _ReadAsync<AssistantServerOptions>("assistant", cancellationToken).ConfigureAwait(false);
+        return _clientAssistant with
+        {
+            IsEnabled = value.IsEnabled, ReadingLevel = value.ReadingLevel,
+            ContextCompactionPercent = value.ContextCompactionPercent, SpeechProfileLabel = value.SpeechProfileLabel,
+            ConsentBypassAll = value.ConsentBypassAll, ConsentBypassSources = value.ConsentBypassSources,
+            ConsentBypassDangerousSources = value.ConsentBypassDangerousSources,
+        };
+    }
+
+    async Task IAssistantSettingsStore.SaveAsync(AssistantSettings settings, CancellationToken cancellationToken)
+    {
+        await _WriteAsync("assistant", new AssistantServerOptions(settings.IsEnabled, settings.ReadingLevel,
+            settings.ContextCompactionPercent, settings.SpeechProfileLabel, settings.ConsentBypassAll,
+            settings.ConsentBypassSources, settings.ConsentBypassDangerousSources), cancellationToken).ConfigureAwait(false);
+        _clientAssistant = settings;
+    }
 
     public Cockpit.Core.Abstractions.Layout.ILayoutSettingsStore Layout { get; } = new Layout.LayoutSettingsStore();
     public Cockpit.Core.Abstractions.TranscriptDisplay.ITranscriptDisplaySettingsStore Transcript { get; } = new TranscriptDisplay.TranscriptDisplaySettingsStore();
@@ -75,7 +103,7 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
             return (T)confirmed;
         }
 
-        var value = await Client.GetAsync<T>($"api/v1/options/{group}", ct).ConfigureAwait(false);
+        var value = await Client.SendAsync<T>(HttpMethod.Get, $"api/v1/options/{group}", null, ConnectKeyEndpoints.Json, ct).ConfigureAwait(false);
         _confirmed[group] = value;
         return value;
     }
@@ -204,5 +232,12 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
         }, cancellationToken).ConfigureAwait(false);
         await _debug.SaveAsync((await _debug.LoadAsync(cancellationToken).ConfigureAwait(false)) with { ShowDebugControls = _clientDebug.ShowDebugControls }, cancellationToken).ConfigureAwait(false);
         await _terminal.SaveAsync((await _terminal.LoadAsync(cancellationToken).ConfigureAwait(false)) with { FontFamily = _clientTerminal.FontFamily, FontSize = _clientTerminal.FontSize }, cancellationToken).ConfigureAwait(false);
+        await _assistant.UpdateAsync(stored => stored with
+        {
+            AlwaysOnTop = _clientAssistant.AlwaysOnTop, PushToTalkKeyName = _clientAssistant.PushToTalkKeyName,
+            SpeakReplies = _clientAssistant.SpeakReplies, SpeechMode = _clientAssistant.SpeechMode,
+            SpeechMethod = _clientAssistant.SpeechMethod, WakeWordEnabled = _clientAssistant.WakeWordEnabled,
+            WakeWord = _clientAssistant.WakeWord, WakeWordListeningSeconds = _clientAssistant.WakeWordListeningSeconds,
+        }, cancellationToken).ConfigureAwait(false);
     }
 }
