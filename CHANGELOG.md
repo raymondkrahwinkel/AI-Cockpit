@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2158: wait for the development Browser host and its children before replacing or removing it, roll back incomplete subprocess packages, and remove stopped plugins immediately while keeping browser profiles and caches.
+
 - AC-2157: give each Browser enable its own engine host and stop it during plugin teardown, keeping profiles and caches and leaving a cancelled application shutdown usable.
 
 - AC-2156: mute and unmute each development Browser host tab independently, show its media playback status, and clear the sound indicator when the tab or engine stops.

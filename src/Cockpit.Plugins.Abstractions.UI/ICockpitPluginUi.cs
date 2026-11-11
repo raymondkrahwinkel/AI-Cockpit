@@ -1,8 +1,8 @@
 namespace Cockpit.Plugins.Abstractions.UI;
 
-// AC-1389: the UI part's entry point, the manifest's uiEntryType or the ICockpitPlugin entry type itself. Activated only
-// where there is a window, after the backend part's Initialize. AC-2024: when IDisposable, it is disposed on the UI
-// thread, before the backend part: stop, never wait there, since the host cannot interrupt the call.
+// The UI entry point, activated where there is a window after the backend part's Initialize.
+// Separate UI objects start IDisposable or IAsyncDisposable teardown on the UI thread without blocking its dispatcher.
+// Live teardown awaits IAsyncDisposable before replacing or removing the plugin, then disposes the backend part.
 public interface ICockpitPluginUi
 {
     /// <summary>

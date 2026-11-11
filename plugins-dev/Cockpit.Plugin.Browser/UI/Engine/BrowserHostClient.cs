@@ -14,14 +14,19 @@ internal sealed class BrowserHostClient : IAsyncDisposable
     private readonly LinuxBrowserHostProcess? _linux;
     private readonly BrowserIpcPipes _pipes;
     private readonly Task _exited;
+    private readonly SafeFileHandle? _jobCompletionPort;
+    private readonly Lazy<Task> _stopJob;
     private readonly Task _closeOnExit;
     private int _disposed;
     private readonly ConcurrentDictionary<Guid, Func<BrowserIpcMessage, CancellationToken, Task<JsonElement>>> _tabs = new();
 
-    private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation, SafeFileHandle? job, LinuxBrowserHostProcess? linux)
+    private BrowserHostClient(Process process, BrowserIpcPipes pipes, Guid generation, SafeFileHandle? job, LinuxBrowserHostProcess? linux, SafeFileHandle? jobCompletionPort)
     {
         _process = process;
         _job = job;
+        _jobCompletionPort = jobCompletionPort;
+        _stopJob = new Lazy<Task>(() => OperatingSystem.IsWindows() && job is not null && jobCompletionPort is not null
+            ? WindowsBrowserHostProcess.StopAsync(job, jobCompletionPort) : Task.CompletedTask);
         _linux = linux;
         _pipes = pipes;
         _exited = OperatingSystem.IsLinux() ? _ReapLinuxAsync(process.Id) : process.WaitForExitAsync();
@@ -70,6 +75,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         SafeFileHandle? job = null;
         Process? process = null;
         LinuxBrowserHostProcess? linux = null;
+        SafeFileHandle? jobCompletionPort = null;
         try
         {
             string[] arguments =
@@ -86,7 +92,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (OperatingSystem.IsWindows())
             {
-                (process, job) = WindowsBrowserHostProcess.Start(executable, arguments, pipes);
+                (process, job, jobCompletionPort) = WindowsBrowserHostProcess.Start(executable, arguments, pipes);
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -97,7 +103,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             {
                 throw new PlatformNotSupportedException("The browser host is supported on Windows and Linux.");
             }
-            client = new BrowserHostClient(process, pipes, generation, job, linux);
+            client = new BrowserHostClient(process, pipes, generation, job, linux, jobCompletionPort);
             client.BufferDirectory = bufferDirectory;
             pipes.ChildStarted();
             var ready = await client.Connection.CallAsync(generation, "enginehost", "engine.ready", JsonSerializer.SerializeToElement(true),
@@ -117,6 +123,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
             else
             {
                 job?.Dispose();
+                jobCompletionPort?.Dispose();
                 linux?.Dispose();
                 process?.Dispose();
                 pipes.Dispose();
@@ -138,7 +145,7 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         {
             try
             {
-                _job?.Dispose();
+                await _stopJob.Value.ConfigureAwait(false);
                 _linux?.ReportFailure();
             }
             finally
@@ -172,16 +179,16 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            if (_job is not null)
-            {
-                _job.Dispose();
-            }
-            else
-            {
-                _linux?.Stop();
-            }
             try
             {
+                if (_job is not null)
+                {
+                    await _stopJob.Value.ConfigureAwait(false);
+                }
+                else
+                {
+                    _linux?.Stop();
+                }
                 await _exited.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -195,16 +202,20 @@ internal sealed class BrowserHostClient : IAsyncDisposable
         }
         finally
         {
-            _job?.Dispose();
             _process.Dispose();
         }
         try
         {
-            await _closeOnExit.ConfigureAwait(false);
+            await _closeOnExit.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             errors.Add(exception);
+        }
+        finally
+        {
+            _job?.Dispose();
+            _jobCompletionPort?.Dispose();
         }
         _tabs.Clear();
         if (errors.Count != 0)

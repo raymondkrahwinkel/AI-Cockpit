@@ -98,6 +98,24 @@ internal sealed class BrowserEngine
     // What the download costs, shown while it runs (AC-1727); null where there is nothing to download.
     public string? DownloadText { get; init; }
 
+    internal void ValidatePackage()
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+        string folder = Path.GetDirectoryName(_subprocessPath) ?? throw new IOException("The browser subprocess folder is missing.");
+        foreach (string file in new[] { _subprocessPath, Path.Combine(folder, SubprocessFileName + ".dll"),
+            Path.Combine(folder, SubprocessFileName + ".deps.json"), Path.Combine(folder, SubprocessFileName + ".runtimeconfig.json"),
+            Path.Combine(folder, "Xilium.CefGlue.dll") })
+        {
+            if (!File.Exists(file))
+            {
+                throw new FileNotFoundException("The browser subprocess package is incomplete: " + Path.GetFileName(file), file);
+            }
+        }
+    }
+
     public bool IsHardwareAccelerationEnabled { get; set; } = !OperatingSystem.IsLinux();
 
     public BrowserEngineState State { get; private set; } = BrowserEngineState.NotStarted;
@@ -281,6 +299,7 @@ internal sealed class BrowserEngine
         catch (Exception exception)
         {
             _LogLine($"Browser host cleanup failed: {exception.Message}");
+            throw;
         }
     }
 
@@ -293,6 +312,7 @@ internal sealed class BrowserEngine
         catch (Exception exception)
         {
             _LogLine($"Browser host cleanup failed: {exception.Message}");
+            throw;
         }
     }
 
