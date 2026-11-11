@@ -151,6 +151,7 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
                 or nameof(SessionViewModel.IsBusy)
                 or nameof(SessionViewModel.HasPendingPermission)
                 or nameof(SessionViewModel.PendingConsent)
+                or nameof(SessionViewModel.CanPasteImages)
                 or nameof(SessionViewModel.ContextUsedPercent))
         {
             changed(this, e.PropertyName is null or nameof(SessionViewModel.ContextUsedPercent));

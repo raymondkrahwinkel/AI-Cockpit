@@ -35,6 +35,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private string _failureReason = "Not started.";
     private bool _wasWaitingOnOperator;
     private bool _stateChangePending;
+    private bool _couldPasteImages;
 
     // AC-1437: the host's signals, held while the lock is and raised once it is let go, in the order they came.
     private readonly List<Action> _heldRaises = [];
@@ -81,6 +82,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         ActiveProfileLabel = profileLabel;
         ProjectId = projectId;
         _host = host;
+        _couldPasteImages = CanPasteImages;
         _heavyRuns = heavyRuns;
         if (_heavyRuns is not null)
         {
@@ -93,7 +95,16 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
-        host.LiveStateChanged += _ => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(LiveState));
+        host.LiveStateChanged += _ =>
+        {
+            _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(LiveState));
+            bool canPasteImages = CanPasteImages;
+            if (_couldPasteImages != canPasteImages)
+            {
+                _couldPasteImages = canPasteImages;
+                _NoteStateChanged();
+            }
+        };
         host.OperatorActed += action => _RaiseOutsideTheLock(() => OperatorActed?.Invoke(action));
         host.TurnEnded += end =>
         {

@@ -325,8 +325,13 @@ phone only after the phone's `ready` opened (§ 9.4), apart from its own initial
 | `assistant.question` | `{ "questionId": string, "question": string }` | While the chat is open (and on opening it): the assistant asked a question that is answered on the desktop. Read-only in v1, like `assistant.consent`. |
 | `assistant.questionClosed` | `{ "questionId": string }` | The operator's next message, typed anywhere, moved past the question. |
 | `notify` | `{ "kind": "assistantMessage" }` | The assistant finished a turn with a new answer while the chat was not open. No text, nothing of the answer; only to a phone with an open stream. |
-| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool, "images": bool }` | After `cockpit.status`: the machine name, the Cockpit version, whether this Cockpit has an assistant, and whether the assistant sees images right now (§ 12). |
+| `cockpit.status` | `{ "replyTo", "name": string, "version": string?, "assistant": bool, "images": bool }` | After `cockpit.status`, and unsolicited with `replyTo: null` when image support changes: the machine name, the Cockpit version, whether this Cockpit has an assistant, and whether the assistant sees images right now (§ 12). |
 | `attachment.refused` | `{ "attachmentId", "error": string }` | An image was dropped (§ 12). |
+
+Status attempts are logged at Information with the exact `images` value, stream/device ids, queue acceptance and
+the reason: `first status`, `capability change`, `reconnect`, or `requested` for another request on the same stream.
+Queue acceptance does not prove delivery to the phone. Runtime image decisions log pane/runtime ids, model and source
+when first known or changed; neither log contains message content or keys, and ordinary frames add no log entries.
 
 A `row` is `{ "id", "kind", "text", "timestamp", "toolName"?, "resultText"?, "senderTitle"?, "questionId"?, "questionJson"?, "pendingQuestion": bool, "truncated": bool }`. `kind` is one of
 `assistantText`, `userText`, `toolUse`, `toolResult`, `thinking`, `question`, `turnCompleted`, `error`, `divider`, `inbox`, `status`. Inbox and Status retain their real type and visible sender name in history and live rows; clients ignore unknown kinds. `questionJson` carries saved answers or a resolution, and `questionId` matches the current operator action. A row
