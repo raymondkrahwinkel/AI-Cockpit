@@ -37,6 +37,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     private IAssistantSession? _observed;
     private bool _wasBusy;
+    private bool _acceptedImages;
     private bool _disposed;
 
     public AssistantChannelGateway(
@@ -51,6 +52,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         _consent = consent;
         _logger = logger;
         _messages = messages;
+        _acceptedImages = AcceptsImages;
 
         if (channel.Messages is { } sending)
         {
@@ -70,6 +72,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     public event EventHandler<AssistantChannelRow>? RowChanged;
 
     public event EventHandler? TurnEnded;
+
+    public event EventHandler? AcceptsImagesChanged;
 
     public event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;
 
@@ -336,6 +340,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         if (e.PropertyName is nameof(IAssistantSessionHost.Session) && !_disposed)
         {
             _WatchSession(_host.Session);
+            _NotifyImageSupportChanged();
         }
     }
 
@@ -403,6 +408,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return;
         }
 
+        _NotifyImageSupportChanged();
         var busy = session.IsBusy;
         bool ended;
         lock (_relayedRows)
@@ -415,6 +421,22 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         {
             TurnEnded?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private void _NotifyImageSupportChanged()
+    {
+        bool acceptsImages = AcceptsImages;
+        lock (_relayedRows)
+        {
+            if (_acceptedImages == acceptsImages)
+            {
+                return;
+            }
+
+            _acceptedImages = acceptsImages;
+        }
+
+        AcceptsImagesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // A row's first version is a row arriving; any later one is the same row changing — including a row that was

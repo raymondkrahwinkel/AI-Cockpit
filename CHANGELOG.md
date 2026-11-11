@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2307: connected phones receive updated image support as soon as the assistant's capabilities change, including after a session replacement. Logs record capability decisions and each mobile Status value with its reason (host 0.179.1, SDK 3.91.0, Depot 0.65.3).
+
 - AC-2310: assistant MCP connections retain their brain scope and stay cached until their configuration or sign-in changes, preventing repeated reconnects and log flooding.
 
 - AC-2308: plugin updates share one Linux build batch and at most one Windows batch after a nightly, then publish together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.

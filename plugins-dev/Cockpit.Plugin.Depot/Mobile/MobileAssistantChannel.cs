@@ -26,6 +26,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
     private readonly MobileSessionChannel? _sessions;
     private readonly MobileAttachments _attachments;
     private readonly Lock _gate = new();
+    private readonly Lock _statusGate = new();
     private readonly Dictionary<Guid, AssistantChannelRow> _dirty = [];
     private readonly Dictionary<Guid, string> _prompts = [];
     private (string Id, string Text)? _question;
@@ -35,6 +36,8 @@ internal sealed partial class MobileAssistantChannel : IDisposable
     private bool _flushScheduled;
     private bool _disposed;
     private string? _streamId;
+    private bool _hasStartedStream;
+    private string _statusReason = "first status";
     private long _streamGeneration;
 
     public MobileAssistantChannel(
@@ -64,6 +67,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         {
             gateway.RowChanged += _OnRowChanged;
             gateway.TurnEnded += _OnTurnEnded;
+            gateway.AcceptsImagesChanged += _OnAcceptsImagesChanged;
             gateway.ConsentPromptOpened += _OnConsentOpened;
             gateway.ConsentPromptClosed += _OnConsentClosed;
         }
@@ -141,17 +145,7 @@ internal sealed partial class MobileAssistantChannel : IDisposable
                 break;
             case "cockpit.status":
                 _StartOperatorChannel();
-                _Send("cockpit.status", writer =>
-                {
-                    _ReplyTo(writer, id);
-                    writer.WriteString("name", _cockpitName);
-                    writer.WriteString("version", _cockpitVersion);
-                    writer.WriteBoolean("assistant", _gateway is not null);
-                    writer.WriteBoolean("images", _gateway?.AcceptsImages == true);
-                    writer.WriteBoolean("operatorActions", _operatorTransport is not null);
-                    writer.WriteBoolean("sessionLifecycle", _operatorChannel?.CanManageSessions == true);
-                });
-                _StartOperatorChannel();
+                _SendStatus(id);
                 _SendPending();
                 break;
             case "sessions.list" when _sessions is not null:
@@ -180,6 +174,8 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         lock (_gate)
         {
             _streamId = streamId;
+            _statusReason = _hasStartedStream ? "reconnect" : "first status";
+            _hasStartedStream = true;
         }
     }
 
@@ -217,9 +213,66 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         {
             _gateway.RowChanged -= _OnRowChanged;
             _gateway.TurnEnded -= _OnTurnEnded;
+            _gateway.AcceptsImagesChanged -= _OnAcceptsImagesChanged;
             _gateway.ConsentPromptOpened -= _OnConsentOpened;
             _gateway.ConsentPromptClosed -= _OnConsentClosed;
             _gateway.Dispose();
+        }
+    }
+
+    private void _OnAcceptsImagesChanged(object? sender, EventArgs e)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _streamId is null)
+            {
+                return;
+            }
+        }
+
+        _SendStatus(null, "capability change");
+    }
+
+    private void _SendStatus(string? id, string? reason = null)
+    {
+        // Keep a delayed status snapshot from overtaking a newer capability update.
+        lock (_statusGate)
+        {
+            string? streamId;
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                streamId = _streamId;
+                reason ??= _statusReason;
+            }
+
+            bool images = _gateway?.AcceptsImages == true;
+            bool accepted = _TrySend("cockpit.status", writer =>
+            {
+                _ReplyTo(writer, id);
+                writer.WriteString("name", _cockpitName);
+                writer.WriteString("version", _cockpitVersion);
+                writer.WriteBoolean("assistant", _gateway is not null);
+                writer.WriteBoolean("images", images);
+                writer.WriteBoolean("operatorActions", _operatorTransport is not null);
+                writer.WriteBoolean("sessionLifecycle", _operatorChannel?.CanManageSessions == true);
+            });
+            _logger?.LogInformation("Mobile Status queued={Accepted}: images={Images}; reason={Reason}; device={DeviceId}; stream={StreamId}.",
+                accepted, images, reason, _deviceId, streamId);
+            if (accepted)
+            {
+                lock (_gate)
+                {
+                    if (_streamId == streamId)
+                    {
+                        _statusReason = "requested";
+                    }
+                }
+            }
         }
     }
 
@@ -599,7 +652,9 @@ internal sealed partial class MobileAssistantChannel : IDisposable
     internal static string Cut(string text, int length) =>
         length > 0 && char.IsHighSurrogate(text[length - 1]) ? text[..(length - 1)] : text[..length];
 
-    private void _Send(string type, Action<Utf8JsonWriter> body)
+    private void _Send(string type, Action<Utf8JsonWriter> body) => _TrySend(type, body);
+
+    private bool _TrySend(string type, Action<Utf8JsonWriter> body)
     {
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -617,10 +672,10 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         if (plaintext.Length > MobileFrameCipher.MaxPlaintextBytes)
         {
             _logger?.LogWarning("A {Type} message for a phone came out at {Bytes} bytes, over a frame; not sent.", type, plaintext.Length);
-            return;
+            return false;
         }
 
-        _send(plaintext);
+        return _send(plaintext);
     }
 
     private static void _ReplyTo(Utf8JsonWriter writer, string? id) => writer.WriteString("replyTo", id);
