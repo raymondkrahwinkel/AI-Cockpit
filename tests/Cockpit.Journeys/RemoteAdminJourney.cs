@@ -1532,11 +1532,14 @@ public sealed class RemoteAdminJourney
                     schedules.Close();
                 }
 
+                await RemoteWorkflowsSteps.RunAsync(window, () => OpenPluginAsync("Workflows"), server, servers, localRoot);
                 var workflows = await OpenPluginAsync("Workflows");
                 try
                 {
                     await Until.LayoutHolds(workflows, () => workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled"));
-                    _Click(workflows, "Duplicate");
+                    var scheduledRow = workflows.GetLogicalDescendants().OfType<TextBlock>().Single(text => text.Text == "Journey scheduled")
+                        .GetLogicalAncestors().OfType<Border>().First();
+                    _Click(scheduledRow, "Duplicate");
                     await Until.LayoutHolds(workflows, () => workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled (copy)"));
                     var saved = "";
                     await Until.ReloadHolds(async () => saved = await server.SendAsync<string>(HttpMethod.Post, "api/v1/plugins/workflows/channel/load", new { }),

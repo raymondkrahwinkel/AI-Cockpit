@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).
+
 - AC-2289: Schedules in a remote window stays on its server, including profiles and working folders. Reminders can be created, snoozed and marked done through the same server channel; open screens refresh missed changes after reconnect.
 
 - AC-2288: New terminal in a remote Cockpit window opens a shell on the server, not on this machine, and a server session can start in a terminal (TTY) with the server's profile and MCP. A shell needs an admin key and an organisation policy that allows terminal and shell access; a TTY session follows the key's session scope. Every keystroke is checked against the key again, so a revoked key types nothing more and its shells close. A dropped connection reattaches to the same terminal without starting a second one. Terminal contents are never logged.
