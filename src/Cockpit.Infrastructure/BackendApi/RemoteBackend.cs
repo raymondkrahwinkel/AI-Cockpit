@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
@@ -12,18 +13,12 @@ namespace Cockpit.Infrastructure.BackendApi;
 // AC-1388 (F5.6a): the launcher, registry and event log of a backend reached over `/api/v1`. One SSE stream, read in
 // order, keeps the registry and every handle current; nothing polls beside it. What only means something on the
 // backend's own machine is refused, not faked.
-public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackendEventLog, IAsyncDisposable
+public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackendEventLog, IWorkspaceCommands, IAsyncDisposable
 {
-    // The backend picks the desk a remote start lands on, so the client sees one: the node's.
-    public const string NodeDeskId = "node";
-
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
 
-    private static readonly WorkspaceSettings NodeDesk = new()
-    {
-        Workspaces = [new Workspace(NodeDeskId, "Node", WorkspaceType.Sessions)],
-        ActiveWorkspaceId = NodeDeskId,
-    };
+    private WorkspaceSettings _workspaces = new() { Workspaces = [] };
+    private readonly SemaphoreSlim _refreshing = new(1, 1);
 
     private readonly BackendApiClient _client;
     private readonly CancellationTokenSource _stop = new();
@@ -86,7 +81,16 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         }
     }
 
-    public WorkspaceSettings Workspaces => NodeDesk;
+    public WorkspaceSettings Workspaces
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _workspaces;
+            }
+        }
+    }
 
     public IReadOnlyList<RemoteProviderUsageSignal>? UsageSignalsOf(string providerId)
     {
@@ -129,7 +133,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     // Nothing here to exclude against: the backend checks each action's precondition again when it runs.
     public Task<T> RunExclusiveAsync<T>(Func<T> decision) => Task.FromResult(decision());
 
-    public bool CanCloseWorkspace(string workspaceId) => false;
+    public bool CanCloseWorkspace(string workspaceId) => Workspaces.CanClose(workspaceId);
 
     public bool ProfileHasTtyRoute(SessionProfile profile) => false;
 
@@ -151,7 +155,8 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
             started = await _client.SendAsync<JsonElement>(
                 HttpMethod.Post,
                 "api/v1/sessions",
-                new { profile = request.Profile.Label, projectId = request.ProjectId, prompt = request.Prompt, name = request.SessionName }).ConfigureAwait(false);
+                new { profile = request.Profile.Label, projectId = request.ProjectId, prompt = request.Prompt, name = request.SessionName,
+                    workspaceId = Workspaces.Workspaces.Count > 0 ? request.WorkspaceId : null }).ConfigureAwait(false);
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.Conflict)
         {
@@ -183,14 +188,52 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     public Task<bool> SetSessionNameAsync(string paneId, string name) =>
         throw new NotSupportedException("The API has no route to rename a session.");
 
-    public Task<Workspace> CreateSessionsWorkspaceAsync(string name) =>
-        throw new NotSupportedException("A remote backend's desks are its own; a remote start lands on the one it picks.");
+    public Task<Workspace> CreateSessionsWorkspaceAsync(string name) => CreateWorkspaceAsync(Workspace.Create(name, WorkspaceType.Sessions));
 
     public Task RenameWorkspaceAsync(string workspaceId, string name) =>
-        throw new NotSupportedException("A remote backend's desks are its own.");
+        _WorkspaceCommandAsync(HttpMethod.Post, $"api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}/rename", new { name });
 
-    public Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId) =>
-        throw new NotSupportedException("A remote backend's desks are its own.");
+    public async Task<int> CloseWorkspaceIfEmptyAsync(string workspaceId)
+    {
+        try
+        {
+            await _WorkspaceCommandAsync(HttpMethod.Delete, $"api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}", null).ConfigureAwait(false);
+            return 0;
+        }
+        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.Conflict && exception.ErrorCode == "workspace_occupied")
+        {
+            await _RefreshAsync(false).ConfigureAwait(false);
+            return Math.Max(1, All.Count(session => session.PlacedWorkspaceId == workspaceId));
+        }
+    }
+
+    public async Task<Workspace> CreateWorkspaceAsync(Workspace workspace)
+    {
+        var created = await _client.SendAsync<Workspace>(HttpMethod.Post, "api/v1/workspaces", workspace, _stop.Token).ConfigureAwait(false);
+        await _RefreshAsync(false).ConfigureAwait(false);
+        return created;
+    }
+
+    public Task UpdateWorkspaceAsync(Workspace workspace) => _WorkspaceCommandAsync(HttpMethod.Put,
+        $"api/v1/workspaces/{Uri.EscapeDataString(workspace.Id)}", workspace with { Panes = workspace.Type == WorkspaceType.Dashboard ? workspace.Panes : [] });
+
+    public Task SelectWorkspaceAsync(string workspaceId) => _WorkspaceCommandAsync(HttpMethod.Post,
+        $"api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}/select", null);
+
+    public Task MoveWorkspaceAsync(string workspaceId, int index) => _WorkspaceCommandAsync(HttpMethod.Put,
+        $"api/v1/workspaces/{Uri.EscapeDataString(workspaceId)}/position", new { index });
+
+    public async Task<bool> MoveSessionPaneAsync(string paneId, string targetWorkspaceId)
+    {
+        await _WorkspaceCommandAsync(HttpMethod.Put, $"api/v1/sessions/{Uri.EscapeDataString(paneId)}/workspace", new { workspaceId = targetWorkspaceId }).ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task _WorkspaceCommandAsync(HttpMethod method, string path, object? body)
+    {
+        await _client.SendAsync<JsonElement>(method, path, body, _stop.Token).ConfigureAwait(false);
+        await _RefreshAsync(false).ConfigureAwait(false);
+    }
 
     public long Append(string kind, string? paneId, object data, string? profileLabel = null, string? projectId = null) =>
         throw new NotSupportedException("A remote event log is written by its backend only.");
@@ -271,7 +314,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
                 _lastSeq = Math.Max(_lastSeq, evt.Seq);
             }
 
-            if (evt.Kind is "sessions-changed" or "reset")
+            if (evt.Kind is "sessions-changed" or "reset" or WorkspacesEndpoints.EventKind)
             {
                 await _RefreshAsync(reload: evt.Kind == "reset").ConfigureAwait(false);
             }
@@ -302,6 +345,19 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     // AC-1456: on the stop token, so a Disconnect that waits for the reader never waits on a GET that cannot end.
     private async Task<long> _RefreshAsync(bool reload)
     {
+        await _refreshing.WaitAsync(_stop.Token).ConfigureAwait(false);
+        try
+        {
+            return await _RefreshCoreAsync(reload).ConfigureAwait(false);
+        }
+        finally
+        {
+            _refreshing.Release();
+        }
+    }
+
+    private async Task<long> _RefreshCoreAsync(bool reload)
+    {
         var list = await _client.GetAsync<RemoteSessionList>("api/v1/sessions", _stop.Token).ConfigureAwait(false);
         List<RemoteSessionHandle> sessions = [];
         foreach (var row in list.Sessions)
@@ -327,6 +383,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         {
             _sessions = sessions;
             _assistant = assistant;
+            _workspaces = list.Workspaces ?? new WorkspaceSettings { Workspaces = [] };
             _lastSeq = Math.Max(_lastSeq, list.Seq);
             refreshed = _refreshed;
             _refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -360,7 +417,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     }
 }
 
-internal sealed record RemoteSessionList(long Seq, RemoteAssistantRow? Assistant, IReadOnlyList<RemoteSessionRow> Sessions);
+internal sealed record RemoteSessionList(long Seq, RemoteAssistantRow? Assistant, IReadOnlyList<RemoteSessionRow> Sessions, WorkspaceSettings? Workspaces = null);
 
 internal sealed record RemoteAssistantRow(string PaneId, string Name);
 
@@ -378,7 +435,9 @@ internal sealed record RemoteSessionRow(
     IReadOnlyList<RemoteProviderUsageSignal>? UsageSignals = null,
     RemoteUsageStatus? UsageStatus = null,
     bool CanSignIn = false,
-    string? WorktreeBranch = null);
+    string? WorktreeBranch = null,
+    string WorkspaceId = "",
+    string? PlacedWorkspaceId = null);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);
 

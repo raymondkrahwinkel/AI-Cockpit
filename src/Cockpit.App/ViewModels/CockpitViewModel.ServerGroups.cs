@@ -124,6 +124,7 @@ public partial class CockpitViewModel
             _presentWorktrees = ui is null ? null : ui.ShowWorktreesAsync,
             _presentConfirmation = confirm ?? (ui is null ? null : ui.ConfirmAsync),
         };
+        cockpit.Workspaces.UseRemoteWorkspaces(() => Current()?.Launcher);
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
 
         // The server is there once its group is: read its projects then, and again if it comes back as a new object.
@@ -339,6 +340,37 @@ public partial class CockpitViewModel
         {
             _ = _CloseRemotePaneAsync(row);
         }
+        if (IsRemoteWindow)
+        {
+            Workspaces.ReconcileRemoteWorkspaces();
+            foreach (var row in group.Sessions.Where(row => row.Pane is not null))
+            {
+                if (row.Pane is { } pane)
+                {
+                    pane.WorkspaceId = row.Handle.WorkspaceId;
+                }
+            }
+            _ = _RestoreRemotePanesAsync(group);
+            _OnRemotePanesChanged();
+        }
+    }
+
+    private readonly HashSet<string> _openingRemotePanes = new(StringComparer.Ordinal);
+
+    private async Task _RestoreRemotePanesAsync(ServerGroupViewModel group)
+    {
+        try
+        {
+            foreach (var row in group.Sessions.ToList())
+            {
+                await _OpenServerSessionAsync(row, activate: false);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not restore the server's panes.");
+            ToastHost.Add($"Could not restore the server's panes: {exception.Message}", ToastSeverity.Error, null, null);
+        }
     }
 
     [RelayCommand]
@@ -363,28 +395,57 @@ public partial class CockpitViewModel
     }
 
     [RelayCommand]
-    private async Task OpenServerSessionAsync(ServerSessionRowViewModel row)
+    private Task OpenServerSessionAsync(ServerSessionRowViewModel row) => _OpenServerSessionAsync(row, activate: true);
+
+    private async Task _OpenServerSessionAsync(ServerSessionRowViewModel row, bool activate)
     {
         if (row.Pane is null)
         {
-            if (_remotePaneOver is null || ServerGroups.FirstOrDefault(group => group.Sessions.Contains(row)) is not { } group)
+            if (_remotePaneOver is null || ServerGroups.FirstOrDefault(group => group.Sessions.Contains(row)) is not { } group
+                || !_openingRemotePanes.Add(row.Handle.PaneId))
             {
                 return;
             }
 
-            var handle = group.IsSwarmMember && _swarmSessions is { } nodes
-                ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
-                : row.Handle;
-            var pane = await _remotePaneOver(handle, group.Name);
-            pane.ShowsWhereItRuns = true;
-            _ApplyLink(pane, group);
-            row.Pane = pane;
-            _remotePanes.Add(pane);
-            GridPanes.Add(pane);
-            _OnRemotePanesChanged();
+            try
+            {
+                var handle = group.IsSwarmMember && _swarmSessions is { } nodes
+                    ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
+                    : row.Handle;
+                var pane = await _remotePaneOver(handle, group.Name);
+                if (!group.Sessions.Contains(row))
+                {
+                    await pane.DisposeAsync();
+                    return;
+                }
+                if (IsRemoteWindow)
+                {
+                    pane.WorkspaceId = handle.WorkspaceId;
+                }
+                pane.ShowsWhereItRuns = true;
+                _ApplyLink(pane, group);
+                row.Pane = pane;
+                _remotePanes.Add(pane);
+                GridPanes.Add(pane);
+                _OnRemotePanesChanged();
+            }
+            finally
+            {
+                _openingRemotePanes.Remove(row.Handle.PaneId);
+            }
         }
 
-        if (Workspaces.Active is { } active && active.Type != WorkspaceType.Sessions
+        if (!activate)
+        {
+            return;
+        }
+
+        if (IsRemoteWindow)
+        {
+            await Workspaces.SelectWorkspaceCommand.ExecuteAsync(row.Handle.WorkspaceId);
+        }
+
+        if (!IsRemoteWindow && Workspaces.Active is { } active && active.Type != WorkspaceType.Sessions
             && SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings) is { } sessionsDesk)
         {
             Workspaces.SelectWorkspaceCommand.Execute(sessionsDesk);
@@ -459,6 +520,7 @@ public partial class CockpitViewModel
     private void _OnRemotePanesChanged()
     {
         OnPropertyChanged(nameof(VisibleSessions));
+        OnPropertyChanged(nameof(SessionWorkspaceGroups));
         OnPropertyChanged(nameof(GridColumns));
         OnPropertyChanged(nameof(ShowZoomButton));
         OnPropertyChanged(nameof(ShowSessionGrid));
@@ -726,9 +788,14 @@ public partial class CockpitViewModel
         group.Start.IsBusy = true;
         try
         {
+            if (IsRemoteWindow && group.IsAdminKey)
+            {
+                await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+            }
             var prompt = group.Start.Prompt.Trim();
             var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
-                launcher.Workspaces.ActiveWorkspaceId ?? "",
+                launcher.Workspaces.Active is { Type: var type } active && type == WorkspaceType.Sessions
+                    ? active.Id : launcher.Workspaces.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? "",
                 new SessionProfile(profile.Label, new ServerProvider()),
                 prompt.Length == 0 ? null : prompt,
                 WorkingDirectory: null,

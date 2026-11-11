@@ -76,6 +76,8 @@ internal static class SessionsEndpoints
                     needsYou = session.NeedsYou,
                     hasOutstandingWork = session.HasOutstandingWork,
                     worktreeBranch = handle?.WorktreeBranch,
+                    workspaceId = handle?.WorkspaceId,
+                    placedWorkspaceId = handle?.PlacedWorkspaceId,
                     queue,
                     pendingPermissions = pending[session.PaneId].Select(permission => new
                     {
@@ -90,6 +92,9 @@ internal static class SessionsEndpoints
             return Results.Json(new
             {
                 seq,
+                workspaces = caller.Capability == ConnectKeyCapability.Admin && services.GetService<ISessionDesks>() is { } desks
+                    ? await desks.RunExclusiveAsync(() => WorkspacesEndpoints.View(desks.Workspaces, visible.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal))).ConfigureAwait(false)
+                    : null,
                 assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
                 sessions = listed,
             });
@@ -201,7 +206,25 @@ internal static class SessionsEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "out_of_scope", check.Refusal ?? string.Empty);
             }
 
-            if (await policy().ActiveWorkspaceIdAsync().ConfigureAwait(false) is not { } workspaceId)
+            var workspaceId = body.WorkspaceId;
+            if (!string.IsNullOrEmpty(workspaceId))
+            {
+                if (_Caller().Capability != ConnectKeyCapability.Admin)
+                {
+                    return BackendApiRoutes.Error(403, "out_of_scope", "Choosing a workspace requires an admin key.");
+                }
+                var desks = services.GetRequiredService<ISessionDesks>();
+                if (!await desks.RunExclusiveAsync(() => desks.Workspaces.Workspaces.Any(workspace =>
+                    workspace.Id == workspaceId && workspace.Type == Cockpit.Core.Workspaces.WorkspaceType.Sessions)).ConfigureAwait(false))
+                {
+                    return BackendApiRoutes.Error(409, NotStarted, "The selected workspace cannot hold a session.");
+                }
+            }
+            else
+            {
+                workspaceId = await policy().ActiveWorkspaceIdAsync().ConfigureAwait(false);
+            }
+            if (workspaceId is null)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status409Conflict, NotStarted, "This node has no desk that can hold a session just now.");
             }
@@ -489,7 +512,7 @@ internal static class SessionsEndpoints
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A session route ran without a connect-key caller.");
 }
 
-internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null);
+internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null, string? WorkspaceId = null);
 
 internal sealed record PromptBody(string Text);
 

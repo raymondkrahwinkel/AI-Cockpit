@@ -654,6 +654,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // nothing can reach them, and their pty and child process outlive the desk they belonged to.
     public async Task CloseWorkspaceAsync(string workspaceId)
     {
+        if (IsRemoteWindow)
+        {
+            await Workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaceId);
+            return;
+        }
         // The last workspace is not closable, and killing the sessions of a workspace that then stays is worse
         // than doing nothing: the desk survives, its work does not. Ask before touching either.
         if (!Workspaces.CanClose(workspaceId))
@@ -3219,8 +3224,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var sessionsDesk = Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions;
         foreach (var pane in _remotePanes)
         {
-            pane.IsOnActiveDesk = sessionsDesk;
-            pane.IsPaneVisible = sessionsDesk && !simple && (!single || pane.IsSelected);
+            var here = sessionsDesk && (!IsRemoteWindow || BelongsToActiveWorkspace(pane));
+            pane.IsOnActiveDesk = here;
+            pane.IsPaneVisible = here && !simple && (!single || pane.IsSelected);
         }
     }
 
@@ -3294,8 +3300,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // appeared, keeping the operator's chosen order for everything already tracked.
     private void _ReconcileSidebarOrder()
     {
-        _sidebarOrder.RemoveAll(session => !Sessions.Contains(session));
-        foreach (var session in Sessions)
+        IReadOnlyList<SessionPanelViewModel> sessions = IsRemoteWindow ? _remotePanes : Sessions;
+        _sidebarOrder.RemoveAll(session => !sessions.Contains(session));
+        foreach (var session in sessions)
         {
             if (!_sidebarOrder.Contains(session))
             {
@@ -3333,7 +3340,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var target = _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
 
         // AC-1456: an opened remote pane stands on whichever Sessions desk is showing, after this laptop's own.
-        if (Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions)
+        if (!IsRemoteWindow && (Workspaces.Active is not { } shownDesk || shownDesk.Type == WorkspaceType.Sessions))
         {
             target.AddRange(_remotePanes);
         }
@@ -7261,6 +7268,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task MoveSessionToWorkspaceAsync((SessionPanelViewModel Session, string TargetWorkspaceId) move)
     {
         var (session, targetWorkspaceId) = move;
+        if (IsRemoteWindow)
+        {
+            try
+            {
+                if (ServerGroups.FirstOrDefault() is { Server.Launcher: IWorkspaceCommands commands } group
+                    && group.Sessions.FirstOrDefault(row => ReferenceEquals(row.Pane, session)) is { } row)
+                {
+                    await commands.MoveSessionPaneAsync(row.Handle.PaneId, targetWorkspaceId);
+                }
+            }
+            catch (Exception exception)
+            {
+                ToastHost.Add($"Could not move this session: {exception.Message}", ToastSeverity.Error, null, null);
+            }
+            return;
+        }
         if (session.WorkspaceId == targetWorkspaceId)
         {
             return;
