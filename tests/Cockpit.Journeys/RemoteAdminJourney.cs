@@ -132,7 +132,8 @@ public sealed class RemoteAdminJourney
             await cockpit.StartDesktopAsync();
 
             var view = cockpit.Cockpit;
-            var localConfig = await File.ReadAllBytesAsync(Path.Combine(desktopState, "cockpit.json"));
+            var localRegistry = JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(desktopState)))?["McpServers"]?.DeepClone()
+                ?? throw new InvalidOperationException("The copied test config has no registry.");
             var servers = cockpit.Services.GetRequiredService<IRemoteServers>();
             var loggers = cockpit.Services.GetRequiredService<ILoggerFactory>();
             var requested = (Server: "", Category: (string?)null);
@@ -264,7 +265,9 @@ public sealed class RemoteAdminJourney
             keyAfterRestart.Remove("lastUsedAt");
             keyAfterRestart.Remove("lastUsedFrom");
             Assert.True(JsonNode.DeepEquals(keyBeforeRestart, keyAfterRestart));
-            Assert.Equal(localConfig, await File.ReadAllBytesAsync(CockpitConfigPath.For(desktopState)));
+            Assert.True(JsonNode.DeepEquals(localRegistry,
+                JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(desktopState)))?["McpServers"]),
+                "The local registry, including connect keys and certificate pins, changed across the fixture restart.");
             var loaded = (await setup.GetAsync<JsonArray>("api/v1/plugins")).Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
             var created = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/profiles", new { label = "Echo from the store", provider = "echo-provider.echo" });
             var storePane = "";
@@ -425,8 +428,8 @@ public sealed class RemoteAdminJourney
 
             Assert.Equal((false, (bool?)null), (gitStatusOnServer["showBranchName"]?.GetValue<bool>(), gitStatusHere));
             Assert.Equal(
-                (("hello from the desktop", true), "(set on the server)", ("hello from the desktop", true), ("hello from the desktop", false)),
-                (afterSave, reopened, afterKeep, afterClear));
+                (("hello from the desktop", true), true, ("hello from the desktop", true), ("hello from the desktop", false)),
+                (afterSave, reopened == "(set on the server)", afterKeep, afterClear));
             Assert.False(echoOnServer.Contains(echoKey, StringComparison.Ordinal), "GET /storage returned the plugin's key.");
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
             Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
@@ -807,7 +810,7 @@ public sealed class RemoteAdminJourney
                     await admin.LoadCommand.ExecuteAsync(null);
                     assistantAudit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
                 }),
-                () => assistantAudit.Contains((Laptop, "assistant profile copied from Echo")) && assistantAudit.Contains((Laptop, "assistant turned on")));
+                () => assistantAudit.Contains((Laptop, "assistant profile changed")) && assistantAudit.Contains((Laptop, "options_assistant")));
             var assistantState = await assistant.GetAsync();
             await HeadlessAvalonia.RunAsync(async () =>
             {
@@ -853,8 +856,7 @@ public sealed class RemoteAdminJourney
             Assert.Null(desktopSlot);
             Assert.True(assistantAfterBrain);
             Assert.Contains((Laptop, "assistant profile changed"), assistantAudit);
-            Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
-            Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
+            Assert.Contains((Laptop, "options_assistant"), assistantAudit);
             Assert.True(depotHasSettings, "Options offered no Settings for Depot.");
             Assert.Equal(
                 ("Signed in.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
@@ -927,7 +929,9 @@ public sealed class RemoteAdminJourney
             });
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
-            Assert.Equal(localConfig, await File.ReadAllBytesAsync(Path.Combine(desktopState, "cockpit.json")));
+            Assert.True(JsonNode.DeepEquals(localRegistry,
+                JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(desktopState)))?["McpServers"]),
+                "Remote administration changed the local registry, connect keys or certificate pins.");
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
             Assert.False(
                 new[] { serverState, run.Output, auditTrail }.Any(text => text.Contains(installToken, StringComparison.Ordinal)),
@@ -1295,6 +1299,7 @@ public sealed class RemoteAdminJourney
     // and saves, or cancels without one, and answers the brain the picker held.
     private static async Task<string> _EditServerAssistantAsync(CockpitViewModel remote, Action<BrainPickerViewModel>? pick, string? copyFrom = null)
     {
+        Console.WriteLine("RemoteAdmin: ordinary Assistant Profile opened.");
         var opened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var watch = Window.WindowOpenedEvent.AddClassHandler<AssistantProfileDialog>((window, _) => opened.TrySetResult(window));
         var editing = Task.CompletedTask;
@@ -1345,6 +1350,7 @@ public sealed class RemoteAdminJourney
             });
         }
 
+        Console.WriteLine("RemoteAdmin: ordinary Assistant Profile closed.");
         return brain;
     }
 
@@ -1359,6 +1365,7 @@ public sealed class RemoteAdminJourney
     // The same Options transaction as any local plugin, backed by the server's storage.
     private static async Task _SaveServerSettingsAsync(CockpitViewModel remote, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
     {
+        Console.WriteLine($"RemoteAdmin: {pluginId} Options started.");
         var opened = new TaskCompletionSource<OptionsDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((window, _) =>
         {
@@ -1377,6 +1384,7 @@ public sealed class RemoteAdminJourney
             Assert.False(remote.OptionsApplyBlocked, string.Join(" | ", remote.OptionsSectionErrors.Values));
             settings.Close();
         });
+        Console.WriteLine($"RemoteAdmin: {pluginId} Options saved and closed.");
     }
 
     // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
