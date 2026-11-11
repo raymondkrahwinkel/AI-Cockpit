@@ -10090,6 +10090,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // resuming it under its own pane id, so the launcher repaints its recorded transcript. Refused for `ConversationRefusalAsync`'s reason.
     public async Task<ConversationReopenResult> ReopenConversationAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        if (IsRemoteWindow)
+        {
+            return await _ReopenServerConversationAsync(record);
+        }
         if (await ConversationRefusalAsync(record, cancellationToken) is { } refusal)
         {
             return new ConversationReopenResult(false, refusal);
@@ -10146,6 +10150,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-1532: why a conversation cannot be brought back, or null when it can — the one answer Continue and Reopen share.
     internal async Task<string?> ConversationRefusalAsync(ConversationRecord record, CancellationToken cancellationToken = default)
     {
+        if (IsRemoteWindow)
+        {
+            return ServerGroups.FirstOrDefault()?.IsConnected != true ? "The server is not connected."
+                : record.IsAssistant || record.ProfileId is null || record.ConversationId is null ? "This conversation cannot be resumed." : null;
+        }
         if (Sessions.Any(session => session.PaneId == record.PaneId))
         {
             return null;

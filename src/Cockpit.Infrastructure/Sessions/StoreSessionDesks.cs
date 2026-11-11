@@ -109,6 +109,9 @@ public sealed class StoreSessionDesks(WorkspaceSettings workspaces, IWorkspaceSe
     public Task RemovePaneAsync(string workspaceId, string paneId) =>
         _ApplyAsync(() => _Find(workspaceId) is { } workspace ? _workspaces.WithUpdated(workspace.WithoutPane(paneId)) : _workspaces);
 
+    internal Task RenamePaneAsync(string workspaceId, string paneId, string title) =>
+        _ApplyAsync(() => _Find(workspaceId) is { } workspace ? _workspaces.WithUpdated(workspace.WithPaneRenamed(paneId, title, true)) : _workspaces);
+
     private Workspace? _Find(string workspaceId) => _workspaces.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId);
 
     // Decided and swapped in one section; saved after it, only when something changed. One save at a time, in the

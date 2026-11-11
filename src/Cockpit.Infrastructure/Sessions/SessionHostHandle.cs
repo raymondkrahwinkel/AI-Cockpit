@@ -267,8 +267,14 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         return Task.CompletedTask;
     }
 
-    // ponytail: top-level rows only; a sub-agent's permission row needs its parent re-recorded, add that with a caller.
-    public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
+    // shortcut: top-level permission rows only; add parent-row updates when nested approvals are supported.
+    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false) =>
+        _RespondToPermissionAsync(toolUseId, allow, forSession, null);
+
+    public Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson) =>
+        _RespondToPermissionAsync(toolUseId, allow, false, answersJson);
+
+    private async Task<bool> _RespondToPermissionAsync(string toolUseId, bool allow, bool forSession, string? answersJson)
     {
         List<Task> answering = [];
         lock (_gate)
@@ -282,11 +288,11 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
             _host.RecordRow(row with
             {
                 IsPendingPermission = false,
-                PermissionDecision = !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
+                PermissionDecision = answersJson is not null ? "Answered" : !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
             });
             answering.Add(allow && forSession
                 ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Exact)
-                : runtime.RespondToPermissionAsync(toolUseId, allow));
+                : runtime.RespondToPermissionAsync(toolUseId, allow, answersJson, CancellationToken.None));
 
             // AC-1476: a call already waiting on the same rule is answered with it, or it would ask again once the session moves on.
             if (allow && forSession)
@@ -312,8 +318,21 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         return true;
     }
 
-    // A verify render is an image a view attaches; a headless session has no such turn to hand it.
-    public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
+    public async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
+    {
+        Task sending;
+        lock (_gate)
+        {
+            if (_host.Runtime is not { IsRunning: true, Capabilities.SupportsVision: true })
+            {
+                return false;
+            }
+            sending = _host.SubmitForTheAgentAsync(new QueuedPrompt(caption, [ImageAttachment.FromBytes(screenshotPng, "image/png")]));
+        }
+        _RaiseHeldSignals();
+        await sending.ConfigureAwait(false);
+        return true;
+    }
 
     public Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync()
     {

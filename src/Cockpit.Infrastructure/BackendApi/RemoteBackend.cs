@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Events;
 
@@ -13,7 +14,7 @@ namespace Cockpit.Infrastructure.BackendApi;
 // AC-1388 (F5.6a): the launcher, registry and event log of a backend reached over `/api/v1`. One SSE stream, read in
 // order, keeps the registry and every handle current; nothing polls beside it. What only means something on the
 // backend's own machine is refused, not faked.
-public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackendEventLog, IWorkspaceCommands, IAsyncDisposable
+public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackendEventLog, IWorkspaceCommands, IConversationIndex, IAsyncDisposable
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
 
@@ -144,12 +145,6 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
 
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
-        // AC-1448: a chosen pane or a resume would load a recorded transcript, which needs a scope check first (AC-1446).
-        if (request.PaneId is not null || request.Resume is not null)
-        {
-            throw new ArgumentException("A remote start cannot choose its pane or resume one; neither goes over the line.", nameof(request));
-        }
-
         JsonElement started;
         try
         {
@@ -158,7 +153,8 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
                 "api/v1/sessions",
                 new { profile = request.Profile.Label, projectId = request.ProjectId, prompt = request.Prompt, name = request.SessionName,
                     kind = request.Kind == PaneSessionKind.Tty ? "tty" : null,
-                    workspaceId = Workspaces.Workspaces.Count > 0 ? request.WorkspaceId : null }).ConfigureAwait(false);
+                    workspaceId = Workspaces.Workspaces.Count > 0 ? request.WorkspaceId : null,
+                    resume = request.Resume, paneId = request.PaneId }).ConfigureAwait(false);
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.Conflict)
         {
@@ -187,8 +183,25 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         await _AwaitRegistryAsync(() => _Find(paneId) is null).ConfigureAwait(false);
     }
 
-    public Task<bool> SetSessionNameAsync(string paneId, string name) =>
-        throw new NotSupportedException("The API has no route to rename a session.");
+    public async Task<bool> SetSessionNameAsync(string paneId, string name)
+    {
+        var renamed = _Find(paneId) is { } handle && await handle.SetNameAsync(name).ConfigureAwait(false);
+        await _RefreshAsync(false).ConfigureAwait(false);
+        return renamed;
+    }
+
+    public Task<IReadOnlyList<ConversationRecord>> LoadAsync(CancellationToken cancellationToken = default) =>
+        _client.GetAsync<IReadOnlyList<ConversationRecord>>("api/v1/conversations", cancellationToken);
+
+    public Task<IReadOnlyList<ConversationSearchResult>> SearchAsync(string text, string? projectId = null,
+        DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken cancellationToken = default) =>
+        _client.GetAsync<IReadOnlyList<ConversationSearchResult>>($"api/v1/conversations/search?text={Uri.EscapeDataString(text)}"
+            + (projectId is null ? "" : $"&projectId={Uri.EscapeDataString(projectId)}")
+            + (from is null ? "" : $"&from={Uri.EscapeDataString(from.Value.ToString("O"))}")
+            + (to is null ? "" : $"&to={Uri.EscapeDataString(to.Value.ToString("O"))}"), cancellationToken);
+
+    public Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("The backend records its own conversations.");
 
     public Task<Workspace> CreateSessionsWorkspaceAsync(string name) => CreateWorkspaceAsync(Workspace.Create(name, WorkspaceType.Sessions));
 
@@ -440,7 +453,11 @@ internal sealed record RemoteSessionRow(
     string? WorktreeBranch = null,
     string? WorkspaceId = null,
     string? PlacedWorkspaceId = null,
-    string? Kind = null);
+    string? Kind = null,
+    SessionLiveState? LiveState = null,
+    bool StartedByTheAssistant = false,
+    bool CanTakeAPrompt = true,
+    bool HasPendingConsent = false);
 
 internal sealed record RemotePendingPermission(string ToolUseId, string Tool, string Input, DateTimeOffset SinceUtc);
 
