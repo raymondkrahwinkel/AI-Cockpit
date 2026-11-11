@@ -71,6 +71,9 @@ public sealed record LiveFileSnapshot(string Text, long Rev, LiveFileStatus Stat
 {
     /// <summary>The source's file serialization of this revision; null when it saves Text verbatim.</summary>
     public string? SerializedText { get; init; }
+
+    /// <summary>The file version this text is saved as, when the source knows nothing in it is still owed; otherwise null.</summary>
+    public string? PersistedVersion { get; init; }
 }
 
 /// <summary>
