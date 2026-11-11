@@ -46,7 +46,7 @@ public class MobileProtocolVectorTests
             PluginTranscriptEntry[] entries = end == 300
                 ? [new(PluginTranscriptEntryKind.ToolResult, new string('x', boundaryText), null) { Index = end - 1 }]
                 : [.. Enumerable.Range(start, end - start).Select(index =>
-                    new PluginTranscriptEntry(PluginTranscriptEntryKind.ToolResult, new string('x', 5000), null) { Index = index })];
+                    new PluginTranscriptEntry(PluginTranscriptEntryKind.ToolResult, new string('x', 5000), null) { Index = index, Timestamp = new DateTimeOffset(2026, 11, 11, 13, 0, 0, TimeSpan.FromHours(1)) })];
             return Task.FromResult<PluginTranscriptSlice?>(new PluginTranscriptSlice(entries, end));
         });
         List<byte[]> replies = [];
@@ -76,6 +76,16 @@ public class MobileProtocolVectorTests
             Assert.Equal("older", body.GetProperty("replyTo").GetString());
             Assert.True(body.GetProperty("readable").GetBoolean());
             int[] ids = [.. body.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("id").GetInt32())];
+            JsonElement firstRow = body.GetProperty("rows")[0];
+            if (page == 0)
+            {
+                Assert.False(firstRow.TryGetProperty("timestamp", out _));
+            }
+            else
+            {
+                Assert.Equal(new DateTimeOffset(2026, 11, 11, 13, 0, 0, TimeSpan.FromHours(1)),
+                    firstRow.GetProperty("timestamp").GetDateTimeOffset());
+            }
             Assert.NotEmpty(ids);
             Assert.All(ids, id => Assert.InRange(id, 0, before - 1));
             Assert.Equal(ids.Order(), ids);

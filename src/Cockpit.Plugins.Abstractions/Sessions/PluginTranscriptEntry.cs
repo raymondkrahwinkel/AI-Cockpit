@@ -64,6 +64,11 @@ public sealed record PluginTranscriptEntry(
     /// <see cref="ICockpitSessionObserver.ReadTranscriptAsync"/>, 0 on rows a provider's reader returns.
     /// </summary>
     public int Index { get; init; }
+
+    /// <summary>
+    /// The host entry time, or null when the source provides no time.
+    /// </summary>
+    public DateTimeOffset? Timestamp { get; init; }
 }
 
 /// <summary>

@@ -31,7 +31,7 @@ public static class PluginSessionReads
         var first = slice.TotalEntries - slice.Entries.Count;
         return new PluginTranscriptSlice(
             [.. slice.Entries.Select((entry, position) => _Kind(entry.Kind) is { } kind
-                ? new PluginTranscriptEntry(kind, entry.Text, entry.ToolResult) { Index = first + position }
+                ? new PluginTranscriptEntry(kind, entry.Text, entry.ToolResult) { Index = first + position, Timestamp = entry.Timestamp }
                 : null).OfType<PluginTranscriptEntry>()],
             slice.TotalEntries);
     }

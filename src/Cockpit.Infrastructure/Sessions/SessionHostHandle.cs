@@ -230,7 +230,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             var skip = Math.Max(0, _rows.Count - count);
             return Task.FromResult(new SessionTranscriptSlice(
-                [.. _rows.Skip(skip).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText))],
+                [.. _rows.Skip(skip).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText) { Timestamp = row.Timestamp })],
                 _rows.Count));
         }
     }
@@ -242,7 +242,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
             int end = Math.Clamp(before, 0, _rows.Count);
             int first = Math.Max(0, end - count);
             return Task.FromResult(new SessionTranscriptSlice(
-                [.. _rows.Skip(first).Take(end - first).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText))], end));
+                [.. _rows.Skip(first).Take(end - first).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText) { Timestamp = row.Timestamp })], end));
         }
     }
 
