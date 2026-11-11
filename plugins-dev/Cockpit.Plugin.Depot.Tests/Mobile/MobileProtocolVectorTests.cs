@@ -132,6 +132,11 @@ public class MobileProtocolVectorTests
         using var cockpitKey = Key("cockpit");
         using var cockpitEphemeral = Key("cockpitEphemeral");
         var cockpitPub = Hex(vectors.GetProperty("keys").GetProperty("cockpit").GetProperty("pub"));
+        if (@case == "pairing")
+        {
+            Assert.Equal("3259 1568 F790 4C01 FFF1 CFD0 2DA7 197D 7D9C 0D73 2BC3 959C 3A1C 3FFA A541 CCB3",
+                MobileKeyFingerprint.Format(cockpitPub, Hex(vectors.GetProperty("keys").GetProperty("phone").GetProperty("pub"))));
+        }
         PairingPayload Pending(TimeSpan expiresIn) =>
             new(Text("depot"), Text("pairingId"), cockpitPub, Convert.FromHexString(Text("pairingSecret")), DateTimeOffset.UtcNow + expiresIn);
         var pending = Pending(PairingPayload.Lifetime);
