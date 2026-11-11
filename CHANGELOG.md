@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2286: remote windows use the server's workspaces and session placement. Create, rename, select and close workspaces, move sessions, and reopen the window with the same server layout. Changes reach other connected windows; closing a workspace with sessions is refused. Workspace management requires an admin key.
+
 - AC-2282: Options › MCP Servers in a remote Cockpit window edits the server's own MCP registry: add, change and remove HTTP and stdio servers, which run on the server, and sign an OAuth server in there with the browser step on this machine. Admin keys only, every change audited. A stored API key or header value is never shown again; sent back unchanged it stays, but not once the URL changes. The cockpit's own servers and the server's node connections stay off the page and are never overwritten. A session whose MCP gateway cannot be prepared now says why in a short line (such as a timeout or an upstream HTTP status), also in a remote window.
 
 - AC-2283: remote Cockpit windows load trusted plugin UI without starting local plugin engines or an MCP listener. Ordinary plugin menus, dialogs and workspaces use the server's storage and actions; missing or mismatched UI shows why it is unavailable. Files and Worktrees use the server's project paths, including guarded saves and confirmed removal.

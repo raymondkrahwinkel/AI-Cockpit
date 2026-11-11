@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.BackendApi;
 using Microsoft.Extensions.Hosting;
@@ -11,7 +12,7 @@ namespace Cockpit.Infrastructure.Events;
 // AC-1386: the session registry and every live pane's transcript rows, the assistant's included, onto the backend
 // event log. AC-1388: its live state and tool calls too, so a remote handle follows one ordered stream. The log holds
 // every pane's events; `EventsEndpoint` keeps a reader to the panes its key may see.
-internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEventLog log) : IHostedService, ISingletonService
+internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEventLog log, ISessionDesks? desks = null) : IHostedService, ISingletonService
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<ISessionHandle, Action> _watched = new(ReferenceEqualityComparer.Instance);
@@ -19,6 +20,10 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
     public Task StartAsync(CancellationToken cancellationToken)
     {
         registry.Changed += _OnRegistryChanged;
+        if (desks is IWorkspaceCommands commands)
+        {
+            commands.Changed += _OnWorkspacesChanged;
+        }
         _Follow();
         return Task.CompletedTask;
     }
@@ -26,6 +31,10 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
     public Task StopAsync(CancellationToken cancellationToken)
     {
         registry.Changed -= _OnRegistryChanged;
+        if (desks is IWorkspaceCommands commands)
+        {
+            commands.Changed -= _OnWorkspacesChanged;
+        }
         lock (_gate)
         {
             foreach (var unsubscribe in _watched.Values)
@@ -44,6 +53,8 @@ internal sealed class SessionEventsBridge(ISessionRegistry registry, IBackendEve
         _Follow();
         log.Append("sessions-changed", null, new { });
     }
+
+    private void _OnWorkspacesChanged(object? sender, EventArgs e) => log.Append(WorkspacesEndpoints.EventKind, null, new { });
 
     // Subscribes the panes that arrived and lets go of the ones that left, keyed by handle: a pane id registered again
     // is a new handle, and the old one must not keep writing under it.

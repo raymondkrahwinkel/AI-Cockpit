@@ -87,9 +87,9 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public string Title => _Facts.Name;
 
-    public string WorkspaceId => RemoteBackend.NodeDeskId;
+    public string WorkspaceId => _Facts.WorkspaceId;
 
-    public string? PlacedWorkspaceId => RemoteBackend.NodeDeskId;
+    public string? PlacedWorkspaceId => _Facts.PlacedWorkspaceId;
 
     // AC-2285: a server path, never handed to code that would open it on this machine; files go by project and branch.
     public string? WorkingDirectory => null;

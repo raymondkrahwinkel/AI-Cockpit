@@ -25,6 +25,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private readonly List<TranscriptSnapshotEntry> _rows = [];
     private readonly NestedTranscriptRows _nested = new();
     private string _title;
+    private string _workspaceId;
     private string _statusline = string.Empty;
     private string? _worktreeBranch;
     private readonly List<ImageAttachment> _pendingImages = [];
@@ -73,7 +74,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         PaneId = paneId;
         _title = title;
         _nameIsChosen = nameIsChosen;
-        WorkspaceId = workspaceId;
+        _workspaceId = workspaceId;
         WorkingDirectory = workingDirectory;
         ActiveProfileLabel = profileLabel;
         ProjectId = projectId;
@@ -117,7 +118,9 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
-    public string WorkspaceId { get; }
+    public string WorkspaceId => Volatile.Read(ref _workspaceId);
+
+    internal void MoveToWorkspace(string workspaceId) => Volatile.Write(ref _workspaceId, workspaceId);
 
     // Only ever started onto a Sessions desk it names, so the desk it counts as sitting on is its own.
     public string? PlacedWorkspaceId => WorkspaceId;
