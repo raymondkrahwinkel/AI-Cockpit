@@ -49,6 +49,8 @@ internal sealed class ServerPluginUiHost(
 
     public IPluginStorage Storage => storage;
 
+    public string? RemoteServer => sourceKey;
+
     public void AddSettings(Func<Control> createView) => CreateSettingsView = createView;
 
     public void AddSettings(Func<Control> createView, string category) => CreateSettingsView = createView;
