@@ -69,6 +69,8 @@ internal sealed partial class CockpitUiHost(
 
     public IPluginStorage Storage => host.Storage;
 
+    public string? RemoteServer => host is RemoteUiBackend backend ? backend.Target.RemoteServer : null;
+
     public void AddSettings(Func<Control> createView) =>
         contributionSink.AddPluginSettings(pluginId, pluginName, createView);
 

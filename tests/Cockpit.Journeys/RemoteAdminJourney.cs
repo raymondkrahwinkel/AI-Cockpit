@@ -1507,6 +1507,7 @@ public sealed class RemoteAdminJourney
         var localProfiles = await desktop.Services.GetRequiredService<ISessionProfileStore>().LoadAsync();
         var servers = desktop.Services.GetRequiredService<IRemoteServers>();
         var loggers = desktop.Services.GetRequiredService<ILoggerFactory>();
+        await RemoteSchedulesSteps.RunAsync(server, servers, loggers, localRoot);
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var window = new MainWindow(windowBoundsStore: null, Server);

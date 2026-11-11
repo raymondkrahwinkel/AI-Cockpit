@@ -22,6 +22,8 @@ internal sealed class SchedulesState : IDisposable
 
     public List<SchedulesTaskView> Tasks { get; private set; } = [];
 
+    public List<Reminder> Reminders { get; private set; } = [];
+
     public List<RunRecord> Runs { get; private set; } = [];
 
     public List<OperatorMessageChannelInfo> Channels { get; private set; } = [];
@@ -37,6 +39,7 @@ internal sealed class SchedulesState : IDisposable
         if (snapshot is not null)
         {
             Tasks = snapshot.Tasks;
+            Reminders = snapshot.Reminders ?? [];
             Runs = [.. snapshot.Runs.Select(run => run.Outcome == RunOutcome.Running && Runs.FirstOrDefault(known => known.Id == run.Id) is { Outcome: not RunOutcome.Running } done ? done : run)];
             Channels = snapshot.Channels;
             Settings = snapshot.Settings;

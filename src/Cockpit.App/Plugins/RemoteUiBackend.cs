@@ -20,7 +20,7 @@ internal sealed class RemoteUiBackend(CockpitViewModel cockpit, ICockpitSessionO
     private ICockpitUiHost? _target;
     public ICockpitUiHost Target
     {
-        private get => _target ?? throw new InvalidOperationException("The remote UI channel is not connected.");
+        get => _target ?? throw new InvalidOperationException("The remote UI channel is not connected.");
         set => _target = value;
     }
 

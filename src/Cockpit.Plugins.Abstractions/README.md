@@ -65,3 +65,5 @@ for in-process plugins. The cockpit's only protection is a manual install plus a
 the assembly's SHA-256. Write plugins accordingly, and keep credentials in `IPluginStorage`, never in source.
 
 MIT licensed. © 2026 Raymond Krahwinkel / Krahwinkel-IT.
+
+AC-2289 (UI SDK 3.28.0, host 0.176.0): `ICockpitUiHost.RemoteServer` names the fixed server context; local windows return null. Use it to keep server paths separate from desktop folder pickers.
