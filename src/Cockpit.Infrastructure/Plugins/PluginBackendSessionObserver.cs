@@ -56,6 +56,9 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
     public Task<PluginTranscriptSlice?> ReadTranscriptAsync(string paneId, int count) =>
         PluginSessionReads.ReadTranscriptAsync(_registry, _launcher, paneId, count);
 
+    public Task<PluginTranscriptSlice?> ReadTranscriptBeforeAsync(string paneId, int before, int count) =>
+        PluginSessionReads.ReadTranscriptAsync(_registry, _launcher, paneId, count, before);
+
     public Task<IReadOnlyList<PluginPendingPermission>> ReadPendingPermissionsAsync(string paneId) =>
         PluginSessionReads.ReadPendingPermissionsAsync(_registry, _launcher, paneId);
 

@@ -28,6 +28,63 @@ namespace Cockpit.Plugin.Depot.Tests.Mobile;
 // from the outside, so every refusal the protocol promises is a row here.
 public class MobileProtocolVectorTests
 {
+    // Category D: an older page must advance within the frame limit without returning the newer tail.
+    private static async Task _OlderTranscriptPagesAsync()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.Sessions.OpenSessions.Returns([new OpenCockpitSession("pane", "Session") { HasReadableTranscript = true }]);
+        host.Sessions.ReadTranscriptBeforeAsync("pane", Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+        {
+            int end = call.ArgAt<int>(1);
+            int count = call.ArgAt<int>(2);
+            int start = Math.Max(0, end - count);
+            int overhead = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                id = end - 1, kind = "toolResult", text = "", resultText = (string?)null, truncated = false,
+            }).Length;
+            int boundaryText = MobileFrameCipher.MaxPlaintextBytes - 1024 - "pane".Length - overhead;
+            PluginTranscriptEntry[] entries = end == 300
+                ? [new(PluginTranscriptEntryKind.ToolResult, new string('x', boundaryText), null) { Index = end - 1 }]
+                : [.. Enumerable.Range(start, end - start).Select(index =>
+                    new PluginTranscriptEntry(PluginTranscriptEntryKind.ToolResult, new string('x', 5000), null) { Index = index })];
+            return Task.FromResult<PluginTranscriptSlice?>(new PluginTranscriptSlice(entries, end));
+        });
+        List<byte[]> replies = [];
+        var channel = new MobileSessionChannel(host, (type, write) =>
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", type);
+                writer.WriteStartObject("body");
+                write(writer);
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
+            replies.Add(stream.ToArray());
+        }, null);
+        int before = 300;
+        for (int page = 0; page < 2; page++)
+        {
+            await channel.HistoryAsync("older", "pane", before, 50);
+            byte[] response = replies[^1];
+            Assert.InRange(response.Length, 1, MobileFrameCipher.MaxPlaintextBytes);
+            using JsonDocument document = JsonDocument.Parse(response);
+            JsonElement body = document.RootElement.GetProperty("body");
+            Assert.Equal("session.history", document.RootElement.GetProperty("type").GetString());
+            Assert.Equal("older", body.GetProperty("replyTo").GetString());
+            Assert.True(body.GetProperty("readable").GetBoolean());
+            int[] ids = [.. body.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("id").GetInt32())];
+            Assert.NotEmpty(ids);
+            Assert.All(ids, id => Assert.InRange(id, 0, before - 1));
+            Assert.Equal(ids.Order(), ids);
+            Assert.Equal(ids[0], body.GetProperty("nextBefore").GetInt32());
+            Assert.True(body.GetProperty("more").GetBoolean());
+            before = ids[0];
+        }
+    }
+
     public static TheoryData<string> Cases =>
     [
         "pairing", "wrongPairingSecret", "replacedPhonePub", "offCurveEphPub", "offCurvePhonePub", "zeroPointEphPub",
@@ -49,6 +106,11 @@ public class MobileProtocolVectorTests
 
         if (@case.StartsWith("assistant", StringComparison.Ordinal))
         {
+            if (@case == "assistantPairedPhone")
+            {
+                await _OlderTranscriptPagesAsync();
+            }
+
             await _AssistantDoor(@case);
             return;
         }

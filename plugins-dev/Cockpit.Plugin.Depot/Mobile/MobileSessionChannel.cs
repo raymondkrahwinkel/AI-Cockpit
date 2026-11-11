@@ -24,6 +24,7 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
         send("sessions.list", writer =>
         {
             writer.WriteString("replyTo", id);
+            writer.WriteBoolean("history", true);
             writer.WriteStartArray("sessions");
             foreach (var session in sessions)
             {
@@ -104,6 +105,62 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
             foreach (var item in pendingJson)
             {
                 writer.WriteRawValue(item, skipInputValidation: true);
+            }
+
+            writer.WriteEndArray();
+        });
+    }
+
+    public async Task HistoryAsync(string? id, string? paneId, int? before, int? count)
+    {
+        const int pageLimit = 50;
+        int limit = Math.Clamp(count ?? pageLimit, 1, pageLimit);
+        PluginTranscriptSlice? slice = null;
+        string? error = null;
+        OpenCockpitSession? session = _Find(paneId);
+        if (before is not >= 0)
+        {
+            error = "A non-negative before row index is required.";
+        }
+        else if (session is { HasReadableTranscript: true })
+        {
+            try
+            {
+                slice = await host.Sessions.ReadTranscriptBeforeAsync(session.PaneId, before.Value, limit).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                logger?.LogWarning("Reading older transcript rows for a phone failed: {Reason}", exception.GetType().Name);
+                error = "Older transcript rows could not be read.";
+            }
+        }
+
+        int budget = MobileFrameCipher.MaxPlaintextBytes - _EnvelopeBytes - (paneId?.Length ?? 0);
+        List<(int Index, byte[] Json)> encoded = slice is null ? [] :
+            [.. slice.Entries.Where(entry => entry.Index >= 0 && entry.Index < before)
+                .Select(entry => (entry.Index, _Row(entry, budget - 1)))];
+        int size = encoded.Sum(row => row.Json.Length + 1);
+        int skip = 0;
+        while (skip < encoded.Count && size > budget)
+        {
+            size -= encoded[skip++].Json.Length + 1;
+        }
+
+        List<(int Index, byte[] Json)> sent = [.. encoded.Skip(skip)];
+        // Even a page containing only host markers must advance to the preceding source page.
+        int nextBefore = sent.Count > 0 ? sent[0].Index : Math.Max(0, Math.Min(before ?? 0, slice?.TotalEntries ?? 0) - limit);
+        send("session.history", writer =>
+        {
+            writer.WriteString("replyTo", id);
+            writer.WriteString("paneId", paneId);
+            writer.WriteBoolean("readable", slice is not null);
+            writer.WriteString("error", error);
+            writer.WriteNumber("nextBefore", nextBefore);
+            writer.WriteBoolean("more", slice is not null && nextBefore > 0);
+            writer.WriteStartArray("rows");
+            foreach ((int _, byte[] json) in sent)
+            {
+                writer.WriteRawValue(json, skipInputValidation: true);
             }
 
             writer.WriteEndArray();

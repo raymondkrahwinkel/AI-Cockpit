@@ -235,6 +235,17 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
+    public Task<SessionTranscriptSlice> ReadTranscriptBeforeAsync(int before, int count)
+    {
+        lock (_gate)
+        {
+            int end = Math.Clamp(before, 0, _rows.Count);
+            int first = Math.Max(0, end - count);
+            return Task.FromResult(new SessionTranscriptSlice(
+                [.. _rows.Skip(first).Take(end - first).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText))], end));
+        }
+    }
+
     // True once the prompt went out or waits behind the turn in flight; false when it was refused or its send failed.
     public async Task<bool> SendPromptAsync(string prompt)
     {
