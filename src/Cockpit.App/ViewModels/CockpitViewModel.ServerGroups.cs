@@ -447,7 +447,9 @@ public partial class CockpitViewModel
                 var handle = group.IsSwarmMember && _swarmSessions is { } nodes
                     ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
                     : row.Handle;
-                var pane = await _remotePaneOver(handle, group.Name);
+                var pane = group.Server?.TerminalLauncher(handle.PaneId) is { } terminal
+                    ? (SessionPanelViewModel)_ServerTerminalPane(terminal, group, handle.Title, plainShell: false)
+                    : await _remotePaneOver(handle, group.Name);
                 if (!group.Sessions.Contains(row))
                 {
                     await pane.DisposeAsync();
@@ -458,7 +460,10 @@ public partial class CockpitViewModel
                     pane.WorkspaceId = handle.WorkspaceId;
                 }
                 pane.ShowsWhereItRuns = true;
-                _ApplyLink(pane, group);
+                if (pane is SessionViewModel chat)
+                {
+                    _ApplyLink(chat, group);
+                }
                 row.Pane = pane;
                 _remotePanes.Add(pane);
                 GridPanes.Add(pane);
@@ -495,6 +500,7 @@ public partial class CockpitViewModel
         if (ServerGroups.SelectMany(group => group.Sessions.Select(row => (Group: group, Row: row)))
                 .FirstOrDefault(entry => ReferenceEquals(entry.Row.Pane, pane)) is not { Row: { } row } entry)
         {
+            await _CloseServerTerminalAsync(pane);
             return;
         }
 
@@ -550,6 +556,54 @@ public partial class CockpitViewModel
         {
             _logger?.LogWarning(exception, "A remote pane did not close cleanly.");
         }
+    }
+
+    // AC-2288: New terminal in a remote window: a shell on its server, under the key this window connects with.
+    private async Task _OpenServerTerminalAsync()
+    {
+        if (ServerGroups.FirstOrDefault() is not { Server: { } server } group || server.TerminalLauncher(null) is not { } launcher)
+        {
+            return;
+        }
+
+        await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+        var pane = _ServerTerminalPane(launcher, group, $"Terminal on {group.Name}", plainShell: true);
+        pane.CloseRequested += (_, _) => _OnUiThread(() => _ = _CloseServerTerminalAsync(pane));
+        pane.WorkspaceId = Workspaces.Active?.Id ?? string.Empty;
+        _remotePanes.Add(pane);
+        GridPanes.Add(pane);
+        _OnRemotePanesChanged();
+        SelectedSession = pane;
+    }
+
+    // A shell this window opened on the server; its pane going closes the shell there.
+    private async Task _CloseServerTerminalAsync(SessionPanelViewModel pane)
+    {
+        if (pane is not TtyViewModel { IsTerminal: true } || !_remotePanes.Remove(pane))
+        {
+            return;
+        }
+
+        GridPanes.Remove(pane);
+        if (ReferenceEquals(SelectedSession, pane))
+        {
+            SelectedSession = VisibleSessions.FirstOrDefault();
+        }
+
+        _OnRemotePanesChanged();
+        await pane.DisposeAsync();
+    }
+
+    private static TtyViewModel _ServerTerminalPane(ITtyLauncher launcher, ServerGroupViewModel group, string title, bool plainShell)
+    {
+        var pane = new TtyViewModel(launcher, providerResolver: null)
+        {
+            Title = title,
+            RemoteServer = group.Name,
+            ShowsWhereItRuns = true,
+        };
+        pane.LaunchOnServer(title, plainShell);
+        return pane;
     }
 
     private void _OnRemotePanesChanged()
@@ -835,7 +889,7 @@ public partial class CockpitViewModel
                 prompt.Length == 0 ? null : prompt,
                 WorkingDirectory: null,
                 SessionName: null,
-                Kind: PaneSessionKind.Sdk,
+                Kind: group.Start.RunsInATerminal ? PaneSessionKind.Tty : PaneSessionKind.Sdk,
                 LaunchOptions: null,
                 IsolateInWorktree: null,
                 ProjectId: group.Start.SelectedProject?.Id,

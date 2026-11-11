@@ -83,6 +83,12 @@ public interface IRemoteServer
     IServerStorageSettings? StorageSettings => null;
 
     /// <summary>
+    /// AC-2288: the launcher for a terminal pane over this server: a new shell there when <paramref name="sessionPaneId"/>
+    /// is null, else the pty of that TTY session there. Null where there is no such terminal.
+    /// </summary>
+    ITtyLauncher? TerminalLauncher(string? sessionPaneId) => null;
+
+    /// <summary>
     /// The server's health as its health route answers it (AC-1457).
     /// </summary>
     IRemoteServerHealth Health { get; }

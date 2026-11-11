@@ -39,6 +39,7 @@ public sealed class SessionLauncher(
 
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
+        var askedForTty = request.Kind == PaneSessionKind.Tty;
         request = await composer.ComposeAsync(request).ConfigureAwait(false);
         if (request.RoleFailure is { } roleFailure)
         {
@@ -46,7 +47,7 @@ public sealed class SessionLauncher(
         }
         var profile = request.Profile;
         var kind = request.Kind ?? PaneSessionKind.Sdk;
-        if (kind == PaneSessionKind.Tty && !hosting.CanHost(PaneSessionKind.Tty))
+        if (kind == PaneSessionKind.Tty && (!hosting.CanHost(PaneSessionKind.Tty) || (!askedForTty && !hosting.HostsTtyByDefault)))
         {
             // AC-1524: a host without a terminal has no TTY route, so whatever asked for one (the profile's default
             // included) runs as the SDK session the host can make. Decided here so every caller follows it.

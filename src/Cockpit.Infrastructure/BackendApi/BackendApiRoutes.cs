@@ -32,6 +32,7 @@ internal static class BackendApiRoutes
         FilesEndpoint.Map(api, services);
         WorktreesEndpoints.Map(api, services);
         SessionsEndpoints.Map(api, services);
+        TerminalEndpoints.Map(api, services);
         WorkspacesEndpoints.Map(api, services);
         SignInEndpoints.Map(api, services);
         GitCredentialEndpoints.Map(api, services);

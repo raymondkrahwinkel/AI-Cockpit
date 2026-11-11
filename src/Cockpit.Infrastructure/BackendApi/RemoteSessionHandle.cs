@@ -98,6 +98,9 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public string? ActiveProfileLabel => _Facts.Profile;
 
+    // AC-2288: a TTY session the server runs; its pane is a terminal over the server's pty, not a transcript.
+    public bool RunsInATerminal => _Facts.Kind == "tty";
+
     public string? ProjectId => _Facts.ProjectId;
 
     public bool IsTerminal => false;

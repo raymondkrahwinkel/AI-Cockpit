@@ -76,6 +76,7 @@ internal static class SessionsEndpoints
                     needsYou = session.NeedsYou,
                     hasOutstandingWork = session.HasOutstandingWork,
                     worktreeBranch = handle?.WorktreeBranch,
+                    kind = handle is Sessions.Tty.BackendTtySession ? "tty" : "sdk",
                     workspaceId = handle?.WorkspaceId,
                     placedWorkspaceId = handle?.PlacedWorkspaceId,
                     queue,
@@ -237,7 +238,7 @@ internal static class SessionsEndpoints
                 body.ProjectId,
                 body.Prompt,
                 WorkingDirectory: null,
-                SessionName: body.Name, Role: body.Role)).ConfigureAwait(false);
+                SessionName: body.Name, Kind: body.Kind, Role: body.Role)).ConfigureAwait(false);
 
             return result.Ok
                 ? Results.Json(new
@@ -512,7 +513,7 @@ internal static class SessionsEndpoints
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A session route ran without a connect-key caller.");
 }
 
-internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null, string? WorkspaceId = null);
+internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null, string? WorkspaceId = null, string? Kind = null);
 
 internal sealed record PromptBody(string Text);
 

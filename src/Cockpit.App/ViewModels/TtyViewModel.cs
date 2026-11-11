@@ -196,7 +196,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     public TtyViewModel(
         ITtyLauncher launcher,
-        ITtySessionProviderResolver providerResolver,
+        ITtySessionProviderResolver? providerResolver,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
@@ -465,6 +465,22 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _isLaunchConfigured = true;
         ActiveProfileLabel = shell.DisplayName;
         Status = $"Launching {shell.DisplayName}...";
+        SessionStatus = SessionStatus.Busy;
+        TryRaiseLaunch();
+    }
+
+    // AC-2288: a pane over a pty on a server, which chose what runs in it; the provider here only names it for the
+    // view, since the remote launcher starts nothing on this machine.
+    internal void LaunchOnServer(string title, bool plainShell)
+    {
+        _configuredProviderOverride = new ShellTtySessionProvider(new ShellDescriptor("server", title, string.Empty, []));
+        IsTerminal = plainShell;
+        ShowPluginHeaderItems = false;
+        _isLaunchConfigured = true;
+        ActiveProfileLabel = title;
+        WorkingPath = string.Empty;
+        WorkingDirectory = null;
+        Status = $"Connecting to {title}...";
         SessionStatus = SessionStatus.Busy;
         TryRaiseLaunch();
     }
