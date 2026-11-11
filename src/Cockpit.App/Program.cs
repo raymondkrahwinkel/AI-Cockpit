@@ -330,6 +330,7 @@ sealed class Program
     // the local registry. No `CockpitBackend`: no hosted service, plugin, hotkey or listener, and no port.
     private static void _RunRemoteWindow(string[] args, string server)
     {
+        var category = Composition.RemoteWindowProcess.OptionsCategoryFrom(args);
         using var startup = RemoteStartup.Begin(server, logPath =>
             LoggerFactory.Create(builder => builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath))));
         if (startup is null)
@@ -351,7 +352,7 @@ sealed class Program
             };
             if (!startup.NeedsUnlock || startup.Protection is not { } protection)
             {
-                return _RemoteWindow(startup);
+                return _RemoteWindow(startup, category);
             }
 
             // The desktop's own unlock window, over the registry's read-only unlock: the key stays in this process's memory.
@@ -359,27 +360,27 @@ sealed class Program
             var window = new UnlockWindow { DataContext = unlock };
             unlock.Unlocked += (_, _) =>
             {
-                show(_RemoteWindow(startup));
+                show(_RemoteWindow(startup, category));
                 window.Close();
             };
             return window;
         });
     }
 
-    private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup)
+    private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup, string? category)
     {
         var window = new MainWindow(windowBoundsStore: null, startup.Server);
         var surfaces = new SurfaceWindows();
         var ui = new Plugins.RemoteWindowUi(window, surfaces, startup.Loggers);
         window.Closed += (_, _) => ui.Dispose();
-        var cockpit = startup.Open(admin =>
-        {
-            OptionsDialog.ForServer(admin).Show(window);
-            return Task.CompletedTask;
-        }, (viewModel, category) =>
+        var cockpit = startup.Open((viewModel, category) =>
         {
             if (surfaces.TryActivateAsync(typeof(OptionsDialog)) is { } pending)
             {
+                if (category is not null)
+                {
+                    window.OwnedWindows.OfType<OptionsDialog>().FirstOrDefault()?.SelectCategory(category);
+                }
                 return pending;
             }
 
@@ -413,7 +414,14 @@ sealed class Program
         }
 
         window.DataContext = cockpit;
-        window.Opened += async (_, _) => await startup.InitializeUiAsync(ui, cockpit);
+        window.Opened += async (_, _) =>
+        {
+            await startup.InitializeUiAsync(ui, cockpit);
+            if (category is not null)
+            {
+                await cockpit.OpenOptionsCategoryAsync(category);
+            }
+        };
         return window;
     }
 

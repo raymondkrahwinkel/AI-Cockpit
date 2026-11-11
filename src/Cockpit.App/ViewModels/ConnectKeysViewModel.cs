@@ -3,87 +3,37 @@ using System.Globalization;
 using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.Logging;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Mcp;
-using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
-// AC-1446 (F5.6b): the Options dialog opened on a server, its Connect keys and Audit log pages. Every change goes
-// through the server's IConnectKeyAdministration, which audits it with this connection's key; a change updates the
-// list here rather than reading it again, so the audit holds the change and not a read after it.
-public sealed partial class ServerAdminViewModel : ObservableObject
+// Connect keys and audit on the remote window's ordinary Servers category.
+public sealed partial class ConnectKeysViewModel : ObservableObject
 {
     private const int AuditPage = 200;
 
     private readonly IConnectKeyAdministration _admin;
-    private readonly IPluginAdministration? _plugins;
-    private readonly ISessionDialogService? _dialogService;
     private readonly TimeProvider _time;
     private readonly IReadOnlyList<string> _profiles;
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
-    private readonly IServerProjects? _serverProjects;
-    private readonly Func<int>? _runningSessions;
-    private readonly ILogger? _logger;
     private ConnectKeyRowViewModel? _editing;
     private ConnectKeyPolicy _keyPolicy = ConnectKeyPolicy.Default;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null, ILogger? logger = null, string? serverVersion = null, string? desktopVersion = null)
+    public ConnectKeysViewModel(IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, TimeProvider? time = null, string? serverVersion = null, string? desktopVersion = null)
     {
-        _logger = logger;
-        _runningSessions = runningSessions;
-        _serverProjects = serverProjects;
-        Server = server;
         ServerVersion = serverVersion ?? "unknown";
-        DesktopVersion = desktopVersion ?? AboutInfo.FromAssembly(typeof(ServerAdminViewModel).Assembly).VersionText;
-        KeyLabel = keyLabel;
+        DesktopVersion = desktopVersion ?? AboutInfo.FromAssembly(typeof(ConnectKeysViewModel).Assembly).VersionText;
         _admin = admin;
         _time = time ?? TimeProvider.System;
         _profiles = profiles;
         _projects = [.. projects.Where(project => project.Id is not null)];
-        _plugins = plugins;
-        _dialogService = dialogService;
     }
-
-    public string Server { get; }
 
     public string ServerVersion { get; }
 
     public string DesktopVersion { get; }
-
-    public string KeyLabel { get; }
-
-    public string Title => $"Options · {Server}";
-
-    public string Chip => $"administering the server · key {KeyLabel} (admin)";
-
-    // AC-1473: the Profiles page, when this dialog was given the server's profiles.
-    public ServerProfilesViewModel? Profiles { get; init; }
-
-    // AC-1475: the Assistant page, when this dialog was given the server's assistant.
-    public ServerAssistantViewModel? Assistant { get; init; }
-
-    // AC-2035: the Storage page, when this server can offer the setting.
-    public ServerStorageViewModel? Storage { get; init; }
-
-    // AC-1511: whether a plugin offers its own view for this server, and what opens it. That view comes from the
-    // plugin installed here, in this window, and reaches the plugin's backend part on the server.
-    public Func<ServerPluginRowViewModel, bool> HasPluginSettings { get; init; } = _ => false;
-
-    public Func<ServerPluginRowViewModel, Task>? OpenPluginSettings { get; init; }
-
-    // AC-1590: whether this desktop has the plugin a server runs, and what installs it here from this desktop's own
-    // stores. Absent means every plugin counts as present and no row offers the install.
-    public Func<ServerPluginRowViewModel, bool> IsPluginOnDesktop { get; init; } = _ => true;
-
-    public Func<ServerPluginRowViewModel, Task<DesktopInstallOutcome>>? InstallPluginOnDesktop { get; init; }
-
-    public Action? RestartDesktop { get; init; }
 
     public ObservableCollection<ConnectKeyRowViewModel> Keys { get; } = [];
 
@@ -91,16 +41,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     public ObservableCollection<AuditRowViewModel> Audit { get; } = [];
 
-    public ObservableCollection<ServerPluginRowViewModel> Plugins { get; } = [];
-
-    public string PluginsCount => Plugins.Count.ToString(CultureInfo.InvariantCulture);
-
     public ObservableCollection<ScopeChoiceViewModel> EditorProfiles { get; } = [];
 
     public ObservableCollection<ScopeChoiceViewModel> EditorProjects { get; } = [];
-
-    // AC-1547: the page the dialog opens on, such as "server-plugins"; null for the first.
-    public string? InitialCategory { get; init; }
 
     [ObservableProperty]
     private string _status = "";
@@ -113,43 +56,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isBusy;
-
-    // AC-1525: a plugin change on the server waits for its restart, which this dialog offers once there is one.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice))]
-    private bool _needsRestart;
-
-    // AC-2025: the server holds the plugin versions its live updates replaced until it restarts, the same as the desktop.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowMemoryAdvice), nameof(MemoryAdviceDetail))]
-    private int _retiredLoadContexts;
-
-    public int RestartAdviceAfter { get; init; } = Cockpit.Core.SessionBehavior.SessionBehaviorSettings.DefaultPluginRestartAdviceAfter;
-
-    public bool ShowMemoryAdvice => !NeedsRestart && PluginMemoryAdvice.IsDue(RetiredLoadContexts, RestartAdviceAfter);
-
-    public string MemoryAdviceDetail => PluginMemoryAdvice.Detail(RetiredLoadContexts);
-
-    // AC-1650: installed plugins the server's stores have a newer, runnable version of.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasAvailableUpdates), nameof(UpdateLabel), nameof(UnavailableUpdateSummary))]
-    private int _availableUpdateCount;
-
-    public bool HasAvailableUpdates => AvailableUpdateCount > 0;
-
-    public string UpdateLabel => $"Update {AvailableUpdateCount}";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasUnavailableUpdates), nameof(UnavailableUpdateSummary))]
-    private int _unavailableUpdateCount;
-
-    public bool HasUnavailableUpdates => UnavailableUpdateCount > 0;
-
-    public string UnavailableUpdateSummary => $"{UnavailableUpdateCount} update{(UnavailableUpdateCount == 1 ? "" : "s")} need{(UnavailableUpdateCount == 1 ? "s" : "")} a newer Cockpit";
-
-    // AC-1590: a plugin installed on this desktop loads its UI part at the next start of the desktop.
-    [ObservableProperty]
-    private bool _desktopNeedsRestart;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EditorTitle), nameof(EditorSaveLabel))]
@@ -243,14 +149,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             LockoutPolicy = _PolicyText(overview.Policy);
             OnPropertyChanged(nameof(HasLockouts));
             await _LoadAuditAsync(null);
-            await _LoadPluginsAsync();
-            if (_serverProjects is { } serverProjects)
-            {
-                await serverProjects.LoadAsync();
-                _ShowProjects();
-                await _LoadSharedAsync(serverProjects);
-            }
-            await RefreshGitHubAsync();
         });
     }
 
@@ -366,201 +264,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     [RelayCommand]
     private void ToggleIssuedSecret() => IsIssuedSecretShown = !IsIssuedSecretShown;
 
-    // AC-1525: enabling shows the consent for the bytes the server hashed, and the server pins only those.
-    [RelayCommand]
-    private Task TogglePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
-    {
-        if (_plugins is null)
-        {
-            return;
-        }
-
-        if (!row.Enabled && (_dialogService is null || !await _dialogService.ShowPluginConsentAsync(new PluginConsentInfo(row.Name, row.Version, row.Author, "", row.Sha256))))
-        {
-            return;
-        }
-
-        var state = await _plugins.SetEnabledAsync(row.FolderId, !row.Enabled, row.Sha256);
-        row.Enabled = !row.Enabled;
-        row.Refresh();
-        _ChangedPlugins(state);
-    });
-
-    // AC-1525: the server stops as on a SIGTERM and its supervisor starts it again; its running sessions stop with it,
-    // so they are counted first, the way "Stop on server" asks once (AC-1456).
-    [RelayCommand]
-    private Task RestartServerAsync() => _RunAsync(async () => await _RestartServerAsync());
-
-    [RelayCommand]
-    private Task InstallPluginAsync() => _RunAsync(() => _OpenStoreAsync(null));
-
-    // AC-1650: the same store dialog as "Install from store", opened on the updates the store index has for the installed plugins.
-    [RelayCommand]
-    private Task UpdatePluginsAsync() => _RunAsync(() => _OpenStoreAsync(PluginStoreFilter.UpdatesAvailable));
-
-    private async Task _OpenStoreAsync(PluginStoreFilter? filter)
-    {
-        var manager = await _CreateStoreManagerAsync();
-        if (manager is null || _dialogService is null)
-        {
-            return;
-        }
-
-        await manager.LoadAsync();
-        await _dialogService.ShowPluginStoreDialogAsync(manager, filter);
-        await _LoadPluginsAsync();
-        if (manager.NeedsRestart)
-        {
-            _ChangedPlugins();
-        }
-        else if (!string.IsNullOrWhiteSpace(manager.StatusMessage))
-        {
-            NeedsRestart = false;
-            Status = manager.StatusMessage;
-            StatusIsError = manager.StatusIsError;
-        }
-    }
-
-    private async Task<PluginManagerViewModel?> _CreateStoreManagerAsync(bool quiet = false)
-    {
-        if (_plugins is not IPluginStoreCatalog catalog || _dialogService is null)
-        {
-            if (!quiet)
-            {
-                Status = "The server's plugin store is not available.";
-                StatusIsError = true;
-            }
-
-            return null;
-        }
-
-        var stores = await catalog.GetStoresAsync();
-        if (stores.Count == 0)
-        {
-            if (!quiet)
-            {
-                Status = "No plugin store is configured on the server.";
-                StatusIsError = true;
-            }
-
-            return null;
-        }
-
-        PluginManagerViewModel? manager = null;
-        manager = new PluginManagerViewModel(_plugins, _dialogService, [.. stores.Select(store => PluginStoreConfig.Remote(store.Id))], Server, _plugins is IServerRestart ? new ServerRestartService(async () =>
-        {
-            // Only reachable from the dialog this manager opened, so it is set by then.
-            if (manager is null)
-            {
-                return;
-            }
-
-            try
-            {
-                var restarted = await _RestartServerAsync();
-                manager.NeedsRestart = !restarted;
-                manager.StatusMessage = restarted ? Status : manager.StatusMessage;
-            }
-            catch (Exception exception)
-            {
-                manager.StatusMessage = exception.Message;
-            }
-        }) : null);
-        return manager;
-    }
-
-    // AC-1650: counts with the store dialog's own rules (newer, compatible, not staged), so the button and its "Update all" agree.
-    private async Task _ShowAvailableUpdatesAsync()
-    {
-        var available = new Dictionary<string, StorePluginRowViewModel>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            var manager = await _CreateStoreManagerAsync(quiet: true);
-            if (manager is not null)
-            {
-                await manager.LoadAsync();
-                await manager.BrowseStoresAsync();
-                foreach (var row in manager.AvailablePlugins.Where(row => row.UpdateAvailable))
-                {
-                    available.TryAdd(PluginFolderName.Normalize(row.Id), row);
-                }
-            }
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // The plugin list must keep working when the check fails; the failure is logged, not shown.
-            _logger?.LogWarning(exception, "Checking the server's plugin stores for updates failed.");
-        }
-
-        foreach (var row in Plugins)
-        {
-            if (available.GetValueOrDefault(row.FolderId) is { } update)
-            {
-                row.AvailableVersion = update.Entry.LatestVersion;
-                row.UpdateUnavailableReason = update.UpdateUnavailableReason;
-            }
-            else
-            {
-                row.AvailableVersion = null;
-                row.UpdateUnavailableReason = null;
-            }
-        }
-
-        AvailableUpdateCount = Plugins.Count(row => row.CanUpdate);
-        UnavailableUpdateCount = Plugins.Count(row => row.HasUpdate && !row.CanUpdate);
-    }
-
-    [RelayCommand]
-    private Task InstallPluginOnDesktopAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
-    {
-        if (InstallPluginOnDesktop is null)
-        {
-            return;
-        }
-
-        var outcome = await InstallPluginOnDesktop(row);
-        Status = outcome.Message;
-        StatusIsError = !outcome.Installed;
-        row.OnDesktop = outcome.Installed;
-        DesktopNeedsRestart |= outcome.Installed && outcome.NeedsRestart;
-    });
-
-    [RelayCommand]
-    private void RestartDesktopNow() => RestartDesktop?.Invoke();
-
-    [RelayCommand]
-    private Task OpenPluginSettingsAsync(ServerPluginRowViewModel row) =>
-        _RunAsync(async () =>
-        {
-            await (OpenPluginSettings?.Invoke(row) ?? Task.CompletedTask);
-
-            // AC-1986: the settings window may have connected a source (Depot), so the shared list is stale.
-            if (_serverProjects is { } serverProjects)
-            {
-                await _LoadSharedAsync(serverProjects);
-            }
-        });
-
-    [RelayCommand]
-    private Task RemovePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
-    {
-        if (_plugins is null)
-        {
-            return;
-        }
-
-        var state = await _plugins.RemoveAsync(row.FolderId);
-        Plugins.Remove(row);
-        OnPropertyChanged(nameof(PluginsCount));
-        if (state is { IsLive: true })
-        {
-            Status = "Removed. The plugin has stopped; its files are deleted when the server next starts.";
-            return;
-        }
-
-        _ChangedPlugins(state);
-    });
-
     // Done forgets the key: after this nothing in the cockpit holds it.
     [RelayCommand]
     private void DismissIssued()
@@ -596,67 +299,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         {
             Audit.Add(new AuditRowViewModel(entry, labels, _time));
         }
-    }
-
-    private void _ChangedPlugins(PluginLiveState? state = null)
-    {
-        if (state is { IsLive: true })
-        {
-            Status = "Active on the server. Running sessions get its new MCP tools when they next start.";
-            return;
-        }
-
-        NeedsRestart = state?.RestartRequired == true && _plugins is IServerRestart;
-        Status = (state?.Notice ?? state?.RestartReason) is { } reason
-            ? state?.RestartRequired == true ? $"Restart needed: {reason.TrimEnd('.')}." : reason
-            : "This change is waiting for the current session to close.";
-    }
-
-    // False when the operator kept the sessions running.
-    private async Task<bool> _RestartServerAsync()
-    {
-        if (_plugins is not IServerRestart server)
-        {
-            return false;
-        }
-
-        var running = _runningSessions?.Invoke() ?? 0;
-        if (running > 0 && (_dialogService is null || !await _dialogService.ShowConfirmationDialogAsync(
-            $"Restart {Server}",
-            running == 1
-                ? $"1 session is running on {Server}. Restarting the server stops it; this cockpit stays open."
-                : $"{running} sessions are running on {Server}. Restarting the server stops them; this cockpit stays open.",
-            "Restart server")))
-        {
-            return false;
-        }
-
-        await server.RestartAsync();
-        NeedsRestart = false;
-        RetiredLoadContexts = 0;
-        Status = $"{Server} is restarting; it reconnects when it is back.";
-        return true;
-    }
-
-    private async Task _LoadPluginsAsync()
-    {
-        if (_plugins is null)
-        {
-            return;
-        }
-
-        Plugins.Clear();
-        foreach (var plugin in await _plugins.GetInstalledAsync())
-        {
-            var row = new ServerPluginRowViewModel(plugin);
-            row.HasSettings = HasPluginSettings(row);
-            row.OnDesktop = IsPluginOnDesktop(row);
-            Plugins.Add(row);
-        }
-
-        OnPropertyChanged(nameof(PluginsCount));
-        RetiredLoadContexts = await _plugins.GetRetiredLoadContextsAsync();
-        await _ShowAvailableUpdatesAsync();
     }
 
     private async Task _RunAsync(Func<Task> action)
@@ -783,56 +425,6 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     internal static string CapabilityName(ConnectKeyCapability capability) => capability == ConnectKeyCapability.Admin ? "admin" : "operate";
 }
 
-public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : ObservableObject
-{
-    public string FolderId { get; } = plugin.Discovered.FolderId;
-
-    public string Name { get; } = plugin.Discovered.Manifest.Name;
-
-    public string Id { get; } = plugin.Discovered.Manifest.Id;
-
-    public string Version { get; } = plugin.Discovered.Manifest.Version;
-
-    // AC-2025: what the server runs, which after a live update or a pending restart is not what its disk holds.
-    public string RunningVersion { get; } = plugin.RunningVersion ?? plugin.Discovered.Manifest.Version;
-
-    public string? Author { get; } = plugin.Discovered.Manifest.Author;
-
-    // AC-1525: the server's own hash of the bytes on its disk, which the consent shows and the server pins.
-    public string Sha256 { get; } = plugin.Discovered.Sha256;
-
-    public bool HasSettings { get; set; }
-
-    // AC-1590: this desktop has the plugin; false offers "Install on this desktop".
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MissingOnDesktop))]
-    private bool _onDesktop = true;
-
-    public bool MissingOnDesktop => !OnDesktop;
-
-    // AC-1650: the newer version the server's stores offer, or null.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasUpdate), nameof(UpdateText), nameof(CanUpdate))]
-    private string? _availableVersion;
-
-    public bool HasUpdate => AvailableVersion is not null;
-
-    public string UpdateText => $"{AvailableVersion} available";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanUpdate))]
-    private string? _updateUnavailableReason;
-
-    public bool CanUpdate => HasUpdate && UpdateUnavailableReason is null;
-
-    [ObservableProperty]
-    private bool _enabled = plugin.Registration?.Enabled ?? false;
-
-    public string State => Enabled ? "Enabled" : "Disabled";
-
-    public void Refresh() => OnPropertyChanged(nameof(State));
-}
-
 // AC-1446: one row of the Connect keys table: a prefix and a label, never more of the key.
 public sealed class ConnectKeyRowViewModel(ConnectKeyInfo info, TimeProvider time)
 {
@@ -850,7 +442,7 @@ public sealed class ConnectKeyRowViewModel(ConnectKeyInfo info, TimeProvider tim
 
     public bool IsAdmin => Info.Capability == ConnectKeyCapability.Admin;
 
-    public string Capability => ServerAdminViewModel.CapabilityName(Info.Capability);
+    public string Capability => ConnectKeysViewModel.CapabilityName(Info.Capability);
 
     public double RowOpacity => IsLive ? 1 : 0.55;
 
@@ -969,7 +561,7 @@ public sealed class AuditRowViewModel
         const string lockoutStarted = "lockout started until ";
         return entry.Outcome switch
         {
-            "issued" when entry.Subject is { } prefix && keys.TryGetValue(prefix, out var issued) => $"issued · {issued.Label} ({ServerAdminViewModel.CapabilityName(issued.Capability)})",
+            "issued" when entry.Subject is { } prefix && keys.TryGetValue(prefix, out var issued) => $"issued · {issued.Label} ({ConnectKeysViewModel.CapabilityName(issued.Capability)})",
             "issued" or "revoked" or "scope changed" or "own device" or "cloned" or "clone failed" or "changed" or "removed" => $"{entry.Outcome} · {subject}",
             "copied" => $"assistant profile copied from {subject}",
             "connected" => "connected",

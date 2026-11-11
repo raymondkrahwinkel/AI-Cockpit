@@ -49,16 +49,6 @@ public interface ISessionDialogService : IProjectDialogs, IPluginManagerDialogs
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null);
 
     /// <summary>
-    /// Shows the Options dialog opened on a server (AC-1446): only that server's admin pages, acting through <paramref name="viewModel"/>.
-    /// </summary>
-    Task ShowServerAdminDialogAsync(ServerAdminViewModel viewModel);
-
-    /// <summary>
-    /// Shows a plugin's own view for a server (AC-1511), over the Admin dialog it was opened from. Default does nothing.
-    /// </summary>
-    Task ShowServerPluginSettingsAsync(string title, Func<Avalonia.Controls.Control> createView, Func<Task<string?>>? persist = null) => Task.CompletedTask;
-
-    /// <summary>
     /// Picks a dashboard file to import; returns the chosen path or null if cancelled.
     /// </summary>
     Task<string?> PickDashboardToImportAsync();

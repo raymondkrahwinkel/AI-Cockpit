@@ -26,7 +26,7 @@ internal static class RemoteSchedulesSteps
         {
             var window = new MainWindow(windowBoundsStore: null, "journey-server");
             using var ui = new RemoteWindowUi(window, new SurfaceWindows(), loggers);
-            var remote = CockpitViewModel.ForRemoteWindow("journey-server", servers, null, null, _ => Task.CompletedTask, ui: ui);
+            var remote = CockpitViewModel.ForRemoteWindow("journey-server", servers, null, null, ui: ui);
             window.DataContext = remote;
             window.Show();
             Window? schedules = null;
@@ -109,7 +109,7 @@ internal static class RemoteSchedulesSteps
                 Console.WriteLine("AC2289: scheduled task succeeded with both client windows closed");
                 var reopenedWindow = new MainWindow(windowBoundsStore: null, "journey-server");
                 using var reopenedUi = new RemoteWindowUi(reopenedWindow, new SurfaceWindows(), loggers);
-                var reopened = CockpitViewModel.ForRemoteWindow("journey-server", servers, null, null, _ => Task.CompletedTask, ui: reopenedUi);
+                var reopened = CockpitViewModel.ForRemoteWindow("journey-server", servers, null, null, ui: reopenedUi);
                 reopenedWindow.DataContext = reopened;
                 reopenedWindow.Show();
                 try

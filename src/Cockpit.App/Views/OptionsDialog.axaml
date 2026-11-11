@@ -287,25 +287,7 @@
                 </DockPanel>
             </Border>
 
-            <!-- AC-1446: the credentials notice, above every page of the dialog opened on a server. -->
             <DockPanel Grid.Column="1">
-            <Border x:Name="ServerBanner" DockPanel.Dock="Top" IsVisible="False" Padding="24,14,24,0">
-                <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
-                    <Border Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}"
-                            Background="{DynamicResource CockpitCategoryTintBlueBrush}">
-                        <DockPanel>
-                            <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="InformationOutline" Width="16" Height="16"
-                                                        VerticalAlignment="Top" Margin="0,1,10,0"
-                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Keys and tokens you enter here are write-only." FontWeight="SemiBold"/>
-                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                           Text="The server stores them and only tells you whether one is set; nothing shows them again. A provider sign-in runs on the server, started from a profile's Login or from Server health, and its token stays there."/>
-                            </StackPanel>
-                        </DockPanel>
-                    </Border>
-                </StackPanel>
-            </Border>
             <Panel x:Name="CategoryContent" IsEnabled="{Binding CanEditOptions, FallbackValue=True}">
 
                 <ScrollViewer Tag="swarm"
@@ -474,9 +456,10 @@
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <!-- AC-2279: a remote window manages the keys of its own server here; it connects nowhere else. -->
-                        <Panel IsVisible="{Binding IsRemoteWindow}">
-                            <views:ServerConnectKeysPage DataContext="{Binding RemoteServerKeys}"/>
-                        </Panel>
+                        <StackPanel IsVisible="{Binding IsRemoteWindow}">
+                            <views:ConnectKeysView DataContext="{Binding RemoteServerKeys}"/>
+                            <views:ConnectAuditView DataContext="{Binding RemoteServerKeys}"/>
+                        </StackPanel>
                         <StackPanel Spacing="8" IsVisible="{Binding !IsRemoteWindow}">
                             <TextBlock Classes="optionsSectionHeader" Text="1. CONNECT TO A SERVER"/>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

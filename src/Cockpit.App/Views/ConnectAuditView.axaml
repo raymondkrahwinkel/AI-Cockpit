@@ -1,10 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
-             x:Class="Cockpit.App.Views.ServerAuditLogPage"
-             x:DataType="vm:ServerAdminViewModel">
+             x:Class="Cockpit.App.Views.ConnectAuditView"
+             x:DataType="vm:ConnectKeysViewModel">
 
-    <!-- AC-1446: Options › Audit log on a server, latest first, in the mockup's words (mockup v2, tab 4). -->
     <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
         <StackPanel Orientation="Horizontal" Spacing="10">
             <TextBlock Text="Audit log" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>

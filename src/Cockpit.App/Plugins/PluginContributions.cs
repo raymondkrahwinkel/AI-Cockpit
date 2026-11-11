@@ -102,8 +102,8 @@ public sealed record PluginSettingsRegistration(string PluginId, string PluginNa
 /// </summary>
 public interface IPluginContributionSink
 {
-    // AC-1547: opens that server's Plugins page, where a missing or older plugin is installed or updated.
-    Task OpenServerPluginsAsync(string server) => Task.CompletedTask;
+    // Opens the plugin's ordinary Options category in its server window.
+    Task OpenServerPluginsAsync(string server, string pluginId) => Task.CompletedTask;
 
     void AddPluginSideSection(string pluginId, string title, Func<Control> createView);
 

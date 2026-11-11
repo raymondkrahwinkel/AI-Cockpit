@@ -151,9 +151,16 @@ see the [plugin docs](#documentation).
 
 ## How it works
 
+**Open** on a connected server starts an ordinary Cockpit window for that server
+(`Cockpit --remote <server>`). Admin links open its Options › Servers category;
+plugin settings links open that plugin's ordinary Options category, or the Plugin store
+when its UI is unavailable. There is no separate admin panel. Connect keys, their scopes
+and certificate pins stay unchanged. Swarm pairing and enabling the node endpoint remain
+local to the server; remote internal-network exceptions must stay within private address space.
+
 File-source plugins can register `IFileSourceProvider` through `ICockpitHost.AddFileSource`
 (host 0.136.0, Abstractions 3.45.0). The host handles snapshot reads and conditional writes on the
-plugin's existing channel, including server-admin relays. The initial channel limits file content to
+plugin's existing channel, including remote server relays. The initial channel limits file content to
 1 MiB. See the [file source contract](docs/plugins/FILE-SOURCES.md) for ownership and conflict semantics.
 
 Host 0.137.0 (Abstractions 3.45.0 / UI 3.17.0) adds host-owned Markdown file workspaces.

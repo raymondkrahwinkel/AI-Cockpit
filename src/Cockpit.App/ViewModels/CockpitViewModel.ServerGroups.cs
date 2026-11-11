@@ -1,16 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
-using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Toasts;
@@ -28,7 +24,6 @@ public partial class CockpitViewModel
     private Func<ISessionHandle, string, Task<SessionViewModel>>? _remotePaneOver;
     private INodeSessionsClient? _serverChoices;
     private readonly List<SessionPanelViewModel> _remotePanes = [];
-    private Func<ServerAdminViewModel, Task>? _showServerAdmin;
     private IPluginProviderConfigViews? _providerConfigViews;
 
     public ObservableCollection<ServerGroupViewModel> ServerGroups { get; } = [];
@@ -86,7 +81,6 @@ public partial class CockpitViewModel
         IRemoteServers servers,
         INodeSessionsClient? serverChoices,
         IServerSignIns? signIns,
-        Func<ServerAdminViewModel, Task> showServerAdmin,
         Func<CockpitViewModel, string?, Task>? presentOptions = null,
         Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
         Func<string, string, string, Task<bool>>? confirm = null,
@@ -118,7 +112,6 @@ public partial class CockpitViewModel
             worktrees: new WorktreesViewModel(null, (title, message, label) => ui?.ConfirmAsync(title, message, label) ?? Task.FromResult(false)))
         {
             RemoteWindowServer = server,
-            _showServerAdmin = showServerAdmin,
             _presentOptions = presentOptions,
             _presentPluginStore = presentPluginStore,
             // AC-2279: the server's own switches and swarm; encryption, screen lock and pairing stay with this device.
@@ -674,14 +667,14 @@ public partial class CockpitViewModel
         RefreshPaneVisibility();
     }
 
-    internal Action<string> OpenRemoteWindow { get; set; } = Composition.RemoteWindowProcess.Open;
+    internal Action<string, string?> OpenRemoteWindow { get; set; } = Composition.RemoteWindowProcess.Open;
 
     [RelayCommand]
     private void OpenServerWindow(ServerGroupViewModel group)
     {
         try
         {
-            OpenRemoteWindow(group.Name);
+            OpenRemoteWindow(group.Name, null);
         }
         catch (Exception exception)
         {
@@ -709,31 +702,34 @@ public partial class CockpitViewModel
         }
     }
 
-    // AC-1446: the Options dialog on the server, for an admin key. The server's profiles and projects, read on the same
-    // key, are what the scope editor offers; without them it still offers "all".
     [RelayCommand]
-    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerAdminAsync(group, null);
+    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerOptionsAsync(group, "servers");
 
     // AC-2011: the Servers page's connection card names its server, not its group.
     [RelayCommand]
     private Task OpenServerAdminByNameAsync(string server) =>
         ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
-            ? _OpenServerAdminAsync(group, null)
+            ? _OpenServerOptionsAsync(group, "servers")
             : Task.CompletedTask;
 
-    public Task OpenServerPluginsAsync(string server) =>
+    public Task OpenServerPluginsAsync(string server, string pluginId) =>
         ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
-            ? _OpenServerAdminAsync(group, "server-plugins")
+            ? _OpenServerOptionsAsync(group, $"plugin:{pluginId}")
             : Task.CompletedTask;
 
-    // AC-2279: the remote window's server keys on its ordinary Servers page, over the server dialog's own contract.
-    public ServerAdminViewModel? RemoteServerKeys
+    internal Task OpenOptionsCategoryAsync(string category) =>
+        category.StartsWith("plugin:", StringComparison.Ordinal) && !PluginSettings.ContainsKey(category["plugin:".Length..])
+            ? OpenPluginStoreAsync()
+            : _ShowOptionsAsync(category);
+
+    // The remote window's keys and audit share the ordinary Servers category.
+    public ConnectKeysViewModel? RemoteServerKeys
     {
         get => _remoteServerKeys;
         private set => SetProperty(ref _remoteServerKeys, value);
     }
 
-    private ServerAdminViewModel? _remoteServerKeys;
+    private ConnectKeysViewModel? _remoteServerKeys;
 
     internal async Task LoadRemoteServerKeysAsync()
     {
@@ -744,7 +740,7 @@ public partial class CockpitViewModel
         }
 
         var (profiles, projects) = await _ServerChoicesAsync(group);
-        RemoteServerKeys = new ServerAdminViewModel(group.Name, key.Label, server.Administration, profiles, projects, logger: _logger, serverVersion: key.Version);
+        RemoteServerKeys = new ConnectKeysViewModel(server.Administration, profiles, projects, serverVersion: key.Version);
         await RemoteServerKeys.LoadAsync();
     }
 
@@ -767,52 +763,24 @@ public partial class CockpitViewModel
         }
     }
 
-    private async Task _OpenServerAdminAsync(ServerGroupViewModel group, string? category)
+    private async Task _OpenServerOptionsAsync(ServerGroupViewModel group, string category)
     {
-        var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
-        if (show is null || group.State.Key is not { } key || group.Server is null)
+        if (IsRemoteWindow)
         {
+            await OpenOptionsCategoryAsync(category);
             return;
         }
 
-        var (profiles, projects) = await _ServerChoicesAsync(group);
-        var plugins = group.Server.Plugins;
-        // AC-1995: a services instance of its own, so the assistant's dialog and the Profiles page each read the server afresh.
-        var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles,
-            new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart));
-        await Plugins.LoadAsync();
-        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
+        try
         {
-            RestartAdviceAfter = PluginRestartAdviceAfter,
-            InitialCategory = category,
-            GitHubCredentials = Composition.RemoteServerGitHubCredentials.For(group.Server),
-            Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
-            Assistant = assistant,
-            Storage = group.Server.StorageSettings is { } storage ? new ServerStorageViewModel(storage) : null,
-            HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
-            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, group.Server.Projects, row),
-            IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
-            InstallPluginOnDesktop = row => Plugins.InstallFromStoreByIdAsync(row.Id),
-            RestartDesktop = () => _appRestart?.Restart(),
-        };
-
-        // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).
-        assistant.OpenHealthRequested += () => _OnUiThread(() =>
+            OpenRemoteWindow(group.Name, category);
+        }
+        catch (Exception exception)
         {
-            group.IsExpanded = true;
-            if (group.Health is { } groupHealth)
-            {
-                groupHealth.IsOpen = true;
-            }
-        });
-        await show(admin);
+            _logger?.LogWarning(exception, "Could not open the window for {Server}.", group.Name);
+            ToastHost.Add($"Could not open {group.Name}: {exception.Message}", ToastSeverity.Error, null, null);
+        }
     }
-
-    // AC-1511: the view the plugin installed here offers for a server, keyed like its own settings.
-    private (string PluginName, Func<IPluginUiChannel, Control> CreateView)? _ServerSettingsFor(ServerPluginRowViewModel row) =>
-        PluginServerSettings.TryGetValue(row.Id, out var byId) ? byId
-        : PluginServerSettings.TryGetValue(row.FolderId, out var byFolder) ? byFolder
-        : null;
 
     // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
     // Set once the UI parts have initialized.
@@ -825,42 +793,6 @@ public partial class CockpitViewModel
         foreach (var server in _remoteServers?.Servers ?? [])
         {
             register(server);
-        }
-    }
-
-    private (Type UiType, ICockpitUiHost Host, string Version)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
-        LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
-
-    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
-    // local settings view over the server's storage wins (AC-1571); a view it offers only for a server (AC-1511) is the
-    // fallback for a plugin without one.
-    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, IServerProfiles profiles, IServerProjects projects, ServerPluginRowViewModel row)
-    {
-        if (_dialogService is null || plugins is not IPluginChannelRelay relay)
-        {
-            return;
-        }
-
-        if (_LocalSettingsPartFor(row) is { } part)
-        {
-            // Shown by the admin dialog as the error of the click.
-            if (ServerPluginVersions.Differ(part.Version, row.RunningVersion))
-            {
-                throw new InvalidOperationException(ServerPluginVersions.Message(row.Name, server, row.RunningVersion, part.Version));
-            }
-
-            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => ServerPluginTargets.ProfilesAsync(profiles), () => ServerPluginTargets.ProjectsAsync(projects), server) is { } remote)
-            {
-                await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
-            }
-
-            return;
-        }
-
-        if (_ServerSettingsFor(row) is { } settings)
-        {
-            var channel = new RemotePluginUiChannel(relay, row.FolderId);
-            await _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
         }
     }
 
@@ -887,7 +819,7 @@ public partial class CockpitViewModel
                 return;
             }
 
-            // AC-1472: the projects from the backend API, the same list and scope Admin's Projects page writes to.
+            // The backend API returns only projects the key's scope permits.
             if (group.IsSwarmMember)
             {
                 group.Start.Fill(snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),

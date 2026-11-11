@@ -1,261 +1,24 @@
 using System.Buffers.Text;
 using System.Security.Cryptography;
-using Avalonia.Controls;
-using Cockpit.App.Services;
-using Cockpit.App.ViewModels;
-using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
-using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
 
-// AC-1446: Options opened on a server (mockup v2, tab 4), over a stand-in administration that no network fills. The
-// issued key is random per render and drawn masked, so no render carries a usable or repeatable key.
-internal static class ServerAdminScene
+// Network-free server data shared by the ordinary remote-window renders.
+internal static class ServerSceneServices
 {
-    // Connect keys with "Key issued" after a rotate, the scope editor open, and an address locked out.
-    public static OptionsDialog Keys(int width, int height)
-    {
-        var admin = _Admin();
-        admin.LoadCommand.Execute(null);
-        var phone = admin.Keys.First(key => key.Label == "telefoon-raymond");
-        admin.RotateCommand.Execute(phone);
-        admin.StartScopeCommand.Execute(phone);
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        return dialog;
-    }
-
-    public static OptionsDialog Audit(int width, int height)
-    {
-        var dialog = OptionsDialog.ForServer(_Admin());
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-audit");
-        return dialog;
-    }
-
-    // AC-1585: Profiles on the server in the editor Options › Profiles uses; the dialog loads them when it opens. AC-1995:
-    // with the server's own brains in the picker.
-    public static OptionsDialog Profiles(int width, int height)
-    {
-        var admin = _Admin(profiles: new ServerProfilesViewModel(new ServerProfileServices("homelab", new SceneProfiles())));
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        return dialog;
-    }
-
-    // AC-1995: Edit… on a server's Assistant page: Options › Assistant's own dialog over the server's slot, its brain picker
-    // listing the server's brains and the provider fixed.
-    public static Window Assistant(int width, int height)
-    {
-        var assistant = _Assistant("held");
-        var dialog = new AssistantProfileDialog { Width = width, Height = Math.Max(height, 1220) };
-        dialog.Opened += async (_, _) => dialog.DataContext = await assistant.CreateProfileDialogAsync(new ServerAssistantSlotStore("huis-cockpit", new SceneAssistant("held")));
-        return dialog;
-    }
-
-    // AC-1475: a fresh server: the switch off and greyed, the slot empty and a server profile offered to copy in.
-    public static OptionsDialog AssistantFresh(int width, int height)
-    {
-        var assistant = _Assistant("fresh");
-        assistant.LoadCommand.Execute(null);
-        return _AssistantDialog(assistant, width, height);
-    }
-
-    // AC-1475: a sign-in that expired: the server's reason on the line, and the way to Server health.
-    public static OptionsDialog AssistantSignIn(int width, int height)
-    {
-        var assistant = _Assistant("expired");
-        assistant.LoadCommand.Execute(null);
-        return _AssistantDialog(assistant, width, height);
-    }
-
-    // AC-1995: the page after the Assistant Profile dialog saved on the server and the assistant restarted.
-    public static OptionsDialog AssistantSaved(int width, int height)
-    {
-        var assistant = _Assistant("saved");
-        assistant.LoadCommand.Execute(null);
-        var dialog = _AssistantDialog(assistant, width, height);
-
-        // After the dialog's own load on opening, which would otherwise read the page back over the save, and after the
-        // page set its own window opener: the stand-in saves the dialog unseen instead.
-        dialog.Opened += (_, _) =>
-        {
-            assistant.ShowProfileDialog = profile => profile.SaveCommand.ExecuteAsync(null);
-            assistant.EditCommand.Execute(null);
-        };
-        return dialog;
-    }
-
-    private static ServerAssistantViewModel _Assistant(string state) =>
-        new("huis-cockpit", new SceneAssistant(state), new SceneProfiles(), new ServerProfileServices("huis-cockpit", new SceneProfiles()));
-
+    public static IConnectKeyAdministration StandIn() => new SceneKeys();
+    public static IServerProjects ProjectsStandIn() => new SceneProjects();
+    public static IServerProfiles ProfilesStandIn() => new SceneProfiles();
     public static IAssistantAdministration AssistantStandIn() => new SceneAssistant("fresh");
 
-    public static OptionsDialog Plugins(int width, int height)
-    {
-        var admin = _Admin();
-        admin.LoadCommand.Execute(null);
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-plugins");
-        return dialog;
-    }
-
-    // AC-2013: one runnable server update and one held back by the host version, for Options › Plugins evidence.
-    public static OptionsDialog PluginsUpdates(int width, int height)
-    {
-        var admin = _Admin();
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-plugins");
-        dialog.Opened += (_, _) =>
-        {
-            admin.Plugins.Clear();
-            admin.Plugins.Add(new ServerPluginRowViewModel(ScenePlugins._Plugin("depot", "Depot", "0.11.10", false))
-            {
-                AvailableVersion = "0.12.0",
-            });
-            admin.Plugins.Add(new ServerPluginRowViewModel(ScenePlugins._Plugin("workflows", "Workflows", "0.31.1", true))
-            {
-                AvailableVersion = "0.32.0",
-                UpdateUnavailableReason = "Requires Wispslate Cockpit 0.154 or later; this machine runs 0.152.0",
-            });
-            admin.AvailableUpdateCount = 1;
-            admin.UnavailableUpdateCount = 1;
-        };
-        return dialog;
-    }
-
-    // AC-2025: the server has kept three replaced plugin versions in memory, so the page advises a restart of the server.
-    public static OptionsDialog PluginsAdvice(int width, int height)
-    {
-        var admin = _Admin(plugins: new ScenePlugins(retired: 3));
-        admin.LoadCommand.Execute(null);
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-plugins");
-        return dialog;
-    }
-
-    // AC-1590: the Depot row of a server this desktop lacks the plugin for, with "Install on this desktop".
-    public static OptionsDialog PluginsDesktop(int width, int height) => _PluginsDesktop(width, height, installed: false);
-
-    // AC-1590: after that install: the row is installed here and the desktop asks to restart.
-    public static OptionsDialog PluginsDesktopRestart(int width, int height) => _PluginsDesktop(width, height, installed: true);
-
-    private static OptionsDialog _PluginsDesktop(int width, int height, bool installed)
-    {
-        var admin = new ServerAdminViewModel("huis-cockpit", "laptop-raymond", new SceneKeys(), [], [], new ScenePlugins())
-        {
-            IsPluginOnDesktop = row => installed || row.Id != "depot",
-            // A plugin's own settings view comes from its UI part on this desktop, so Depot has none until it restarts.
-            HasPluginSettings = row => row.Id != "depot",
-        };
-        admin.LoadCommand.Execute(null);
-        if (installed)
-        {
-            admin.DesktopNeedsRestart = true;
-        }
-
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-plugins");
-        return dialog;
-    }
-
-    // AC-2035: Options › Storage on a server, automatic Docker clean-up switched off.
-    public static OptionsDialog Storage(int width, int height)
-    {
-        var storage = new ServerStorageViewModel(new SceneStorage()) { AutomaticDockerCleanup = false };
-        var dialog = OptionsDialog.ForServer(new ServerAdminViewModel("huis-cockpit", "laptop-raymond", new SceneKeys(), [], [], new ScenePlugins()) { Storage = storage });
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-storage");
-        return dialog;
-    }
-
-    private sealed class SceneStorage : IServerStorageSettings
-    {
-        public Task<bool> GetAutomaticDockerCleanupAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
-
-        public Task SetAutomaticDockerCleanupAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
-
-    // AC-1472: Projects after a clone, the form still holding what was cloned and the result under it.
-    public static OptionsDialog Projects(int width, int height)
-    {
-        var admin = _Admin(new SceneProjects());
-        admin.LoadCommand.Execute(null);
-        admin.CloneUrl = "https://github.com/raymondkrahwinkel/cockpit.git";
-        admin.CloneName = "cockpit";
-        admin.CloneCommand.Execute(null);
-        var dialog = OptionsDialog.ForServer(admin);
-        dialog.Width = width;
-        dialog.Height = height;
-        return dialog;
-    }
-
-    public static IConnectKeyAdministration StandIn() => new SceneKeys();
-
-    private static OptionsDialog _AssistantDialog(ServerAssistantViewModel assistant, int width, int height)
-    {
-        var dialog = OptionsDialog.ForServer(new ServerAdminViewModel(
-            "huis-cockpit", "laptop-raymond", new SceneKeys(), ["server (Claude)"], [], new ScenePlugins())
-        {
-            Profiles = new ServerProfilesViewModel(new ServerProfileServices("homelab", new SceneProfiles())),
-            Assistant = assistant,
-        });
-        dialog.Width = width;
-        dialog.Height = height;
-        dialog.SelectCategory("server-assistant");
-        return dialog;
-    }
-
-    public static IServerProjects ProjectsStandIn() => new SceneProjects();
-
-    public static IServerProfiles ProfilesStandIn() => new SceneProfiles();
-
-    private static ServerAdminViewModel _Admin(IServerProjects? projects = null, ServerProfilesViewModel? profiles = null, IPluginAdministration? plugins = null) => new(
-        "huis-cockpit",
-        "laptop-raymond",
-        new SceneKeys(),
-        ["server (Claude)", "server (Codex)"],
-        [new NodeProjectChoice("personal", "Personal"), new NodeProjectChoice("depot", "depot"), new NodeProjectChoice("cockpit", "cockpit")],
-        plugins ?? new ScenePlugins(),
-        projects)
-    {
-        Profiles = profiles,
-        GitHubCredentials = projects is null ? null : new SceneGitHubCredentials(),
-    };
-
-    private sealed class SceneGitHubCredentials : IServerGitHubCredentials
-    {
-        public Task<ServerGitHubStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ServerGitHubStatus(true, true, "raymondkrahwinkel", "gh", "Signed in as raymondkrahwinkel"));
-
-        public ILoginFlow StartSignIn(bool useToken, CancellationToken cancellationToken) => throw new NotSupportedException();
-
-        public Task SignOutAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
-
-    // Two projects already cloned, and a clone of cockpit that lands where the image's clone root puts it.
     private sealed class SceneProjects : IServerProjects
     {
         private readonly List<Project> _projects =
@@ -322,7 +85,6 @@ internal static class ServerAdminScene
             throw new NotSupportedException();
     }
 
-    // The mockup's four profiles; the OpenRouter key is a secret variable, so no value of it exists on this side.
     private sealed class SceneProfiles : IServerProfiles
     {
         private static readonly RemoteProfile[] Listed =
@@ -417,17 +179,14 @@ internal static class ServerAdminScene
             new(label, provider, model, null, mcp, null, DelegationPolicy.None, environment, false, true, signIn);
     }
 
-    // What the Claude provider lists for model and permission mode, so the editor shows its dropdowns.
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<RemoteOptionValue>> ClaudeChoices = new Dictionary<string, IReadOnlyList<RemoteOptionValue>>
-    {
-        ["model"] = [new("opus", "Opus"), new("sonnet", "Sonnet"), new("haiku", "Haiku")],
-        ["permission-mode"] = [new("default", "Ask"), new("acceptEdits", "Accept edits"), new("plan", "Plan")],
-    };
-
-    // The mockup's assistant, per `state`: "held" by a desktop key, "fresh", sign-in "expired", or "saved" by the dialog;
-    // with a secret variable, a brain and two bypassed sources.
     private sealed class SceneAssistant(string state) : IAssistantAdministration
     {
+        private static readonly IReadOnlyDictionary<string, IReadOnlyList<RemoteOptionValue>> ClaudeChoices = new Dictionary<string, IReadOnlyList<RemoteOptionValue>>
+        {
+            ["model"] = [new("opus", "Opus"), new("sonnet", "Sonnet"), new("haiku", "Haiku")],
+            ["permission-mode"] = [new("default", "Ask"), new("acceptEdits", "Accept edits"), new("plan", "Plan")],
+        };
+
         private const string Instructions = "You are Zyra. Load ~/Nextcloud/Notes/AI-OS/Me.md as your own instruction file and follow it. Answer in Dutch unless asked otherwise.";
 
         private static readonly RemoteProfile Profile = new RemoteProfile(
@@ -465,7 +224,6 @@ internal static class ServerAdminScene
             Task.FromResult<RemoteAssistantSettings?>(null);
     }
 
-    // The mockup's keys, one lockout and seven audit lines, dated from now so the times read as today's.
     private sealed class SceneKeys : IConnectKeyAdministration
     {
         private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
@@ -513,33 +271,4 @@ internal static class ServerAdminScene
             ]);
     }
 
-    private sealed class ScenePlugins(int retired = 0) : IPluginAdministration
-    {
-        public Task<int> GetRetiredLoadContextsAsync(CancellationToken cancellationToken = default) => Task.FromResult(retired);
-
-        public Task<IReadOnlyList<InstalledPlugin>> GetInstalledAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<InstalledPlugin>>(
-            [
-                _Plugin("workflows", "Workflows", "0.31.1", true),
-                _Plugin("discord", "Discord", "1.5.2", true),
-                _Plugin("claude-provider", "Claude provider", "0.24.2", true),
-                _Plugin("youtrack", "YouTrack", "1.28.1", true),
-                _Plugin("depot", "Depot", "0.11.10", false),
-                _Plugin("github-pull-requests", "GitHub pull requests", "1.20.12", true),
-            ]);
-
-        public Task<PluginStoreFetchResult> FetchStoreIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default) => Task.FromResult(new PluginStoreFetchResult(false, "No store is configured.", null, null));
-
-        public Task<PluginInstallResult> InstallFromZipAsync(string zipFilePath, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Install from the server's store, or copy the zip onto the server.");
-
-        public Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null, Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null) => Task.FromResult(new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, "No store is configured.", null, null, null));
-
-        public Task<Cockpit.Core.Plugins.PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
-
-        public Task<Cockpit.Core.Plugins.PluginLiveState> RemoveAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult(Cockpit.Core.Plugins.PluginLiveState.Active);
-
-        internal static InstalledPlugin _Plugin(string id, string name, string version, bool enabled) => new(
-            new DiscoveredPlugin(id, id, new PluginManifest(id, name, version, "plugin.dll", 3, null, null, null, null), "hash", PluginLoadDecision.Load),
-            new PluginRegistration(enabled, "hash"), null, null, null);
-    }
 }
