@@ -169,7 +169,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 logger?.LogError(exception, "Binding the session MCP context failed; session launch was stopped.");
-                throw new InvalidOperationException("Session could not start because its MCP gateway could not be prepared. See the Cockpit log for the cause.");
+                throw Mcp.GatewayLaunchFailure.Stopped(exception);
             }
         }
 
@@ -481,7 +481,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 _minted = null;
             }
             logger?.LogError(exception, "Preparing the session MCP gateway failed; session launch was stopped.");
-            throw new InvalidOperationException("Session could not start because its MCP gateway is unavailable. See the Cockpit log for the cause.");
+            throw Mcp.GatewayLaunchFailure.Stopped(exception);
         }
     }
 

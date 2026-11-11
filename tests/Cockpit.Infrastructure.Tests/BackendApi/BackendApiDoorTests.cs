@@ -127,6 +127,37 @@ public sealed class BackendApiDoorTests
         var privateRange = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":["10.20.0.0/16"],"joinAtBack":true}""");
         Assert.Equal(HttpStatusCode.OK, privateRange.Status);
         await door.Swarm.Received(1).SaveSettingsAsync(Arg.Is<Cockpit.Core.Swarm.SwarmSettings>(saved => saved.ExtraInternalCidrs.SequenceEqual(new[] { "10.20.0.0/16" })), Arg.Any<CancellationToken>());
+
+        // AC-2282: Operate cannot touch the MCP registry. An admin reads no secret, writes it back kept, and never the node row.
+        foreach (var (method, path) in new[] { (HttpMethod.Get, ""), (HttpMethod.Put, ""), (HttpMethod.Post, "/docs/sign-in"), (HttpMethod.Post, "/docs/sign-out") })
+        {
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), await door.SendAsync(method, "/api/v1/mcp/servers" + path, operate.Secret, "{}"));
+        }
+
+        var registry = new McpServerStore(door.ConfigPath);
+        McpServerConfig[] stored =
+        [
+            new() { Id = "docs", Name = "docs", Transport = McpTransport.Http, Url = "https://mcp.example.test/mcp", Auth = McpServerAuth.ApiKey, ApiKey = _Door.ProfileSecret, Headers = [new("X-Api-Key", _Door.ProfileSecret)] },
+            new() { Id = "node", Name = "server-a", IsNodeConnection = true, Transport = McpTransport.Http, Url = "https://10.0.0.5:7443/mcp", ApiKey = _Door.ProfileSecret },
+        ];
+        await registry.SaveAsync(stored);
+        var listed = await door.SendAsync(HttpMethod.Get, "/api/v1/mcp/servers", Bootstrap);
+        Assert.Equal(HttpStatusCode.OK, listed.Status);
+        Assert.DoesNotContain(_Door.ProfileSecret, listed.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("server-a", listed.Body, StringComparison.Ordinal);
+        var docs = JsonNode.Parse(listed.Body)![0]!;
+        const string Stdio = """{"id":"echo","name":"echo","transport":"stdio","scope":"all","command":"node","args":["echo.js"],"auth":"none","enabled":true}""";
+        var saved = await door.SendAsync(HttpMethod.Put, "/api/v1/mcp/servers", Bootstrap, $"{{\"servers\":[{docs.ToJsonString()},{Stdio}]}}");
+        Assert.Equal(HttpStatusCode.OK, saved.Status);
+        Assert.DoesNotContain(_Door.ProfileSecret, saved.Body, StringComparison.Ordinal);
+        docs["url"] = "https://elsewhere.example.test/mcp";
+        var moved = await door.SendAsync(HttpMethod.Put, "/api/v1/mcp/servers", Bootstrap, $"{{\"servers\":[{docs.ToJsonString()}]}}");
+        Assert.Equal(HttpStatusCode.BadRequest, moved.Status);
+        var after = await registry.LoadAsync();
+        Assert.Equal(["docs", "echo", "server-a"], after.Select(server => server.Name).Order());
+        Assert.Equal((_Door.ProfileSecret, _Door.ProfileSecret, "https://mcp.example.test/mcp"), (after[0].ApiKey, after[0].Headers.Single().Value, after[0].Url));
+        var node = after.Single(server => server.IsNodeConnection);
+        Assert.Equal((stored[1].Url, _Door.ProfileSecret), (node.Url, node.ApiKey));
     }
 
     private async Task _AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync(string caller, HttpStatusCode expected, string expectedBody)
@@ -1010,6 +1041,7 @@ public sealed class BackendApiDoorTests
             manager.Initialize((_, _) => host);
             services.AddSingleton(manager);
             services.AddSingleton<McpServerSignIns>();
+            services.AddSingleton<IMcpServerStore>(new McpServerStore(ConfigPath));
             Registrations.LoadDataAsync("idle", Arg.Any<CancellationToken>())
                 .Returns(new Dictionary<string, string> { ["pin"] = JsonSerializer.Serialize(ProfileSecret), ["label"] = "\"old\"" });
             services.AddSingleton(Registrations);

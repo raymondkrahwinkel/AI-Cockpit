@@ -119,6 +119,8 @@ public partial class CockpitViewModel
             // AC-2279: the server's own switches and swarm; encryption, screen lock and pairing stay with this device.
             Security = new SecurityOptionsViewModel(new UnprotectedSecrets(), terminalAccessSettings: options, shellAccessSettings: options),
             Swarm = new SwarmOptionsViewModel(options.Swarm, options.SwarmLeadership, confirm),
+            // AC-2282: the server's registry; it leaves out its own servers and node wiring itself.
+            McpServers = new McpServersViewModel(options.McpServers, [], options.McpSignIns),
             _presentWorktrees = ui is null ? null : ui.ShowWorktreesAsync,
             _presentConfirmation = confirm ?? (ui is null ? null : ui.ConfirmAsync),
         };

@@ -57,7 +57,7 @@ internal sealed partial class McpToolProvider(
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogError(exception, "Preparing the session MCP gateway failed; session launch was stopped.");
-            throw new InvalidOperationException("Session could not start because its MCP gateway is unavailable. See the Cockpit log for the cause.");
+            throw GatewayLaunchFailure.Stopped(exception);
         }
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
