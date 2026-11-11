@@ -49,6 +49,6 @@ internal static class DepotPairingState
     public const string None = "none";
 }
 
-internal sealed record DepotPairedPhone(string DeviceId, string Name, DateTimeOffset PairedAt);
+internal sealed record DepotPairedPhone(string DeviceId, string Name, DateTimeOffset PairedAt, string? KeyFingerprint = null);
 
 internal sealed record DepotPairedPhones(IReadOnlyList<DepotPairedPhone> Phones, string? UnpairLink);

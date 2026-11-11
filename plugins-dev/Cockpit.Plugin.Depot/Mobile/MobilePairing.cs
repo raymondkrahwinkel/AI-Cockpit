@@ -209,7 +209,21 @@ internal sealed class MobilePairing(
             _ = PruneAsync();
         }
 
-        return new([.. _Phones(connectionId).Select(phone => new DepotPairedPhone(phone.DeviceId, phone.Name, phone.PairedAt))], _AccountLink(connection));
+        List<MobilePairedPhone> phones = _Phones(connectionId);
+        byte[]? cockpitPub = null;
+        if (phones.Count > 0 && _keys.TryGetCockpitKey(connectionId, out var key))
+        {
+            using (key)
+            {
+                if (key is not null)
+                {
+                    cockpitPub = MobileKeyStore.PublicKey(key);
+                }
+            }
+        }
+
+        return new([.. phones.Select(phone => new DepotPairedPhone(phone.DeviceId, phone.Name, phone.PairedAt,
+            cockpitPub is null ? null : MobileKeyFingerprint.Format(cockpitPub, Base64Url.DecodeFromChars(phone.PhonePub))))], _AccountLink(connection));
     }
 
     public void Forget(string connectionId, string deviceId)

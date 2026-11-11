@@ -314,7 +314,22 @@ internal sealed class DepotConnectionRowControl : UserControl
         row.Children.Add(name);
         row.Children.Add(paired);
         row.Children.Add(forget);
-        return row;
+        var label = new TextBlock { Text = "Key fingerprint · SHA-256", FontSize = 11 };
+        label.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
+        var fingerprint = new SelectableTextBlock
+        {
+            Text = phone.KeyFingerprint ?? "Unavailable",
+            TextWrapping = TextWrapping.Wrap,
+        };
+        fingerprint.Bind(TextBlock.FontFamilyProperty, this.GetResourceObservable("CockpitMonoFont"));
+        var hint = new TextBlock
+        {
+            Text = "Compare with this Cockpit's status sheet on the phone. Both fingerprints must match.",
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        hint.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
+        return new StackPanel { Spacing = 4, Children = { row, label, fingerprint, hint } };
     }
 
     public string Id => _id;
