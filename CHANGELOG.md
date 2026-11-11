@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2312: a live Depot note that an agent edits while it is open no longer stays on "Not confirmed in Depot yet" with phantom "lines only in this Cockpit". Depot's saver now confirms the version the text is saved as, so formatting the note editor writes differently (tables, lists) no longer blocks the confirmation, and Retry sync says why when it cannot confirm yet (host 0.180.0, plugin SDK 3.91.0, Depot 0.65.3).
+
 - AC-2310: assistant MCP connections retain their brain scope and stay cached until their configuration or sign-in changes, preventing repeated reconnects and log flooding.
 
 - AC-2308: plugin updates share one Linux build batch and at most one Windows batch after a nightly, then publish together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.

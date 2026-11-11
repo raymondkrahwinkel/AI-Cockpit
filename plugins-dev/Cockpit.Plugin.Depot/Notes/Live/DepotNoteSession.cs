@@ -259,6 +259,8 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             return new LiveFileSnapshot(text, _rev, _LiveStatus())
             {
                 SerializedText = _loaded ? await _room.SerializeAsync(cancellationToken).ConfigureAwait(false) : null,
+                // Only the saver knows what is owed; its serialization may differ from the file's bytes (AC-2312).
+                PersistedVersion = _loaded && _mine ? _saver?.Persisted : null,
             };
         }
         finally

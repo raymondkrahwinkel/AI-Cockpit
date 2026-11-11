@@ -68,9 +68,11 @@ internal sealed partial class MarkdownFileWorkspace
                 {
                     _error = $"Your text could not be sent to {_sourceName}. Retry sync before closing.";
                 }
-                if (!signIn)
+                // A retry that changes nothing says why, instead of leaving the same banner (AC-2312).
+                if (!signIn && !await _ReconcileLiveRecoveryAsync().ConfigureAwait(true) && _error is null
+                    && (_needsFileRefresh || _liveLightPending) && !_IsLiveLight)
                 {
-                    await _ReconcileLiveRecoveryAsync().ConfigureAwait(true);
+                    _error = _unconfirmed;
                 }
             }
             if (!signIn && _IsLiveLight && IsDirty)

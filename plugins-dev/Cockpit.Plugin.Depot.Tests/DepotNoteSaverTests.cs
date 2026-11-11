@@ -101,6 +101,39 @@ public class DepotNoteSaverTests
         Assert.Equal([_Depot.Sha("# Plan\n\nFirst line one two three\n\nAgent block\n")], hub.Merged);
         Assert.Equal(depot.File, (await session.ReadAsync(CancellationToken.None)).Text);
         Assert.Equal(7, depot.Posts);
+
+        // AC-2312 (category C): an agent writes a table and nobody types. The room serializes it differently from the file, so only
+        // the saver can say the text is saved, and it must not say so while typed text is still owed.
+        depot.WriteOutside(depot.File + "\n| Ticket | Afspraak |\n|---|---|\n| PP-1 | Sydney |\n");
+        await (depot.Announce?.Invoke(new DepotNoteEvent("external", ["doc-1"])) ?? Task.CompletedTask);
+        await _UntilAsync(() =>
+        {
+            lock (hub.Merged)
+            {
+                return Task.FromResult(hub.Merged.Contains(_Depot.Sha(depot.File)));
+            }
+        });
+        var outside = await session.ReadAsync(CancellationToken.None);
+        Assert.Contains("PP-1", outside.Text, StringComparison.Ordinal);
+        Assert.NotEqual(depot.File, outside.SerializedText);
+        Assert.Equal(_Depot.Sha(depot.File), outside.PersistedVersion);
+        Assert.Equal(7, depot.Posts);
+        await _TypeAsync(session, "Zero", " typed");
+        Assert.Null((await session.ReadAsync(CancellationToken.None)).PersistedVersion);
+        await depot.NextPostAsync();
+        await _UntilAsync(async () => (await session.ReadAsync(CancellationToken.None)).PersistedVersion is not null);
+        Assert.Equal(_Depot.Sha(depot.File), (await session.ReadAsync(CancellationToken.None)).PersistedVersion);
+        Assert.Contains("Zero typed", depot.File, StringComparison.Ordinal);
+    }
+
+    private static async Task _UntilAsync(Func<Task<bool>> condition)
+    {
+        var deadline = DateTime.UtcNow + Wait;
+        while (!await condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "The condition did not hold in time.");
+            await Task.Delay(20);
+        }
     }
 
     // Types `text` right after (or before) the first `anchor` in the session's text, on its current revision.
@@ -249,7 +282,11 @@ public class DepotNoteSaverTests
 
         public Task MergedAsync(string documentId, string checksum, int[] blocks, int conflicts, CancellationToken cancellationToken)
         {
-            Merged.Add(checksum);
+            lock (Merged)
+            {
+                Merged.Add(checksum);
+            }
+
             return Task.CompletedTask;
         }
 
