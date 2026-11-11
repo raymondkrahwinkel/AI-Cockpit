@@ -463,7 +463,8 @@
     <!-- 0.179.1 (AC-2307): IAssistantChannelGateway.AcceptsImagesChanged (default no-op, SDK 3.91.0); a plugin that uses it sets minHostVersion 0.179.1. -->
     <!-- 0.180.0 (AC-2312): LiveFileSnapshot.PersistedVersion (SDK 3.92.0); a plugin that sets it sets minHostVersion 0.180.0. -->
     <!-- 0.180.1 (AC-2301): older transcript source pages (SDK 3.93.0); Depot requires this host version. -->
-    <VersionPrefix>0.180.1</VersionPrefix>
+    <!-- 0.180.2 (AC-2318): animated Wispslate splash; no API change. -->
+    <VersionPrefix>0.180.2</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

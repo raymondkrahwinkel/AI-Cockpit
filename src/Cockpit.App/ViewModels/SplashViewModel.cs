@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Cockpit.App.Controls;
 using Cockpit.Core.Startup;
 
 namespace Cockpit.App.ViewModels;
@@ -18,11 +19,12 @@ public sealed class SplashSegment(StartupStepState state)
 // AC-1827: real steps and no percentage, which would lie exactly when a step hangs; refreshed on a tick as well as on change.
 public sealed partial class SplashViewModel : ObservableObject
 {
+    // AC-2318: the steps wait for the 1.3 s logo entrance, and the splash stays until they are in. Reduced motion has no entrance.
     // So a start that finishes at once never flashes the step UI.
-    public static readonly TimeSpan StepsAppearAfter = TimeSpan.FromMilliseconds(400);
+    public TimeSpan StepsAppearAfter { get; init; } = TimeSpan.FromMilliseconds(SplashEntrance.IsReducedMotion ? 400 : 1400);
 
     // So the logo entrance finishes and a warm start does not flash.
-    public static readonly TimeSpan MinimumShown = TimeSpan.FromMilliseconds(600);
+    public TimeSpan MinimumShown { get; init; } = TimeSpan.FromMilliseconds(SplashEntrance.IsReducedMotion ? 600 : 1400);
 
     private readonly StartupSequence _sequence;
     private readonly DateTimeOffset _shownAt;
@@ -34,6 +36,10 @@ public sealed partial class SplashViewModel : ObservableObject
     public bool IsUnlocking => Unlock is not null;
 
     public bool HasUnlockStep => IsUnlocking || _unlocked;
+
+    // AC-2318: the layout moves up only once the entrance is done; before that the mark is still arriving.
+    [ObservableProperty]
+    private bool _unlockLayout;
 
     public bool HasUnlockError => !string.IsNullOrEmpty(Unlock?.Error);
 
@@ -105,7 +111,8 @@ public sealed partial class SplashViewModel : ObservableObject
     {
         var steps = _sequence.Steps;
         var now = _sequence.Now;
-        StepsVisible = IsUnlocking || _unlocked || Shown >= StepsAppearAfter;
+        StepsVisible = Shown >= StepsAppearAfter;
+        UnlockLayout = HasUnlockStep && StepsVisible;
 
         Segments.Clear();
         foreach (var step in steps)

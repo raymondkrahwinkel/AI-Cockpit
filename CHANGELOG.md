@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2318: the start-up splash now plays the Wispslate entrance: the W arcs in with its streaks, the colour gradient runs once through the logo, then the name and the steps appear. It keeps moving while the main window is built, follows light and dark, and is a still image when Windows animation effects are off. The splash stays at least 1.4 s so the entrance is seen (host 0.180.2).
+
 - AC-2301: paired phones can request byte-bounded older transcript pages without replacing the conversation (Depot 0.65.5, host 0.180.1, SDK 3.93.0).
 
 - AC-2312: a live Depot note that an agent edits while it is open no longer stays on "Not confirmed in Depot yet" with phantom "lines only in this Cockpit". Depot's saver now confirms the version the text is saved as, so formatting the note editor writes differently (tables, lists) no longer blocks the confirmation, and Retry sync says why when it cannot confirm yet (host 0.180.0, plugin SDK 3.92.0, Depot 0.65.4).
