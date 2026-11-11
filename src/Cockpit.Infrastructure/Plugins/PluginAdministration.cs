@@ -353,7 +353,7 @@ internal sealed class PluginAdministration(
     {
         try
         {
-            return await Task.Run(() => loaded.ActivateOne(plugin)).WaitAsync(_startGrace(plugin)).ConfigureAwait(false);
+            return await Task.Run(() => loaded.ActivateOneAsync(plugin)).WaitAsync(_startGrace(plugin)).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {

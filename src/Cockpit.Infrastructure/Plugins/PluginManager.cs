@@ -477,7 +477,7 @@ public sealed class PluginManager(
 
     private const string _HostServicesRequireRestart = "The plugin registers host services and needs a restart to activate.";
 
-    // AC-2025: why ActivateOne would turn these bytes away before it starts anything, or null; asked before the running
+    // AC-2025: why ActivateOneAsync would turn these bytes away before it starts anything, or null; asked before the running
     // version is stopped for them.
     public PluginActivationResult? WouldRefuse(DiscoveredPlugin discovered)
     {
@@ -506,7 +506,7 @@ public sealed class PluginManager(
                 ? new(PluginActivationStatus.NeedsRestart, "The plugin lifecycle is not available for live activation.")
                 : null;
 
-    public PluginActivationResult ActivateOne(DiscoveredPlugin discovered)
+    public async Task<PluginActivationResult> ActivateOneAsync(DiscoveredPlugin discovered)
     {
         var attempt = new object();
         Func<DiscoveredPlugin, ICockpitPlugin?> activate;
@@ -681,23 +681,28 @@ public sealed class PluginManager(
         // Abandoned between joining and starting its UI: no UI part may start under what runs by now.
         if (!_IsCurrent(discovered.FolderId, attempt))
         {
-            return _DropAbandoned(discovered, plugin);
+            return await _DropAbandonedAsync(discovered, plugin).ConfigureAwait(false);
         }
 
-        var uiFailure = _StartUiPart(discovered, plugin, () => _IsCurrent(discovered.FolderId, attempt));
+        var uiFailure = await _StartUiPartAsync(discovered, plugin, () => _IsCurrent(discovered.FolderId, attempt)).ConfigureAwait(false);
+        bool abandoned;
         lock (_lifecycleLock)
         {
-            if (!_IsCurrent(discovered.FolderId, attempt))
+            abandoned = !_IsCurrent(discovered.FolderId, attempt);
+            if (!abandoned)
             {
-                // Dropped behind the start in the UI queue, so a UI part that did start goes away again.
-                return _DropAbandoned(discovered, plugin);
+                _EndAttempt(discovered.FolderId);
+                if (uiFailure is not null)
+                {
+                    _restartReasons[discovered.FolderId] = (discovered.Sha256, uiFailure);
+                }
             }
+        }
 
-            _EndAttempt(discovered.FolderId);
-            if (uiFailure is not null)
-            {
-                _restartReasons[discovered.FolderId] = (discovered.Sha256, uiFailure);
-            }
+        // The UI may need this lock while finishing teardown, so leave it before awaiting the abandoned part.
+        if (abandoned)
+        {
+            return await _DropAbandonedAsync(discovered, plugin).ConfigureAwait(false);
         }
 
         // The backend part stays loaded: the caller decides, and an update takes the whole plugin back down.
@@ -705,7 +710,7 @@ public sealed class PluginManager(
     }
 
     // An abandoned attempt that had already joined: the rollback may have taken it out, and if not it goes now.
-    private PluginActivationResult _DropAbandoned(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    private async Task<PluginActivationResult> _DropAbandonedAsync(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
     {
         bool removed;
         lock (_lifecycleLock)
@@ -718,7 +723,7 @@ public sealed class PluginManager(
         {
             try
             {
-                _StopUiAsync(discovered, plugin).GetAwaiter().GetResult();
+                await _StopUiAsync(discovered, plugin).ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -734,11 +739,11 @@ public sealed class PluginManager(
         return new(PluginActivationStatus.NeedsRestart, "The activation was abandoned after it did not finish in time.");
     }
 
-    private string? _StartUiPart(DiscoveredPlugin discovered, ICockpitPlugin? plugin, Func<bool> isCurrent)
+    private async Task<string?> _StartUiPartAsync(DiscoveredPlugin discovered, ICockpitPlugin? plugin, Func<bool> isCurrent)
     {
         try
         {
-            return StartUiPart(discovered, plugin, isCurrent).GetAwaiter().GetResult();
+            return await StartUiPart(discovered, plugin, isCurrent).ConfigureAwait(false);
         }
         catch (Exception exception)
         {

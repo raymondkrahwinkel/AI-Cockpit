@@ -143,7 +143,7 @@ public sealed class PluginLiveLifecycleTests
         Assert.Equal(PluginActivationStatus.NotActive, (await manager.DeactivateAsync(PluginId)).Status);
         Assert.Equal(2, disposed.Count);
 
-        var reactivated = await Task.Run(() => manager.ActivateOne(discovered));
+        var reactivated = await Task.Run(() => manager.ActivateOneAsync(discovered));
         Assert.True(reactivated.Status == PluginActivationStatus.Activated, $"Reactivation gave {reactivated.Status}: {reactivated.Reason}");
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
