@@ -23,17 +23,11 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class PluginManagerViewModelBusyGateTests
 {
 
-    /// <summary>
-    /// Remove a plugin, change your mind, install it again: the removal is applied at the next start, so the
-    /// installer stages over the folder — which used to read "the state it had" off a registration Remove had just
-    /// deleted, bringing the plugin back disabled with the new bytes pinned as approved. It must write no
-    /// registration at all (awaiting-approval). An ordinary update over a known, enabled install still comes back
-    /// enabled with the new bytes pinned and no consent prompt.
-    /// </summary>
+    // AC-2284: remembering the source of a fresh or just-removed plugin must never approve its bytes.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task AnUpdate_KeepsAKnownInstallsEnabledState_ButAJustRemovedOneComesBackUnasked(bool knownInstall)
+    public async Task AnUpdate_KeepsAKnownInstallsEnabledState_ButAJustRemovedOneStillNeedsApproval(bool knownInstall)
     {
         var registrations = new Dictionary<string, PluginRegistration>();
         if (knownInstall)
@@ -62,8 +56,10 @@ public class PluginManagerViewModelBusyGateTests
         }
         else
         {
-            await registrationStore.DidNotReceive().SaveAsync(
-                Arg.Any<string>(), Arg.Any<PluginRegistration>(), Arg.Any<CancellationToken>());
+            await registrationStore.Received(1).SaveAsync(
+                "plugin-folder",
+                Arg.Is<PluginRegistration>(saved => !saved.Enabled && string.IsNullOrEmpty(saved.PinnedSha256)),
+                Arg.Any<CancellationToken>());
             Assert.False(manager.NeedsRestart);
         }
     }

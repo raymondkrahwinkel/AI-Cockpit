@@ -462,7 +462,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Dictionary<string, List<Func<Task>>> _settingsSavedHandlers = [];
 
     // The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins.
-    public PluginManagerViewModel Plugins { get; }
+    public PluginManagerViewModel Plugins { get; private set; }
 
     // The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.
     public DelegatedTasksViewModel DelegatedTasks { get; }

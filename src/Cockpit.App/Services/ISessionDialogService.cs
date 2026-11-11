@@ -10,8 +10,11 @@ namespace Cockpit.App.Services;
 /// Shows the cockpit's dialogs from the view-model layer without the view models touching
 /// window types (keeps <see cref="CockpitViewModel"/> unit-testable behind this seam).
 /// </summary>
-public interface ISessionDialogService : IProjectDialogs
+public interface ISessionDialogService : IProjectDialogs, IPluginManagerDialogs
 {
+    new Task<string?> PickFolderAsync(string title);
+    new Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
+
     /// <summary>
     /// Shows the New-session dialog — SDK vs TTY chosen inside it (#32) — returning the confirmed choices, or null
     /// if cancelled. <paramref name="prefill"/> (#AC-96) seeds fields; <paramref name="isolateInWorktree"/> turns on
@@ -39,13 +42,6 @@ public interface ISessionDialogService : IProjectDialogs
     Task ShowVerifyRunnersDialogAsync();
 
     /// <summary>
-    /// Shows the plugin store dialog (#62) over the currently active window — a browsing layer around
-    /// <paramref name="manager"/>, the same <see cref="PluginManagerViewModel"/> instance Options→Plugins uses.
-    /// <paramref name="initialFilter"/> preselects a sidebar scope (#65); null keeps the default Discover page.
-    /// </summary>
-    Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null);
-
-    /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/>. <paramref name="category"/> is the nav item's
     /// <c>Tag</c> to open on, or null for the default — AC-1001's deep-link actions pass this instead of a new window.
@@ -63,11 +59,6 @@ public interface ISessionDialogService : IProjectDialogs
     Task ShowServerPluginSettingsAsync(string title, Func<Avalonia.Controls.Control> createView, Func<Task<string?>>? persist = null) => Task.CompletedTask;
 
     /// <summary>
-    /// Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.
-    /// </summary>
-    Task<string?> PickPluginZipAsync();
-
-    /// <summary>
     /// Picks a dashboard file to import; returns the chosen path or null if cancelled.
     /// </summary>
     Task<string?> PickDashboardToImportAsync();
@@ -76,11 +67,6 @@ public interface ISessionDialogService : IProjectDialogs
     /// Picks where to write a dashboard, offering <paramref name="suggestedName"/> as the file name; returns the chosen path or null if cancelled.
     /// </summary>
     Task<string?> PickDashboardExportPathAsync(string suggestedName);
-
-    /// <summary>
-    /// Shows the first-load plugin consent dialog (#14); returns true only when the operator explicitly enables the plugin.
-    /// </summary>
-    Task<bool> ShowPluginConsentAsync(PluginConsentInfo info);
 
     /// <summary>
     /// Shows the About dialog (#46) over the main window: app name, version, description and links.
@@ -122,7 +108,6 @@ public interface ISessionDialogService : IProjectDialogs
     // The Agents palette (AC-1933): the Agents panel as a compact kanban overlay.
     Task ShowAgentsPaletteDialogAsync(AgentsOverviewViewModel agents);
 
-    Task<bool> ShowPublisherKeyChangedDialogAsync(Cockpit.Core.Plugins.PluginKeyConsentRequest request) => Task.FromResult(false);
 
     /// <summary>
     /// Shows the Set-status dialog (AC-32) seeded with <paramref name="currentStatusline"/>. Returns the new value

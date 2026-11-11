@@ -10,8 +10,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
-// AC-1474: the remote side treats PluginStoreConfig.Location only as the opaque server store id.
-internal sealed class RemotePluginAdministration(BackendApiClient client, ILogger? logger = null) : IPluginAdministration, IPluginStoreCatalog, IPluginChannelRelay, IServerRestart
+// AC-2284: server ids select the configured source; no source credentials travel back to this client.
+internal sealed partial class RemotePluginAdministration(BackendApiClient client, ILogger? logger = null) : IPluginAdministration, IPluginStoreCatalog, IPluginChannelRelay, IServerRestart,
+    IPluginStoreConfigStore, IPluginStoreSources
 {
     private readonly Dictionary<(string Folder, string Name), List<Action<long, JsonElement>>> _subscribers = [];
 
@@ -24,7 +25,8 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public async Task<PluginStoreFetchResult> FetchStoreIndexAsync(PluginStoreConfig store, CancellationToken cancellationToken = default)
     {
         var catalog = await GetStoresAsync(cancellationToken).ConfigureAwait(false);
-        var selected = catalog.FirstOrDefault(candidate => string.Equals(candidate.Id, store.Location, StringComparison.Ordinal));
+        var selected = catalog.FirstOrDefault(candidate => !candidate.IsHidden && !candidate.IsWithdrawn
+            && string.Equals(candidate.Id, store.ServerId ?? store.Location, StringComparison.Ordinal));
         return selected?.Index is { } index
             ? new PluginStoreFetchResult(true, null, index, selected.Location)
             : new PluginStoreFetchResult(false, "That plugin store is not configured on the server.", null, null);
@@ -42,7 +44,12 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public async Task<PluginProvisionResult> InstallFromStoreAsync(PluginProvisionRequest request, CancellationToken cancellationToken = default, IProgress<PluginDownloadProgress>? progress = null,
         Func<PluginKeyConsentRequest, CancellationToken, Task<bool>>? keyConsent = null)
     {
-        var response = await client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new { storeId = request.Store.Location, pluginId = request.Id, version = request.Version.Version }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+        var response = await InstallAsync(null).ConfigureAwait(false);
+        if (response is { Outcome: PluginProvisionOutcome.KeyNotConfirmed, PublisherConsent: { } consent }
+            && keyConsent is not null && await keyConsent(consent, cancellationToken).ConfigureAwait(false))
+        {
+            response = await InstallAsync(consent).ConfigureAwait(false);
+        }
         PluginLiveState? live = response switch
         {
             { RolledBack: true, Notice: { } error } => PluginLiveState.UpdateRolledBack(error),
@@ -54,8 +61,24 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
             { RestartReason: { } reason } => PluginLiveState.Blocked(reason),
             _ => null,
         };
-        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, null, response.FolderId, response.Sha256, Live: live);
+        return new PluginProvisionResult(response.Outcome, response.Id, response.Name, response.Error, response.Warning,
+            response.FolderId, response.Sha256, Live: live, InPlace: response.InPlace, ConsentReason: response.ConsentReason);
+
+        Task<RemotePluginInstall> InstallAsync(PluginKeyConsentRequest? consent) =>
+            client.SendAsync<RemotePluginInstall>(HttpMethod.Post, "api/v1/plugins", new
+            {
+                storeId = request.Store.ServerId ?? request.Store.Location,
+                pluginId = request.Id,
+                version = request.Version.Version,
+                request.AllowDowngrade,
+                request.SwitchSource,
+                publisherConsent = consent,
+            }, ConnectKeyEndpoints.Json, cancellationToken);
     }
+
+    public async Task<PluginTrustEntry?> GetPublisherTrustAsync(string folderId, CancellationToken cancellationToken = default) =>
+        (await client.SendAsync<RemotePublisherTrust>(HttpMethod.Get, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/publisher",
+            null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false)).Trust;
 
     public async Task<PluginLiveState> SetEnabledAsync(string folderId, bool enabled, string pinnedSha256, CancellationToken cancellationToken = default)
     {
@@ -104,6 +127,11 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     // AC-1547: each `plugin` event of the stream, to whoever subscribed that plugin's folder and event name.
     internal void OnEvent(BackendEvent evt)
     {
+        if (evt.Kind == PluginStoreEndpoints.EventKind)
+        {
+            SourcesChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
         PluginEventFrame? frame;
         try
         {
@@ -317,7 +345,10 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         await client.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/server/restart", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null, bool RestartRequired = false, bool Live = false, bool Failed = false, bool RolledBack = false, string? Notice = null);
+    private sealed record RemotePluginInstall(PluginProvisionOutcome Outcome, string Id, string Name, string Version, string? Error, string? FolderId, string? Sha256, string? RestartReason = null, bool RestartRequired = false, bool Live = false, bool Failed = false, bool RolledBack = false, string? Notice = null,
+        string? Warning = null, bool InPlace = false, string? ConsentReason = null, PluginKeyConsentRequest? PublisherConsent = null);
+
+    private sealed record RemotePublisherTrust(PluginTrustEntry? Trust);
 
     private sealed record RemoteRetiredLoadContexts(int Count);
 
@@ -344,11 +375,15 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         string? Author,
         string? Description,
         string? MinHostVersion,
-        string? RunningVersion = null)
+        string? RunningVersion = null,
+        string? Source = null,
+        string? RunningSha256 = null,
+        IReadOnlyList<string>? Capabilities = null)
     {
         public static InstalledPlugin ToInstalled(RemotePluginEntry entry) => new(
-            new DiscoveredPlugin("", entry.FolderId, new PluginManifest(entry.Id, entry.Name, entry.Version, null, 0, null, entry.MinHostVersion, entry.Description, entry.Author), entry.Sha256, entry.Decision),
-            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned) : null, null, null, null, entry.RunningVersion);
+            new DiscoveredPlugin("", entry.FolderId, new PluginManifest(entry.Id, entry.Name, entry.Version, null, 0, null, entry.MinHostVersion, entry.Description, entry.Author,
+                Capabilities: entry.Capabilities), entry.Sha256, entry.Decision) { RequiresRestart = entry.TakesEffectAfterServerRestarts },
+            entry.PinnedSha256 is { } pinned ? new PluginRegistration(entry.Enabled, pinned, Source: entry.Source) : null, null, null, null, entry.RunningVersion, entry.RunningSha256);
     }
 
 }
