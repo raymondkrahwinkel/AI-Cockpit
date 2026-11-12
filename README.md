@@ -751,8 +751,8 @@ because its installed companion tools can differ from another machine's.
 ### Stream silence timeout
 
 OpenAI-compatible profiles offer **Stream silence timeout (s)** in session defaults.
-Leave it empty for 120 seconds on remote APIs or 600 seconds on LM Studio, Ollama
-and localhost endpoints. Values must be whole seconds from 30 to 3600.
+Leave it empty for 600 seconds on loopback endpoints (including local LM Studio
+and Ollama), or 120 seconds on remote endpoints. Values must be whole seconds from 30 to 3600.
 The value is stored in `Profiles[].Defaults.OptionDefaults.streamSilenceTimeoutSeconds`,
 staged with the profile for Apply/Cancel and included in the existing profile settings carrier.
 `list_profiles` reports it with `SetOnProfile`; `start_agent` accepts

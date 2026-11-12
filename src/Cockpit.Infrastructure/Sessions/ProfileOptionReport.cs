@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Plugins.OpenAiCompat;
@@ -11,39 +10,10 @@ namespace Cockpit.Infrastructure.Sessions;
 // declare may be a leftover from another provider or an older build, and reporting it would invent meaning.
 public static class ProfileOptionReport
 {
-    public static PluginSessionCapabilities? CapabilitiesFor(SessionProfile profile, PluginSessionCapabilities? capabilities)
-    {
-        if (profile.ProviderConfig is OllamaConfig or LmStudioConfig)
-        {
-            return new PluginSessionCapabilities(false, false) { DeclaredOptions = [StreamSilenceTimeout.Descriptor with { CurrentValueHint = "600" }] };
-        }
-
-        if (profile.ProviderConfig is PluginProviderConfig plugin && capabilities?.DeclaredOptions.Any(option => option.Key == StreamSilenceTimeout.Key) == true)
-        {
-            try
-            {
-                using var config = JsonDocument.Parse(plugin.ConfigJson);
-                if (config.RootElement.ValueKind != JsonValueKind.Object)
-                {
-                    return capabilities;
-                }
-                var baseUrl = config.RootElement.EnumerateObject().FirstOrDefault(property => property.Name.Equals("baseUrl", StringComparison.OrdinalIgnoreCase)).Value;
-                var seconds = StreamSilenceTimeout.DefaultFor(baseUrl.ValueKind == JsonValueKind.String ? baseUrl.GetString() ?? "" : "").TotalSeconds;
-                return capabilities with
-                {
-                    DeclaredOptions = [.. capabilities.DeclaredOptions.Select(option => option.Key == StreamSilenceTimeout.Key
-                        ? option with { CurrentValueHint = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) }
-                        : option)],
-                };
-            }
-            catch (JsonException)
-            {
-                return capabilities;
-            }
-        }
-
-        return capabilities;
-    }
+    public static PluginSessionCapabilities? CapabilitiesFor(SessionProfile profile, PluginSessionCapabilities? capabilities) =>
+        profile.ProviderConfig is OllamaConfig or LmStudioConfig
+            ? new PluginSessionCapabilities(false, false) { DeclaredOptions = [StreamSilenceTimeout.Descriptor] }
+            : capabilities;
 
     // The declared options, each carrying what the profile sets it to or, failing that, the provider's own default.
     public static IReadOnlyList<AssistantProfileOptionRow> For(

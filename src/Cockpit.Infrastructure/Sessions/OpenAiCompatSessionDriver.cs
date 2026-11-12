@@ -117,7 +117,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         Profile = profile;
         _streamIdleTimeout = StreamSilenceTimeout.Resolve(
             launchOptions?.GetValueOrDefault(StreamSilenceTimeout.Key) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key),
-            TimeSpan.FromSeconds(600));
+            StreamSilenceTimeout.DefaultFor(config switch
+            {
+                OllamaConfig ollama => ollama.BaseUrl,
+                LmStudioConfig studio => studio.BaseUrl,
+                _ => string.Empty,
+            }));
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         if (config is LmStudioConfig lmStudio && _model is { } selectedModel)
         {

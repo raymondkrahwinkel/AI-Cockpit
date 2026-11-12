@@ -484,7 +484,7 @@ public static class StreamSilenceTimeout
 
     public static PluginSessionLaunchOption LaunchOption { get; } = new(Key, Label, []);
 
-    public static PluginSessionOptionDescriptor Descriptor { get; } = new(Key, Label, CurrentValueHint: "120");
+    public static PluginSessionOptionDescriptor Descriptor { get; } = new(Key, Label);
 
     public static bool IsValid(string? value) => string.IsNullOrWhiteSpace(value)
         || (int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var seconds) && seconds is >= 30 and <= 3600);
