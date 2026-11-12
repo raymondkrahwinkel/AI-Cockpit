@@ -147,7 +147,7 @@ internal static class ChatTurnLoop
             {
                 round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken, streamIdleTimeout ?? StreamIdleTimeout).ConfigureAwait(false);
             }
-            catch (ChatStreamIdleTimeoutException ex) when (idleRetried && !cancellationToken.IsCancellationRequested)
+            catch (ChatStreamIdleTimeoutException ex) when (!idleRetried && !cancellationToken.IsCancellationRequested)
             {
                 idleRetried = true;
                 toolRounds += history.Skip(historyStart).Count(message => message.Role == ChatRole.Tool);
