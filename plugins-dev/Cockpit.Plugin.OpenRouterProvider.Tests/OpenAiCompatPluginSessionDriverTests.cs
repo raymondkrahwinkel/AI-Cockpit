@@ -35,7 +35,7 @@ public class OpenAiCompatPluginSessionDriverTests
 
         var transcript = string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text));
         Assert.Equal(stalls ? 2 : 1, requests.Count);
-        Assert.All(requests, request => Assert.Equal("hi", Assert.Single(request.Where(message => message.Role == ChatRole.User)).Text));
+        Assert.All(requests, request => Assert.Equal("hi", Assert.Single(request, message => message.Role == ChatRole.User).Text));
         Assert.Equal(stalls, Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
         if (stalls)
         {

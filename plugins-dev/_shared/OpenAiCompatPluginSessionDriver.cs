@@ -35,6 +35,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     private string? _sessionId;
     private string _model = defaultModel;
+    private readonly TimeSpan _defaultStreamIdleTimeout = streamIdleTimeout ?? ChatTurnLoop.StreamIdleTimeout;
     private TimeSpan? _streamIdleTimeout = streamIdleTimeout;
     private CancellationTokenSource? _turnCancellation;
 
@@ -75,7 +76,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     // the end-of-turn convention the continuation net reads once tools are offered (AC-1431).
     public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
-        _streamIdleTimeout = StreamSilenceTimeout.Resolve(options?.GetValueOrDefault(StreamSilenceTimeout.Key), streamIdleTimeout ?? ChatTurnLoop.StreamIdleTimeout);
+        _streamIdleTimeout = StreamSilenceTimeout.Resolve(options?.GetValueOrDefault(StreamSilenceTimeout.Key), _defaultStreamIdleTimeout);
         var appendSystemPrompt = options is not null
             && options.TryGetValue(WellKnownPluginSessionOptions.AppendSystemPrompt, out var value)
             && !string.IsNullOrWhiteSpace(value)
