@@ -21,6 +21,7 @@ public class PluginEndpointToolAnnotationsTests
         "Cockpit.Plugin.GitHubPullRequests",
         "Cockpit.Plugin.Kubernetes",
         "Cockpit.Plugin.LocalCi",
+        "Cockpit.Plugin.Matomo",
         "Cockpit.Plugin.Proxmox",
         "Cockpit.Plugin.Workflows",
         "Cockpit.Plugin.YouTrack",
