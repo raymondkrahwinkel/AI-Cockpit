@@ -210,7 +210,7 @@ internal static class OptionsStaging
     }
 
     private static string _ProfileFingerprint(Cockpit.Core.Profiles.SessionProfile profile) =>
-        // GuardrailMode and GuardrailAllowedPaths are staged with the complete profile, including Cancel.
+        // Guardrail paths and streamSilenceTimeoutSeconds in OptionDefaults stage with the complete profile, including Cancel.
         JsonSerializer.Serialize(profile) + Separator + JsonSerializer.Serialize(profile.ProviderConfig, profile.ProviderConfig.GetType());
 
     private static object? _Read(object? root, string path)

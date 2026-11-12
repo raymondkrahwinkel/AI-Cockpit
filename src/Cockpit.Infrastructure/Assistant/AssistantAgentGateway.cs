@@ -154,7 +154,7 @@ internal sealed partial class AssistantAgentGateway(
             : null;
         var (launchOptions, optionRefusal) = SpawnOptionOverrides.Merge(
             registration?.DisplayName ?? profile.Provider.ToString(),
-            registration?.Capabilities,
+            ProfileOptionReport.CapabilitiesFor(profile, registration?.Capabilities),
             profile.Defaults?.OptionDefaults,
             request.OptionOverrides);
         if (optionRefusal is not null)
@@ -563,7 +563,7 @@ internal sealed partial class AssistantAgentGateway(
                     registration?.DisplayName ?? profile.Provider.ToString(),
                     models[index] ?? _ConfiguredModel(readings[index]))
                 {
-                    Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
+                    Options = ProfileOptionReport.For(ProfileOptionReport.CapabilitiesFor(profile, registration?.Capabilities), profile.Defaults?.OptionDefaults),
                     EnabledMcpServers = profile.EnabledMcpServerNames,
                     Sessions = sessionLimit?.ViewOf(profile),
                 };

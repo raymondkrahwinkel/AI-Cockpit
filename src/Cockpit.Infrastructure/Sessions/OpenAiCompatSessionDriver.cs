@@ -97,6 +97,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         SupportsThinking: false,
         SupportsVision: true);
 
+    private TimeSpan _streamIdleTimeout;
+
     public string? SessionId => _sessionId;
 
     public SessionProfile? Profile { get; private set; }
@@ -113,6 +115,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             ?? throw new InvalidOperationException($"{nameof(OpenAiCompatSessionDriver)} requires a profile with an OpenAI-compatible provider config.");
 
         Profile = profile;
+        _streamIdleTimeout = StreamSilenceTimeout.Resolve(
+            launchOptions?.GetValueOrDefault(StreamSilenceTimeout.Key) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key),
+            StreamSilenceTimeout.DefaultFor(config switch
+            {
+                OllamaConfig ollama => ollama.BaseUrl,
+                LmStudioConfig studio => studio.BaseUrl,
+                _ => string.Empty,
+            }));
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         if (config is LmStudioConfig lmStudio && _model is { } selectedModel)
         {
@@ -446,7 +456,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             options,
             delta => _events.Writer.TryWrite(new AssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta }),
             _logger,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            _streamIdleTimeout).ConfigureAwait(false);
 
         var reply = outcome.Text;
         var hasText = !string.IsNullOrWhiteSpace(reply);

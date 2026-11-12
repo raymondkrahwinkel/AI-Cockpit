@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Plugin.GrokProvider;
 
@@ -33,9 +34,11 @@ public sealed class GrokProviderPlugin : ICockpitPlugin
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
+                DeclaredOptions = [StreamSilenceTimeout.Descriptor],
             },
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.Grok)
         {
+            Options = [StreamSilenceTimeout.LaunchOption],
             TermsNotice = new TermsNotice("Grok (xAI): use is governed by your agreement with xAI.", new Uri("https://x.ai/legal/terms-of-service-enterprise"), null, "API-key use is billed to the key owner; xAI API terms apply."),
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok) != PluginCredentialKind.Unknown,

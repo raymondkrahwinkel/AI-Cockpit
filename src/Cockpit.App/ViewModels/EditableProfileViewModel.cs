@@ -12,6 +12,7 @@ using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.App.ViewModels;
 
@@ -299,7 +300,7 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     // Per-profile default editors for the selected plugin provider's own declared launch options (Claude's
     // permission mode/model/effort, Codex's sandbox) — rendered generically from the plugin's declaration, so the
-    // host imposes no provider vocabulary. Empty for a built-in provider or a plugin that declares none.
+    // host imposes no provider vocabulary. Local HTTP providers also expose the stream silence timeout here.
     public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginOptionDefaults { get; } = [];
 
     // Whether the selected plugin provider declares any start-option defaults to edit.
@@ -535,6 +536,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         !string.IsNullOrWhiteSpace(Label)
         && _GuardrailAllowedPaths().All(GuardrailPaths.IsValid)
         && _AreEnvironmentVariablesValid()
+        && StreamSilenceTimeout.IsValid(PluginOptionDefaults.FirstOrDefault(option => option.Key == StreamSilenceTimeout.Key)?.Value)
         && (!IsLmStudioProvider || LmStudioLoadOptionsError is null);
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
@@ -616,6 +618,12 @@ public partial class EditableProfileViewModel : ViewModelBase
                 }
                 PluginOptionDefaults.Add(editor);
             }
+        }
+
+        if (IsLocalProvider)
+        {
+            PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(
+                StreamSilenceTimeout.Key, StreamSilenceTimeout.Label, [], storedDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key)));
         }
 
         OnPropertyChanged(nameof(HasPluginOptionDefaults));
@@ -809,7 +817,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             : new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools);
         // The reading level is provider-neutral (AC-138) — any profile can launch an SDK session — so it rides on
         // Defaults for both the plugin and the legacy-typed branch above rather than only one of them.
-        defaults = defaults with { DefaultReadingLevel = SelectedReadingLevel.Value };
+        defaults = defaults with { DefaultReadingLevel = SelectedReadingLevel.Value, OptionDefaults = _CollectPluginOptionDefaults() };
 
         return new(
             Label.Trim(),

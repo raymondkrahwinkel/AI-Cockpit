@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Plugin.OpenRouterProvider;
 
@@ -34,9 +35,11 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
+                DeclaredOptions = [StreamSilenceTimeout.Descriptor],
             },
             DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenRouter)
         {
+            Options = [StreamSilenceTimeout.LaunchOption],
             TermsNotice = new TermsNotice("OpenRouter: use is governed by OpenRouter's terms and the selected provider's terms.", new Uri("https://openrouter.ai/terms"), null, "API-key use is billed to the key owner; OpenRouter API terms apply."),
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.OpenRouter) != PluginCredentialKind.Unknown,
