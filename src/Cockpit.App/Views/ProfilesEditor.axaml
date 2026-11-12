@@ -440,7 +440,7 @@
                         <ItemsControl ItemsSource="{Binding PluginOptionDefaults}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
-                                    <Grid ColumnDefinitions="120,*" Margin="0,0,0,6">
+                                    <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" Margin="0,0,0,6">
                                         <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <StackPanel Grid.Column="1" Spacing="2" IsVisible="{Binding !IsFreeText}">
@@ -453,6 +453,9 @@
                                         </StackPanel>
                                         <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
                                                  PlaceholderText="Not set — provider default"/>
+                                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ValidationError}"
+                                                   IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                   TextWrapping="Wrap" Classes="optionsHint"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

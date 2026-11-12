@@ -17,10 +17,14 @@ internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDri
             ?? throw new InvalidOperationException("The Grok provider config JSON did not deserialize.");
 
         var options = new OpenAIClientOptions { Endpoint = new Uri(config.BaseUrl) };
+        if (options.Endpoint.IsLoopback)
+        {
+            options.NetworkTimeout = Timeout.InfiniteTimeSpan;
+        }
         var credential = new ApiKeyCredential(
             OpenAiCompatConfig.ResolveApiKey(config, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Grok)
             ?? throw new InvalidOperationException("No API key: set one on the profile or XAI_API_KEY in session.env."));
         var chatClient = new OpenAIClient(credential, options).GetChatClient(config.Model).AsIChatClient();
-        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, turnLimits: ChatTurnLimits.From(config.TurnLimits), providerName: "Grok");
+        return new OpenAiCompatPluginSessionDriver(chatClient, config.Model, turnLimits: ChatTurnLimits.From(config.TurnLimits), streamIdleTimeout: StreamSilenceTimeout.DefaultFor(config.BaseUrl), providerName: "Grok");
     }
 }

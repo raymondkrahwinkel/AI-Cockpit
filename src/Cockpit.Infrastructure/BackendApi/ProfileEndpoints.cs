@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -343,6 +344,11 @@ internal static class ProfileEndpoints
             return (null, _Invalid("A profile needs a label."));
         }
 
+        if (!StreamSilenceTimeout.IsValid(incoming.Defaults?.OptionDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key)))
+        {
+            return (null, _Invalid(StreamSilenceTimeout.ValidationMessage));
+        }
+
         var providerRefused = held is not null
             ? provider != SessionsEndpoints.ProviderId(held)
             : incoming.ProviderConfig is not (OllamaConfig or LmStudioConfig) && services.GetService<IPluginProviderRegistry>()?.Resolve(provider) is null;
@@ -624,7 +630,7 @@ internal static class ProfileEndpoints
         Options(services, profile).Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
 
     internal static IReadOnlyList<PluginSessionOptionDescriptor> Options(IServiceProvider services, SessionProfile profile) =>
-        services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [];
+        ProfileOptionReport.CapabilitiesFor(profile, services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities)?.DeclaredOptions ?? [];
 
     // A credential or a program path anywhere in the request, before any of it is read.
     internal static IResult? Refusal(JsonNode? node)

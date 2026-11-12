@@ -17,8 +17,13 @@ public class OpenAiCompatPluginSessionDriverTests
     public async Task SendUserMessage_ReportsAnIdleStreamOrCompletesASteadyOne(bool stalls)
     {
         var chatClient = Substitute.For<IChatClient>();
+        var requests = new List<ChatMessage[]>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(stalls ? _StalledStream() : _SlowSteadyStream());
+            .Returns(call =>
+            {
+                requests.Add(call.ArgAt<IEnumerable<ChatMessage>>(0).ToArray());
+                return stalls ? _StalledStream(call.ArgAt<CancellationToken>(2)) : _SlowSteadyStream();
+            });
         // A stall never sends again, so a short timeout is exact; a steady stream gets 200x its 10 ms gap, so a busy
         // machine cannot stretch one gap past the timeout and turn the steady case into an idle one.
         var idleTimeout = stalls ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(2);
@@ -28,11 +33,20 @@ public class OpenAiCompatPluginSessionDriverTests
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        Assert.Equal(stalls ? "Hello" : "Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        var transcript = string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text));
+        Assert.Equal(stalls ? 2 : 1, requests.Count);
+        Assert.All(requests, request => Assert.Equal("hi", Assert.Single(request.Where(message => message.Role == ChatRole.User)).Text));
         Assert.Equal(stalls, Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
         if (stalls)
         {
-            Assert.Contains("did not send an update", Assert.Single(events.OfType<PluginSessionError>()).Message);
+            Assert.Contains("retrying once", transcript);
+            Assert.Contains("Raise the stream silence timeout", Assert.Single(events.OfType<PluginSessionError>()).Message);
+            Assert.Equal(requests[0], requests[1]);
+        }
+
+        else
+        {
+            Assert.Equal("Hello world.", transcript);
         }
 
         Assert.Single(events, evt => evt is PluginSessionInitialized);

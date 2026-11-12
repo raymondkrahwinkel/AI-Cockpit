@@ -232,6 +232,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = names.InBrief(scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt], localTools: _hostToolset is not null);
         }
+        if (!scratchOptions.ContainsKey(Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key)
+            && profile?.Defaults?.OptionDefaults?.GetValueOrDefault(Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key) is { } silenceTimeout)
+        {
+            scratchOptions[Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key] = silenceTimeout;
+        }
         await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
         if (paneId is not null && inner.ProcessId is { } processId) { stdioProcesses?.Bind(paneId, processId); }
     }

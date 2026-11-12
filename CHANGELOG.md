@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Local models default to 600 seconds, remote APIs to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.
+
 - AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).
 
 - AC-2289: Schedules in a remote window stays on its server, including profiles and working folders. Reminders can be created, snoozed and marked done through the same server channel; open screens refresh missed changes after reconnect.
