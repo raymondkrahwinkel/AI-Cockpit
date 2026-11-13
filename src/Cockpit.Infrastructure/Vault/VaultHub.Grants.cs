@@ -132,9 +132,11 @@ internal sealed partial class VaultHub
             var keys = state.ProjectGrants.GetValueOrDefault(projectId) ?? [];
             state.ProjectGrants[projectId] = [.. keys.Union(grantKeys, StringComparer.Ordinal)];
         }), cancellationToken).ConfigureAwait(false);
-        if (granted)
+        // A session revoke that landed after the write keeps its block: only a lease that still holds lifts it.
+        lock (_gate)
         {
-            lock (_gate)
+            granted &= _Holds(lease);
+            if (granted)
             {
                 _Unblock(paneId, grantKeys);
             }

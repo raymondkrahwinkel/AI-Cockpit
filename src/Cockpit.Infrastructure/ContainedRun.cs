@@ -40,60 +40,76 @@ internal static class WindowsContainedStart
 
     public static ContainedRun Start(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment)
     {
-        var job = _KillOnCloseJob();
-        var (outputRead, outputWrite) = _Pipe();
-        var (errorRead, errorWrite) = _Pipe();
-        var (inputRead, inputWrite) = _Pipe(childReads: true);
-        var startupInfo = new StartupInfo
-        {
-            cb = Marshal.SizeOf<StartupInfo>(),
-            Flags = StartfUseStdHandles,
-            StdInput = inputRead.DangerousGetHandle(),
-            StdOutput = outputWrite.DangerousGetHandle(),
-            StdError = errorWrite.DangerousGetHandle(),
-        };
-        var block = GCHandle.Alloc(_EnvironmentBlock(environment), GCHandleType.Pinned);
-        ProcessInformation info;
-        bool created;
+        // Every handle is owned from the moment it exists: any failure below closes all of them, and a process that
+        // was created is terminated before it ran a single instruction.
+        var job = IntPtr.Zero;
+        var info = default(ProcessInformation);
+        SafeFileHandle? outputRead = null, outputWrite = null, errorRead = null, errorWrite = null, inputRead = null, inputWrite = null;
         try
         {
-            created = NativeMethods.CreateProcessW(
-                null, ConPtyHostFactory.BuildCommandLine(executable, arguments), IntPtr.Zero, IntPtr.Zero, bInheritHandles: true,
-                CreateSuspended | CreateUnicodeEnvironment | CreateNoWindow, block.AddrOfPinnedObject(), directory, ref startupInfo, out info);
+            job = _KillOnCloseJob();
+            (outputRead, outputWrite) = _Pipe();
+            (errorRead, errorWrite) = _Pipe();
+            (inputRead, inputWrite) = _Pipe(childReads: true);
+            var startupInfo = new StartupInfo
+            {
+                cb = Marshal.SizeOf<StartupInfo>(),
+                Flags = StartfUseStdHandles,
+                StdInput = inputRead.DangerousGetHandle(),
+                StdOutput = outputWrite.DangerousGetHandle(),
+                StdError = errorWrite.DangerousGetHandle(),
+            };
+            var block = GCHandle.Alloc(_EnvironmentBlock(environment), GCHandleType.Pinned);
+            try
+            {
+                if (!NativeMethods.CreateProcessW(
+                        null, ConPtyHostFactory.BuildCommandLine(executable, arguments), IntPtr.Zero, IntPtr.Zero, bInheritHandles: true,
+                        CreateSuspended | CreateUnicodeEnvironment | CreateNoWindow, block.AddrOfPinnedObject(), directory, ref startupInfo, out info))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                }
+            }
+            finally
+            {
+                block.Free();
+            }
+
+            if (!WindowsJobSessionAnchor.NativeMethods.AssignProcessToJobObject(job, info.Process) || NativeMethods.ResumeThread(info.Thread) == uint.MaxValue)
+            {
+                throw new InvalidOperationException($"The command could not be put in its job ({Marshal.GetLastWin32Error()}), so it was not started.");
+            }
+        }
+        catch
+        {
+            if (info.Process != IntPtr.Zero)
+            {
+                NativeMethods.TerminateProcess(info.Process, 1);
+                WindowsJobSessionAnchor.NativeMethods.CloseHandle(info.Process);
+            }
+
+            if (job != IntPtr.Zero)
+            {
+                WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
+            }
+
+            outputRead?.Dispose();
+            errorRead?.Dispose();
+            throw;
         }
         finally
         {
-            block.Free();
-            outputWrite.Dispose();
-            errorWrite.Dispose();
-            inputRead.Dispose();
+            if (info.Thread != IntPtr.Zero)
+            {
+                WindowsJobSessionAnchor.NativeMethods.CloseHandle(info.Thread);
+            }
 
-            // The command gets an empty stdin, as it did through Process.
-            inputWrite.Dispose();
+            // The child's ends are its own now; the command gets an empty stdin, as it did through Process.
+            outputWrite?.Dispose();
+            errorWrite?.Dispose();
+            inputRead?.Dispose();
+            inputWrite?.Dispose();
         }
 
-        if (!created)
-        {
-            var failure = new Win32Exception(Marshal.GetLastWin32Error());
-            WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
-            outputRead.Dispose();
-            errorRead.Dispose();
-            throw failure;
-        }
-
-        if (!WindowsJobSessionAnchor.NativeMethods.AssignProcessToJobObject(job, info.Process) || NativeMethods.ResumeThread(info.Thread) == uint.MaxValue)
-        {
-            var failure = Marshal.GetLastWin32Error();
-            NativeMethods.TerminateProcess(info.Process, 1);
-            WindowsJobSessionAnchor.NativeMethods.CloseHandle(info.Thread);
-            WindowsJobSessionAnchor.NativeMethods.CloseHandle(info.Process);
-            WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
-            outputRead.Dispose();
-            errorRead.Dispose();
-            throw new InvalidOperationException($"The command could not be put in its job ({failure}), so it was not started.");
-        }
-
-        WindowsJobSessionAnchor.NativeMethods.CloseHandle(info.Thread);
         var process = info.Process;
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var signal = new ManualResetEvent(false) { SafeWaitHandle = new SafeWaitHandle(process, ownsHandle: false) };
