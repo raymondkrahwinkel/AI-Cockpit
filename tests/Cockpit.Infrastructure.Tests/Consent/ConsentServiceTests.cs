@@ -413,7 +413,7 @@ public sealed class ConsentServiceTests
     }
 
     [Fact]
-    public async Task RequestConsentAsync_WithABypassingPolicy_SkipsThePrompt_AndLogsBypassedRatherThanApproved()
+    public async Task RequestConsentAsync_WithABypassingPolicy_SkipsThePrompt_LogsBypassed_AndRemembersNothing()
     {
         var entries = new List<ConsentAuditEntry>();
         _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
@@ -424,7 +424,8 @@ public sealed class ConsentServiceTests
         try
         {
             McpRequestContext.Set("cockpit-assistant");
-            var decision = await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk));
+            var request = Request(ConsentRisk.LowRisk, allowRemember: true);
+            var decision = await broker.RequestConsentAsync(request);
 
             Assert.True(decision.IsApproved);
             Assert.True(decision.Bypassed, "AC-759: a caller reading only IsApproved cannot tell this from a card the operator actually clicked.");
@@ -438,6 +439,11 @@ public sealed class ConsentServiceTests
             Assert.Equal("workflow.command", entry.Scope);
             Assert.Equal("cockpit-assistant", entry.PaneId);
             Assert.False(entry.Remembered);
+
+            // A bypass must not leave a remembered approval behind: once the operator unticks the source, the card comes back.
+            policy.Answer = false;
+            await broker.RequestConsentAsync(request);
+            Assert.Single(prompts);
         }
         finally
         {
@@ -517,36 +523,6 @@ public sealed class ConsentServiceTests
             Assert.Single(prompts);
             Assert.False(decision.Bypassed);
             Assert.Empty(policy.Asked);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
-
-
-
-    [Fact]
-    public async Task RequestConsentAsync_ABypassedRequest_DoesNotBecomeARememberedApproval()
-    {
-        // Why the check sits before the remember set and not after it. A bypass is the stronger statement of the
-        // two and must not leave the weaker one behind: switching the source off has to take the exemption with
-        // it, rather than finding the same action now silently approved by a remember the operator never gave.
-        var policy = new StubPolicy();
-        var broker = new ConsentService(_audit, policy);
-        var prompts = _RecordPrompts(broker);
-
-        try
-        {
-            McpRequestContext.Set("cockpit-assistant");
-            var request = Request(ConsentRisk.LowRisk, allowRemember: true);
-            await broker.RequestConsentAsync(request);
-            Assert.Empty(prompts);
-
-            policy.Answer = false;                       // the operator unticks the source
-            await broker.RequestConsentAsync(request);
-
-            Assert.Single(prompts);
         }
         finally
         {
