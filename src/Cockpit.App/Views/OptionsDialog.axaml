@@ -207,6 +207,17 @@
                             </Grid>
                         </ListBoxItem>
 
+                        <!-- AC-2347: the vault hub, next to Security. -->
+                        <ListBoxItem Tag="vault">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Grid.Column="0" Kind="ShieldKeyOutline" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Vault" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
+                                </Border>
+                            </Grid>
+                        </ListBoxItem>
+
                         <!-- AC-1002: replaces the standalone McpServersDialog window, the same deep-link move
                              AC-1001 made for Profiles. -->
                         <ListBoxItem Tag="mcp-servers">
@@ -1854,6 +1865,11 @@
                      McpServers.StatusMessage next to the list. Since AC-1084 that is the only place it is shown —
                      an operator looking at a different category is brought here by the sidebar jump instead of
                      reading a copy of it in the footer. -->
+                <ScrollViewer Tag="vault"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=vault}">
+                    <controls:VaultOptionsPage Margin="24,20" MaxWidth="900" DataContext="{Binding Vault}"/>
+                </ScrollViewer>
+
                 <ScrollViewer Tag="mcp-servers"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=mcp-servers}">
                     <StackPanel Margin="24,20" Spacing="8">

@@ -3526,6 +3526,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-1846: Options › Sync.
     public SyncOptionsViewModel Sync { get; internal set; } = new();
 
+    // AC-2347: Options › Vault and the status-bar meter.
+    internal VaultOverviewViewModel Vault { get; } = new();
+
     // The assistant chip at the bottom of the sidebar (AC-543).
     [ObservableProperty]
     private AssistantIndicatorViewModel? _assistantIndicator;
@@ -9136,6 +9139,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the assistant asks for consent like any other session.
         if (e.PropertyName == nameof(SessionPanelViewModel.PendingConsent))
         {
+            Vault.OpenRequests = _AllSessions().Count(pane => pane.PendingConsent?.SourceLabel == Cockpit.Core.Consent.ConsentSourceCatalog.VaultMcp);
             _RefreshSimpleConsentAlerts();
         }
         else if (e.PropertyName is nameof(SessionPanelViewModel.SessionStatus) or nameof(SessionPanelViewModel.ProjectId))
@@ -9396,6 +9400,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         else
         {
             SelectSession(session);
+        }
+    }
+
+    // AC-2347: the vault panel's "Go to session".
+    internal void OpenSessionByPane(string paneId)
+    {
+        if (_AllSessions().FirstOrDefault(session => session.PaneId == paneId) is { } session)
+        {
+            OpenProjectSession(session);
         }
     }
 

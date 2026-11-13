@@ -215,7 +215,7 @@ internal sealed class VaultMcpTools
         wait.CancelAfter(timeout);
         try
         {
-            decision = await _consent.RequestConsentAsync(Card(session, directory, argv, pairs.Select(pair => (pair.Variable, pair.Reference)), reason, projectName), wait.Token).ConfigureAwait(false);
+            decision = await _consent.RequestConsentAsync(Card(session.Title, session.PaneId, directory, argv, pairs.Select(pair => (pair.Variable, pair.Reference)), reason, projectName), wait.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -250,24 +250,26 @@ internal sealed class VaultMcpTools
     }
 
     internal static ConsentRequest Card(
-        ISessionHandle session, string directory, IReadOnlyList<string> argv, IEnumerable<(string Variable, string Reference)> pairs, string reason, string? projectName)
+        string sessionTitle, string paneId, string directory, IReadOnlyList<string> argv, IEnumerable<(string Variable, string Reference)> pairs, string reason, string? projectName)
     {
+        var command = string.Join(' ', argv);
         var said = string.Join(' ', (reason ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return new ConsentRequest(
-            $"{session.Title} wants to run a command with a vault secret",
+            $"{sessionTitle} wants to run a command with a vault secret",
             string.Join('\n', pairs.Select(pair => $"{pair.Variable} ← {pair.Reference}"))
             + $"\nin {JsonSerializer.Serialize(argv, SerializerOptions)}\nin {directory}"
             + (said.Length > 0 ? $"\nThe agent says: \"{said}\"" : string.Empty),
-            new ConsentSource(session.PaneId, null, ConsentSourceCatalog.VaultMcp),
+            new ConsentSource(paneId, null, ConsentSourceCatalog.VaultMcp),
             "vault.run",
             ConsentRisk.Dangerous)
         {
             Choices =
             [
                 new ConsentChoice("scope", "Allow", [
-                    new ConsentOption(Once, "Once", Selected: true),
-                    new ConsentOption(Session, "For this session"),
-                    new ConsentOption(Project, projectName is null ? "Always for this project" : $"Always for project {projectName}", Enabled: projectName is not null)
+                    new ConsentOption(Once, "Once", $"For this one start of {command}. The next start asks again.", Selected: true),
+                    new ConsentOption(Session, "For this session", $"Every start of {command} in this session, until it ends or you revoke it."),
+                    new ConsentOption(Project, projectName is null ? "Always for this project" : $"Always for project {projectName}",
+                        projectName is null ? null : $"Every session in {projectName}, now and later, without asking. Revoke it under Options › Vault.", Enabled: projectName is not null)
                     {
                         Note = projectName is null ? "no project" : null,
                     },

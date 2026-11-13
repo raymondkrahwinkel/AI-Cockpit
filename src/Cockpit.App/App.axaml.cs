@@ -1076,6 +1076,14 @@ public partial class App : Application
         // AC-2336: the vault's start-up check, after unlock; it wipes its section if encryption was turned off.
         var vault = Program.Services.GetRequiredService<Cockpit.Infrastructure.Vault.VaultHub>();
         vault.UseEncryptionSettings(() => Dispatcher.UIThread.InvokeAsync(() => cockpit.OpenOptionsCategoryAsync("security")));
+        cockpit.Vault.OpenOverview = () => _ = cockpit.OpenOptionsCategoryAsync("vault");
+        cockpit.Vault.Attach(
+            vault,
+            Program.Services.GetRequiredService<Cockpit.Core.Abstractions.Sessions.ISessionRegistry>(),
+            Program.Services.GetService<Cockpit.Core.Abstractions.Projects.IProjectStore>(),
+            paneId => cockpit.OpenSessionByPane(paneId),
+            () => _ = cockpit.OpenOptionsCategoryAsync("security"),
+            cockpit.Security);
         vault.CheckAtStartAsync().GetAwaiter().GetResult();
 
         // AC-1506: provisioning's second phase, now that a connection's plugin can redeem the token. Not awaited here:

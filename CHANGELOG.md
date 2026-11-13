@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2347: Options › Vault shows the providers and their items, who holds which permission (with Revoke) and an audit of names only. The status bar gets a "Secrets in use" meter that opens a panel to revoke per session or everywhere. While credential encryption is off, the Vault page shows only a block with a Turn on encryption button, and it opens normally as soon as encryption is on, without a restart. The vault's consent card now explains each choice.
+
 - AC-2346: Agents get the `cockpit-vault` MCP once a vault provider is installed. `vault_list` shows items by name only; `vault_run` runs one command with a secret in its environment after you approve it on a card (once, for this session, or always for the project), and replaces the secret in the command's output with `[vault: <name>]`. A grant covers exactly that command; anything else asks again. With credential encryption off or locked, the agent is told to ask you and a toast leads to Options › Security.
 
 - AC-2336: Plugins can connect a password manager to Cockpit's new vault. The vault only stores a provider's sign-in while credential encryption is on and unlocked; when encryption is turned off, Cockpit removes the vault data and says so, with a button to Options › Security.

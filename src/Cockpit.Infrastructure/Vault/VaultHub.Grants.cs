@@ -68,28 +68,40 @@ internal sealed partial class VaultHub
 
             keys.UnionWith(grantKeys);
         }
+
+        _RaiseChanged();
     }
 
-    public Task<bool> TryGrantProjectAsync(string projectId, IEnumerable<string> grantKeys, CancellationToken cancellationToken) =>
-        _TryUpdateAsync(section => _WithState(section, state =>
+    public async Task<bool> TryGrantProjectAsync(string projectId, IEnumerable<string> grantKeys, CancellationToken cancellationToken)
+    {
+        var granted = await _TryUpdateAsync(section => _WithState(section, state =>
         {
             var keys = state.ProjectGrants.GetValueOrDefault(projectId) ?? [];
             state.ProjectGrants[projectId] = [.. keys.Union(grantKeys, StringComparer.Ordinal)];
-        }), cancellationToken);
+        }), cancellationToken).ConfigureAwait(false);
+        _RaiseChanged();
+        return granted;
+    }
 
     // A pane that closed takes its session grants with it.
     public void EndSessionsExcept(IReadOnlySet<string> livePaneIds)
     {
+        var ended = false;
         lock (_gate)
         {
             foreach (var paneId in _sessionGrants.Keys.Where(paneId => !livePaneIds.Contains(paneId)).ToList())
             {
-                _sessionGrants.Remove(paneId);
+                ended |= _sessionGrants.Remove(paneId);
             }
+        }
+
+        if (ended)
+        {
+            _RaiseChanged();
         }
     }
 
-    // For sub 3's status bar: one pane's grants for this item end; a process already running keeps its copy.
+    // For the status bar and Options › Vault: one pane's grants for this item end; a process already running keeps its copy.
     public async Task RevokeSessionAsync(string paneId, string reference, CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -97,6 +109,7 @@ internal sealed partial class VaultHub
             _sessionGrants.GetValueOrDefault(paneId)?.RemoveWhere(key => ReferenceOf(key) == reference);
         }
 
+        _RaiseChanged();
         await AuditAsync("Revoked", paneId, reference, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
@@ -118,6 +131,7 @@ internal sealed partial class VaultHub
                 keys.RemoveAll(key => ReferenceOf(key) == reference);
             }
         }), cancellationToken).ConfigureAwait(false);
+        _RaiseChanged();
         await AuditAsync("Revoked", null, reference, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
