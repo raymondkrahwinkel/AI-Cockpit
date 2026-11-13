@@ -5,12 +5,7 @@ using Cockpit.Infrastructure.Plugins;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// The plugins that ship with the app: they are seeded into the operator's plugins directory on their first
-/// appearance and pre-approved (they came out of the very build that would otherwise ask whether you trust
-/// them), and after that first seed the bundle never touches them again — a bundled plugin is an ordinary,
-/// store-updatable plugin that merely comes pre-installed. So a newer bundled version does not replace an
-/// installed one, a rebuild does not re-pin it, a version the operator updated is not rolled back, one they
-/// disabled stays disabled, and one they uninstalled does not silently return.
+/// Bundled updates preserve operator choices and never resurrect an uninstalled plugin.
 /// </summary>
 public class BundledPluginInstallerTests : IDisposable
 {
@@ -30,17 +25,41 @@ public class BundledPluginInstallerTests : IDisposable
 
     // Turning a plugin off is a decision. Shipping a build is not a reason to undo it.
     [Fact]
-    public async Task APluginTheOperatorDisabled_StaysDisabledAndUntouched()
+    public async Task BundledUpdates_UpgradeSeedsAndPreserveOperatorChoices()
     {
         _WriteInstalled("depot", "1.1.0");
         _registrations.Saved["depot"] = new PluginRegistration(Enabled: false, PinnedSha256: "pinned");
         _WriteBundled("depot", "1.2.0");
+        _WriteInstalled("seed", "0.45.7");
+        _WriteBundled("seed", "0.66.1");
+        _registrations.Saved["seed"] = new(true, "legacy-pin");
+        _registrations.Seeded.Add("seed");
+        _WriteInstalled("chosen", "0.45.7");
+        _WriteBundled("chosen", "0.66.1");
+        _registrations.Saved["chosen"] = new(true, "chosen-pin", VersionChosen: true);
+        _WriteInstalled("newer", "0.67.0");
+        _WriteBundled("newer", "0.66.1");
+        _registrations.Saved["newer"] = new(true, "newer-pin");
+        _WritePlugin(Path.Combine(_bundled, "future"), "future", "0.66.1", minHostVersion: $"{HostVersionInfo.Current.Major}.{int.MaxValue}.0");
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        Assert.Empty(installed);
+        Assert.Equal(["seed"], installed);
+        Assert.Equal("0.66.1", _InstalledVersion("seed"));
+        Assert.Equal("0.45.7", _InstalledVersion("chosen"));
+        Assert.Equal("0.67.0", _InstalledVersion("newer"));
+        Assert.DoesNotContain("future", _registrations.Seeded);
         Assert.Equal("1.1.0", _InstalledVersion("depot"));
         Assert.Equal(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"), _registrations.Saved["depot"]);
+
+        _WriteBundled("seed", "0.67.0");
+        Assert.Equal(["seed"], await NewSut().InstallAsync(_bundled, _plugins));
+        _WriteInstalled("seed", "0.67.1-user");
+        _WriteBundled("seed", "0.68.0");
+        Assert.Empty(await NewSut().InstallAsync(_bundled, _plugins));
+        Assert.Equal("0.67.1-user", _InstalledVersion("seed"));
+        _WriteBundled("future", "0.66.1");
+        Assert.Equal(["future"], await NewSut().InstallAsync(_bundled, _plugins));
     }
 
     // The point of the seed ledger: seeding is a first-appearance event, not a "is it on disk" check. A plugin
@@ -81,7 +100,8 @@ public class BundledPluginInstallerTests : IDisposable
         string id,
         string version,
         string? assemblyContent = null,
-        string? expectedMinVersion = null)
+        string? expectedMinVersion = null,
+        string? minHostVersion = null)
     {
         Directory.CreateDirectory(folder);
         var assembly = $"Cockpit.Plugin.{id}.dll";
@@ -93,6 +113,7 @@ public class BundledPluginInstallerTests : IDisposable
               "entryAssembly": "{{assembly}}",
               "entryType": "Cockpit.Plugin.{{id}}.Entry",
               "abstractionsVersion": 1,
+              "minHostVersion": {{System.Text.Json.JsonSerializer.Serialize(minHostVersion)}},
               "expectedMinVersion": {{System.Text.Json.JsonSerializer.Serialize(expectedMinVersion)}}
             }
             """);
