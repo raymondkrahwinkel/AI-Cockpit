@@ -135,6 +135,12 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         }
         catch (FileSourceException) { throw; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is IRemoteCallFailure)
+        {
+            var failure = (IRemoteCallFailure)error;
+            throw new FileSourceException(FileSourceErrorKind.Unavailable,
+                $"The server rejected the file source request (HTTP {(int)failure.Status}: {failure.Status}).");
+        }
         catch (Exception error) when (error is IOException or HttpRequestException or JsonException
             or FormatException or InvalidOperationException or ArgumentException or OperationCanceledException or TimeoutException or IRemoteCallFailure)
         {

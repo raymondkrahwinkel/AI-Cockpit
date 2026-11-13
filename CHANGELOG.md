@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Local files defaults to this computer even when no folders have been added. An unavailable server source no longer replaces the local empty state, and remote file errors show their HTTP status without exposing private exception details.
+
 - A scheduled one-off task that is created or edited shortly before its time now runs at that time. Before, the schedule was only noticed at the next half-minute check, and a time that passed in between was missed for good.
 
 - AC-2357: Options › Assistant has an option "The assistant always picks a fitting agent (role)", on by default. While it is on, the assistant cannot start a session without a fitting role from the project's brain, not even with none: the start is refused with the available roles and the assistant tells you why. A brain without roles still starts a session without one. A project can set a default role, which a session gets when the assistant names none.
