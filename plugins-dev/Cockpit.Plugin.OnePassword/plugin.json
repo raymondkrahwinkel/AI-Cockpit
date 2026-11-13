@@ -1,7 +1,7 @@
 {
   "id": "onepassword",
   "name": "1Password",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entryAssembly": "Cockpit.Plugin.OnePassword.dll",
   "entryType": "Cockpit.Plugin.OnePassword.OnePasswordPlugin",
   "uiAssembly": "Cockpit.Plugin.OnePassword.UI.dll",
