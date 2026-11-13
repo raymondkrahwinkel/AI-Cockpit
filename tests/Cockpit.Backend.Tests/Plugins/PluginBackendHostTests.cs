@@ -125,7 +125,7 @@ public class PluginBackendHostTests
         var logins = Substitute.For<IProfileLoginChecker>();
         var loginStarter = Substitute.For<IProfileLoginStarter>();
         loginStarter.CanStartLogin(personal).Returns(true);
-        Assert.Equal(ProfileSignInKind.Unknown, ProfileEndpoints.ToWire(personal, [], [], loginStarter: loginStarter).SignIn);
+        Assert.Equal(ProfileSignInKind.NotSignedIn, ProfileEndpoints.ToWire(personal, [], [], loginStarter: loginStarter).SignIn);
         Assert.Null(ProfileEndpoints.ToWire(ollama, [], [], loginStarter: loginStarter).SignIn);
         Assert.Equal(ProfileSignInKind.SignedIn, ProfileEndpoints.ToWire(personal,
             [new ProfileLoginHealth(personal.Label, true, DateTimeOffset.UtcNow, null) { SignIn = ProfileSignInKind.SignedIn }], [], loginStarter: loginStarter).SignIn);

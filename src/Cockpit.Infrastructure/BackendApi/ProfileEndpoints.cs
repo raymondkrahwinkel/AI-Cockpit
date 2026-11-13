@@ -715,7 +715,7 @@ internal static class ProfileEndpoints
             profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } || (profile.ProviderConfig is PluginProviderConfig held && _HoldsSecret(_ParseObject(held.ConfigJson))),
             profile.ProviderConfig is PluginProviderConfig,
             health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn
-                ?? (loginStarter?.CanStartLogin(profile) == true ? ProfileSignInKind.Unknown : null),
+                ?? (loginStarter?.CanStartLogin(profile) == true ? ProfileSignInKind.NotSignedIn : null),
             known.Count > 0 ? known : null,
             _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null,
             RemoteProfileWire.ToJson(Masked(profile, editorKeys ?? declared)))
