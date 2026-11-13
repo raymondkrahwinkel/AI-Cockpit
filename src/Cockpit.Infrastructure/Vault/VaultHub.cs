@@ -12,8 +12,9 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.Vault;
 
 // AC-2336: the host's vault hub. Stores and reads nothing unless credential encryption is on and unlocked.
-internal sealed partial class VaultHub : ISingletonService, IVaultHub
+internal sealed partial class VaultHub : ISingletonService
 {
+    internal const string WipedMessage = "Vault data was removed because credential encryption was turned off.";
     internal const int AuditCapacity = 500;
 
     private static readonly JsonSerializerOptions StateOptions = new();
@@ -246,7 +247,7 @@ internal sealed partial class VaultHub : ISingletonService, IVaultHub
         }
 
         _logger.LogWarning("Credential encryption is off, so the vault's data was removed from the configuration.");
-        _toasts?.Show(IVaultHub.WipedMessage, ToastSeverity.Warning, "Open Security", OpenEncryptionSettings);
+        _toasts?.Show(WipedMessage, ToastSeverity.Warning, "Open Security", OpenEncryptionSettings);
     }
 
     private void _Note(VaultAvailability availability)
@@ -324,3 +325,4 @@ internal sealed partial class VaultHub : ISingletonService, IVaultHub
 }
 
 // One audit line: who, which item, when — never a value.
+internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null);

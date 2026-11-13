@@ -19,7 +19,6 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
-using Cockpit.Infrastructure.Vault;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.CompanionTools;
@@ -248,7 +247,6 @@ public sealed class PluginLiveLifecycleTests
         services.AddSingleton<SettingsCarriers>();
         services.AddSingleton<BackupTargets>();
         services.AddSingleton(new StartupSequence());
-        services.AddSingleton<IVaultHub, VaultHub>();
         return services.BuildServiceProvider();
     }
 

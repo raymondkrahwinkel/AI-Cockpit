@@ -1,6 +1,8 @@
-namespace Cockpit.Plugins.Abstractions.Vault;
+using Cockpit.Plugins.Abstractions.Vault;
 
-public interface IVaultHub
+namespace Cockpit.App.Services;
+
+internal interface IVaultOverviewService
 {
     const string SessionScope = "session";
     const string ProjectScope = "project";
@@ -9,19 +11,17 @@ public interface IVaultHub
     event EventHandler? AvailabilityChanged;
     event EventHandler? Changed;
 
-    IReadOnlyList<IVaultProvider> Providers { get; }
-
     void UseEncryptionSettings(Func<Task> open);
     Task CheckAtStartAsync(CancellationToken cancellationToken = default);
     Task<VaultAvailability> EvaluateAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<VaultProviderInfo>> ReadProvidersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<VaultGrantInfo>> ListGrantsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<VaultAuditEvent>> ReadAuditAsync(CancellationToken cancellationToken = default);
-    IVaultProvider? ProviderFor(string reference);
     Task RevokeProjectAsync(string projectId, string reference, CancellationToken cancellationToken = default);
     Task RevokeSessionAsync(string paneId, string reference, CancellationToken cancellationToken = default);
     Task RevokeEverywhereAsync(string reference, CancellationToken cancellationToken = default);
 }
 
-public sealed record VaultGrantInfo(string Scope, string Owner, string Reference);
-
-public sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null);
+internal sealed record VaultProviderInfo(string Id, string DisplayName, string ReferenceScheme, VaultProviderStatus Status, IReadOnlyList<VaultItem> Items);
+internal sealed record VaultGrantInfo(string Scope, string Owner, string Reference);
+internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null);

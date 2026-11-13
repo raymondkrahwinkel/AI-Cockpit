@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia.Threading;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Vault;
@@ -13,8 +14,8 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     internal const string AllProviders = "All providers";
     internal const string AllEvents = "All events";
 
-    private readonly Dictionary<string, (IVaultProvider Provider, VaultProviderStatus Status, IReadOnlyList<VaultItem> Items)> _providers = new(StringComparer.Ordinal);
-    private IVaultHub? _hub;
+    private readonly Dictionary<string, VaultProviderInfo> _providers = new(StringComparer.Ordinal);
+    private IVaultOverviewService? _hub;
     private ISessionRegistry? _sessions;
     private IProjectStore? _projects;
     private Action<string>? _goToSession;
@@ -123,7 +124,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     public Action? OpenOverview { get; set; }
 
     // The live graph: the hub, the sessions it grants to and the two things only the window can do.
-    internal void Attach(IVaultHub hub, ISessionRegistry sessions, IProjectStore? projects, Action<string> goToSession, Action openEncryption, SecurityOptionsViewModel security)
+    internal void Attach(IVaultOverviewService hub, ISessionRegistry sessions, IProjectStore? projects, Action<string> goToSession, Action openEncryption, SecurityOptionsViewModel security)
     {
         (_hub, _sessions, _projects, _goToSession, _openEncryption) = (hub, sessions, projects, goToSession, openEncryption);
         hub.Changed += (_, _) => Dispatcher.UIThread.Post(() => _ = RefreshAsync(providers: false));
@@ -175,7 +176,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         }
     }
 
-    private async Task _ReadAsync(IVaultHub hub, bool providers)
+    private async Task _ReadAsync(IVaultOverviewService hub, bool providers)
     {
         Availability = await hub.EvaluateAsync().ConfigureAwait(true);
         if (IsBlocked)
@@ -211,27 +212,12 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         _Apply(grants, audit, live.ToDictionary(pair => pair.Key, pair => (pair.Value.Title, pair.Value.ProjectId)), projectNames);
     }
 
-    private async Task _ReadProvidersAsync(IVaultHub hub)
+    private async Task _ReadProvidersAsync(IVaultOverviewService hub)
     {
         _providers.Clear();
-        foreach (var provider in hub.Providers)
+        foreach (var provider in await hub.ReadProvidersAsync(CancellationToken.None).ConfigureAwait(true))
         {
-            VaultProviderStatus status;
-            IReadOnlyList<VaultItem> items = [];
-            try
-            {
-                status = await provider.GetStatusAsync(CancellationToken.None).ConfigureAwait(true);
-                if (status.State == VaultProviderState.Connected)
-                {
-                    items = await provider.ListItemsAsync(CancellationToken.None).ConfigureAwait(true);
-                }
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                status = new VaultProviderStatus(VaultProviderState.Error, Error: exception.GetType().Name);
-            }
-
-            _providers[provider.Id] = (provider, status, items);
+            _providers[provider.Id] = provider;
         }
     }
 
@@ -244,7 +230,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     {
         var livePanes = live.Select(pair => (PaneId: pair.Key, pair.Value.Title, pair.Value.ProjectId)).ToList();
         string ProjectName(string id) => projectNames.GetValueOrDefault(id) ?? id;
-        string ProviderName(string reference) => _hub?.ProviderFor(reference)?.DisplayName ?? reference.Split(':', 2)[0];
+        string ProviderName(string reference) => _providers.Values.FirstOrDefault(provider => provider.ReferenceScheme == reference.Split(':', 2)[0])?.DisplayName ?? reference.Split(':', 2)[0];
         string ItemName(string reference) => _providers.Values.SelectMany(entry => entry.Items).FirstOrDefault(item => item.Reference == reference)?.DisplayName ?? reference;
         string SessionName(string? paneId) => paneId is null ? string.Empty : live.TryGetValue(paneId, out var found) ? found.Title : "Ended session";
         DateTimeOffset? Latest(string kind, string name, IReadOnlySet<string> panes) =>
@@ -252,10 +238,10 @@ internal sealed class VaultOverviewViewModel : ObservableObject
                 .Select(entry => (DateTimeOffset?)entry.At).DefaultIfEmpty(null).Max();
 
         var rows = new List<VaultPermissionRow>();
-        foreach (var grant in grants.OrderBy(grant => grant.Scope == IVaultHub.ProjectScope).ThenBy(grant => grant.Owner, StringComparer.Ordinal))
+        foreach (var grant in grants.OrderBy(grant => grant.Scope == IVaultOverviewService.ProjectScope).ThenBy(grant => grant.Owner, StringComparer.Ordinal))
         {
             var name = ItemName(grant.Reference);
-            var isProject = grant.Scope == IVaultHub.ProjectScope;
+            var isProject = grant.Scope == IVaultOverviewService.ProjectScope;
             var panes = isProject
                 ? livePanes.Where(pane => pane.ProjectId == grant.Owner).Select(pane => pane.PaneId).ToHashSet(StringComparer.Ordinal)
                 : new HashSet<string>([grant.Owner], StringComparer.Ordinal);
@@ -270,7 +256,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         var groups = new List<VaultSessionGroup>();
         foreach (var (paneId, title, projectId) in livePanes)
         {
-            var held = grants.Where(grant => (grant.Scope == IVaultHub.SessionScope && grant.Owner == paneId) || (grant.Scope == IVaultHub.ProjectScope && projectId is not null && grant.Owner == projectId))
+            var held = grants.Where(grant => (grant.Scope == IVaultOverviewService.SessionScope && grant.Owner == paneId) || (grant.Scope == IVaultOverviewService.ProjectScope && projectId is not null && grant.Owner == projectId))
                 .GroupBy(grant => grant.Reference, StringComparer.Ordinal).ToList();
             if (held.Count == 0)
             {
@@ -280,7 +266,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
             var items = held.Select(group =>
             {
                 var name = ItemName(group.Key);
-                var bySession = group.Any(grant => grant.Scope == IVaultHub.SessionScope);
+                var bySession = group.Any(grant => grant.Scope == IVaultOverviewService.SessionScope);
                 var since = _When(Latest("Allowed", name, new HashSet<string>([paneId])) ?? Latest("Injected", name, new HashSet<string>([paneId])));
                 var scope = bySession ? "allowed for this session" : $"always allowed for {ProjectName(projectId!)}";
                 return new VaultHeldItem(name, ProviderName(group.Key), $"{ProviderName(group.Key)} · since {since} · {scope}", bySession,
@@ -302,11 +288,11 @@ internal sealed class VaultOverviewViewModel : ObservableObject
             };
             var items = entry.Items.Select(item => new VaultItemRow(item.DisplayName, item.Reference,
                 inUse.TryGetValue(item.DisplayName, out var use) ? $"{use.Count}" + (use.Session ? " · in use" : string.Empty) : "none", inUse.ContainsKey(item.DisplayName))).ToList();
-            return new VaultProviderRow(entry.Provider.DisplayName, detail, status.State switch { VaultProviderState.Connected => "Connected", VaultProviderState.Error => "Error", _ => "Not connected" }, status.State, items);
+            return new VaultProviderRow(entry.DisplayName, detail, status.State switch { VaultProviderState.Connected => "Connected", VaultProviderState.Error => "Error", _ => "Not connected" }, status.State, items);
         }).ToList();
 
         string ProviderOfItem(string? item) => string.Join(", ", (item ?? string.Empty).Split(", ").Select(part =>
-            _providers.Values.FirstOrDefault(entry => entry.Items.Any(candidate => candidate.DisplayName == part || candidate.Reference == part)).Provider?.DisplayName ?? string.Empty).Where(name => name.Length > 0).Distinct());
+            _providers.Values.FirstOrDefault(entry => entry.Items.Any(candidate => candidate.DisplayName == part || candidate.Reference == part))?.DisplayName ?? string.Empty).Where(name => name.Length > 0).Distinct());
         var auditRows = audit.OrderByDescending(entry => entry.At).Select(entry => new VaultAuditRow(
             _When(entry.At), entry.Kind, entry.Item ?? string.Empty, SessionName(entry.Session), _AuditDetail(entry), ProviderOfItem(entry.Item))).ToList();
 
@@ -332,7 +318,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     private static string _AuditDetail(VaultAuditEvent entry) => entry.Kind switch
     {
         "Masked" => entry.Count is { } count ? $"{count} {(count == 1 ? "occurrence" : "occurrences")} in the output" : string.Empty,
-        "VaultWiped" => IVaultHub.WipedMessage,
+        "VaultWiped" => IVaultOverviewService.WipedMessage,
         _ => string.Empty,
     };
 

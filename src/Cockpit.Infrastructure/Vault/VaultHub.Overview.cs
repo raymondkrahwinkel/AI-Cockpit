@@ -6,6 +6,8 @@ namespace Cockpit.Infrastructure.Vault;
 // AC-2347: what the status bar and Options › Vault read. Names and references only, never a value.
 internal sealed partial class VaultHub
 {
+    internal const string SessionScope = "session";
+    internal const string ProjectScope = "project";
     // Raised when a grant or the audit changed; the UI reads again.
     public event EventHandler? Changed;
 
@@ -22,14 +24,14 @@ internal sealed partial class VaultHub
         {
             foreach (var (paneId, keys) in _sessionGrants)
             {
-                grants.AddRange(keys.Select(ReferenceOf).Distinct(StringComparer.Ordinal).Select(reference => new VaultGrantInfo(IVaultHub.SessionScope, paneId, reference)));
+                grants.AddRange(keys.Select(ReferenceOf).Distinct(StringComparer.Ordinal).Select(reference => new VaultGrantInfo(SessionScope, paneId, reference)));
             }
         }
 
         var state = await _ReadStateAsync(cancellationToken).ConfigureAwait(false);
         foreach (var (projectId, keys) in state?.ProjectGrants ?? [])
         {
-            grants.AddRange(keys.Select(ReferenceOf).Distinct(StringComparer.Ordinal).Select(reference => new VaultGrantInfo(IVaultHub.ProjectScope, projectId, reference)));
+            grants.AddRange(keys.Select(ReferenceOf).Distinct(StringComparer.Ordinal).Select(reference => new VaultGrantInfo(ProjectScope, projectId, reference)));
         }
 
         return grants;
@@ -68,3 +70,5 @@ internal sealed partial class VaultHub
 
     private void _RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 }
+
+internal sealed record VaultGrantInfo(string Scope, string Owner, string Reference);
