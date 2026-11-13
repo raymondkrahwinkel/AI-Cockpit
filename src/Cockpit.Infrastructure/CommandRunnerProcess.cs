@@ -17,11 +17,9 @@ internal static class CommandRunnerProcess
     private const string Setsid = "/usr/bin/setsid";
     private const int SigKill = 9;
 
-    // AC-2333 S5: starts `process` so that everything it starts can be ended with it, also children that outlived it.
-    // Windows puts it in a kill-on-close job, Linux in its own process group via setsid; disposing the result ends
-    // whatever is left. Without either, it falls back to the tree walk, which only reaches a parent still alive.
-    // ponytail: a child spawned in the first instant on Windows, before the job assignment, escapes it; start
-    // suspended if a command ever does that.
+    // AC-2333 S5: a kill-on-close job (Windows) or own process group (Linux); disposing it ends what is left, orphans
+    // included. Without either it falls back to the tree walk, which only reaches a parent still alive.
+    // ponytail: a child spawned before the Windows job assignment escapes it; start suspended if that ever matters.
     internal static IDisposable StartContained(Process process)
     {
         var info = process.StartInfo;
