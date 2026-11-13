@@ -19,9 +19,12 @@ namespace Cockpit.Journeys;
 
 internal static class RemoteSchedulesSteps
 {
-    public static async Task RunAsync(BackendApiClient server, IRemoteServers servers, ILoggerFactory loggers, string localRoot)
+    // Creates and arms the task and both reminders, as early in the journey as it can: their moment is a real minute of the
+    // server's clock, so the journey does its other work while it comes. FinishAsync checks what happened.
+    public static async Task<string> ArmAsync(BackendApiClient server, IRemoteServers servers, ILoggerFactory loggers, string localRoot)
     {
         var localBefore = await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json"));
+        var id = "";
         await Cockpit.App.ViewTests.HeadlessAvalonia.RunAsync(async () =>
         {
             var window = new MainWindow(windowBoundsStore: null, "journey-server");
@@ -51,11 +54,11 @@ internal static class RemoteSchedulesSteps
                 Assert.True(((IEnumerable)Property(state, "Tasks")).Cast<object>().Any(row => Equals(Property(Property(row, "Task"), "Name"), "AC2289 acceptance task")), string.Join(" | ", remote.ToastHost.Toasts.Select(toast => toast.Message)));
                 Console.WriteLine("AC2289: task created from remote editor");
                 var task = TaskRow();
-                var id = (string)Property(task, "Id");
+                id = (string)Property(task, "Id");
                 await (Task)Call(Property(screen, "Tasks"), "ToggleAsync", task, null);
                 Assert.False((bool)Property(TaskRow(), "IsEnabled"));
                 await (Task)Call(Property(screen, "Tasks"), "RunNowAsync", TaskRow());
-                await SnapshotHoldsAsync(snapshot => Runs(snapshot, id).Any(run => run?["outcome"]?.ToString() == "Succeeded"));
+                await SnapshotHoldsAsync(server, snapshot => Runs(snapshot, id).Any(run => run?["outcome"]?.ToString() == "Succeeded"));
                 Call(screen, "Edit", TaskRow());
                 editor = (Control)Property(screen, "Editor");
                 Box(editor, "e.g. Time for the monthly investor review.").Text = "AC2289 edited result";
@@ -64,25 +67,8 @@ internal static class RemoteSchedulesSteps
                 Assert.Equal("AC2289 edited result", Property(Property(TaskRow(), "Action"), "Text"));
 
                 Console.WriteLine("AC2289: task paused, manually run and edited");
-                Call(screen, "Show", "reminders");
-                foreach (var text in new[] { "AC2289 snooze", "AC2289 complete" })
-                {
-                    Box(schedules, "Reminder").Text = text;
-                    Box(schedules, "once yyyy-MM-dd HH:mm or cron").Text = "once " + DateTimeOffset.UtcNow.AddMinutes(1).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-                    Box(schedules, "Time zone").Text = "UTC";
-                    Click(schedules, "Create reminder");
-                    await SnapshotHoldsAsync(snapshot => Reminders(snapshot).Any(reminder => reminder?["text"]?.ToString() == text));
-                }
-                await SnapshotHoldsAsync(snapshot => Reminders(snapshot).Count(reminder => reminder?["state"]?.ToString() == "Due" && reminder?["text"]?.ToString().StartsWith("AC2289", StringComparison.Ordinal) == true) == 2);
-                await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<Button>().Count(button => Equals(button.Content, "Snooze 10 min")) == 2);
-                Control ReminderRow(string text) => schedules.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Text == text).Parent as Control ?? throw new InvalidOperationException("No reminder row.");
-                Click(ReminderRow("AC2289 snooze"), "Snooze 10 min");
-                Click(ReminderRow("AC2289 complete"), "Done");
-                await SnapshotHoldsAsync(snapshot => Reminders(snapshot).Any(reminder => reminder?["text"]?.ToString() == "AC2289 snooze" && reminder?["snoozedUntil"] is not null)
-                    && Reminders(snapshot).Any(reminder => reminder?["text"]?.ToString() == "AC2289 complete" && reminder?["state"]?.ToString() == "Done"));
-                Console.WriteLine("AC2289: reminders created, due, snoozed and completed through remote UI");
-                SaveRender(schedules, "reminders.png");
-
+                // One slot for the task and both reminders: the minute 5 to 65 s ahead.
+                var slot = DateTimeOffset.UtcNow.AddSeconds(65);
                 Call(screen, "Show", "tasks");
                 Call(screen, "Edit", TaskRow());
                 editor = (Control)Property(screen, "Editor");
@@ -93,44 +79,27 @@ internal static class RemoteSchedulesSteps
                     frequency = editor.GetLogicalDescendants().OfType<ComboBox>().Single(box => box.Items.Cast<object>().Contains("Once"));
                 }
                 frequency.SelectedIndex = 0;
-                var slot = DateTimeOffset.UtcNow.AddMinutes(1);
                 editor.GetLogicalDescendants().OfType<TextBox>().Single(box => box.Width == 70).Text = slot.ToString("HH:mm", CultureInfo.InvariantCulture);
                 editor.GetLogicalDescendants().OfType<TextBox>().Single(box => box.Width == 110).Text = slot.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                 editor.GetLogicalDescendants().OfType<ComboBox>().Single(box => box.Items.Cast<object>().Contains("UTC")).SelectedItem = "UTC";
                 await (Task)Call(editor, "PreviewSettledAsync");
                 await (Task)Call(editor, "SaveAsync");
                 await (Task)Call(Property(screen, "Tasks"), "ToggleAsync", TaskRow(), null);
+
+                Call(screen, "Show", "reminders");
+                foreach (var text in new[] { "AC2289 snooze", "AC2289 complete" })
+                {
+                    Box(schedules, "Reminder").Text = text;
+                    Box(schedules, "once yyyy-MM-dd HH:mm or cron").Text = "once " + slot.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+                    Box(schedules, "Time zone").Text = "UTC";
+                    Click(schedules, "Create reminder");
+                    await SnapshotHoldsAsync(server, snapshot => Reminders(snapshot).Any(reminder => reminder?["text"]?.ToString() == text));
+                }
+
                 schedules.Close();
                 schedules = null;
                 window.Close();
                 ui.Dispose();
-                await SnapshotHoldsAsync(snapshot => Runs(snapshot, id).Count(run => run?["trigger"]?.ToString() == "Schedule" && run?["outcome"]?.ToString() == "Succeeded") == 1);
-
-                Console.WriteLine("AC2289: scheduled task succeeded with both client windows closed");
-                var reopenedWindow = new MainWindow(windowBoundsStore: null, "journey-server");
-                using var reopenedUi = new RemoteWindowUi(reopenedWindow, new SurfaceWindows(), loggers);
-                var reopened = CockpitViewModel.ForRemoteWindow("journey-server", servers, null, null, ui: reopenedUi);
-                reopenedWindow.DataContext = reopened;
-                reopenedWindow.Show();
-                try
-                {
-                    await reopenedUi.InitializeAsync(reopened, servers, "journey-server", localRoot);
-                    schedules = await OpenAsync(reopened);
-                    screen = schedules.GetLogicalDescendants().OfType<Control>().Single(control => control.GetType().Name == "SchedulesScreen");
-                    Call(screen, "Show", "runs");
-                    await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "AC2289 acceptance task"));
-                    SaveRender(schedules, "history-after-reopen.png");
-                    var snapshot = await SnapshotAsync();
-                    Assert.Single(Runs(snapshot, id), run => run?["trigger"]?.ToString() == "Schedule");
-                    Assert.Equal(2, Runs(snapshot, id).Count());
-                    Console.WriteLine("AC2289: reopened history has one manual and exactly one scheduled result");
-                }
-                finally
-                {
-                    schedules?.Close();
-                    schedules = null;
-                    reopenedWindow.Close();
-                }
             }
             finally
             {
@@ -139,15 +108,63 @@ internal static class RemoteSchedulesSteps
             }
         });
         Assert.Equal(localBefore, await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json")));
+        return id;
+    }
 
-        Task<JsonObject> SnapshotAsync() => server.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/schedules/channel/snapshot", new { });
-        async Task SnapshotHoldsAsync(Func<JsonObject, bool> condition)
+    // The reminders are due and the task has run by now; the task ran with no client window open.
+    public static async Task FinishAsync(BackendApiClient server, IRemoteServers servers, ILoggerFactory loggers, string localRoot, string id)
+    {
+        var localBefore = await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json"));
+        await SnapshotHoldsAsync(server, snapshot => Runs(snapshot, id).Count(run => run?["trigger"]?.ToString() == "Schedule" && run?["outcome"]?.ToString() == "Succeeded") == 1);
+        Console.WriteLine("AC2289: scheduled task succeeded with both client windows closed");
+        await Cockpit.App.ViewTests.HeadlessAvalonia.RunAsync(async () =>
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(100));
-            while (!condition(await SnapshotAsync().WaitAsync(deadline.Token)))
+            var window = new MainWindow(windowBoundsStore: null, "journey-server");
+            using var ui = new RemoteWindowUi(window, new SurfaceWindows(), loggers);
+            var remote = CockpitViewModel.ForRemoteWindow("journey-server", servers, null, null, ui: ui);
+            window.DataContext = remote;
+            window.Show();
+            Window? schedules = null;
+            try
             {
-                await Task.Delay(150, deadline.Token);
+                await ui.InitializeAsync(remote, servers, "journey-server", localRoot);
+                schedules = await OpenAsync(remote);
+                var screen = schedules.GetLogicalDescendants().OfType<Control>().Single(control => control.GetType().Name == "SchedulesScreen");
+                Call(screen, "Show", "reminders");
+                await SnapshotHoldsAsync(server, snapshot => Reminders(snapshot).Count(reminder => reminder?["state"]?.ToString() == "Due" && reminder?["text"]?.ToString().StartsWith("AC2289", StringComparison.Ordinal) == true) == 2);
+                await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<Button>().Count(button => Equals(button.Content, "Snooze 10 min")) == 2);
+                Control ReminderRow(string text) => schedules.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Text == text).Parent as Control ?? throw new InvalidOperationException("No reminder row.");
+                Click(ReminderRow("AC2289 snooze"), "Snooze 10 min");
+                Click(ReminderRow("AC2289 complete"), "Done");
+                await SnapshotHoldsAsync(server, snapshot => Reminders(snapshot).Any(reminder => reminder?["text"]?.ToString() == "AC2289 snooze" && reminder?["snoozedUntil"] is not null)
+                    && Reminders(snapshot).Any(reminder => reminder?["text"]?.ToString() == "AC2289 complete" && reminder?["state"]?.ToString() == "Done"));
+                Console.WriteLine("AC2289: reminders created, due, snoozed and completed through remote UI");
+                SaveRender(schedules, "reminders.png");
+                Call(screen, "Show", "runs");
+                await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "AC2289 acceptance task"));
+                SaveRender(schedules, "history-after-reopen.png");
+                var snapshot = await SnapshotAsync(server);
+                Assert.Single(Runs(snapshot, id), run => run?["trigger"]?.ToString() == "Schedule");
+                Assert.Equal(2, Runs(snapshot, id).Count());
+                Console.WriteLine("AC2289: reopened history has one manual and exactly one scheduled result");
             }
+            finally
+            {
+                schedules?.Close();
+                window.Close();
+            }
+        });
+        Assert.Equal(localBefore, await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json")));
+    }
+
+    private static Task<JsonObject> SnapshotAsync(BackendApiClient server) => server.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/schedules/channel/snapshot", new { });
+
+    private static async Task SnapshotHoldsAsync(BackendApiClient server, Func<JsonObject, bool> condition)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(100));
+        while (!condition(await SnapshotAsync(server).WaitAsync(deadline.Token)))
+        {
+            await Task.Delay(150, deadline.Token);
         }
     }
 
