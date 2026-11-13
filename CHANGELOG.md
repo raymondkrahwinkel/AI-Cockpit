@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The desktop status bar shows notifications, CPU/RAM, disk space and managed worktrees from left to right, followed by secrets only while in use.
 - Server profiles keep offering provider login while sign-in health is unknown or a check fails; failed checks log the profile, provider and exception.
 
 - Bundled plugins now update at startup when the shipped version is newer and compatible, while preserving operator installs, version choices and removals. Remote server windows now show available plugin updates and report restart progress, reloading plugins when the server returns.
