@@ -93,6 +93,7 @@ public sealed class RemoteAdminJourney
                 ["COCKPIT_ALLOW_FILE_CLONES"] = "1",
                 ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri,
                 ["COCKPIT_ECHO_SHARED_CHECKSUM_FILE"] = checksumFile,
+                ["COCKPIT_SCHEDULES_TICK_SECONDS"] = "5",
             });
         var run = startServer();
         Action? closeRemote = null;
@@ -186,6 +187,9 @@ public sealed class RemoteAdminJourney
                 await remote.CancelOptionsCommand.ExecuteAsync(null);
                 dialog.Close();
             });
+            // The Schedules task and reminders are armed now and checked at the end: their moment is a real minute of the
+            // server's clock, and the steps in between take about as long.
+            var scheduledTaskId = await RemoteSchedulesSteps.ArmAsync(setup, servers, loggers, remoteUiState);
             var localPluginIds = view.Plugins.Plugins.Select(plugin => plugin.FolderId).ToArray();
             var storeOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watchStore = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((dialog, _) => storeOpened.TrySetResult(dialog));
@@ -941,6 +945,7 @@ public sealed class RemoteAdminJourney
             Assert.False(
                 new[] { run.Output, auditTrail }.Concat(desktopFiles).Any(text => text.Contains(DepotBrowserToken, StringComparison.Ordinal) || text.Contains(DepotBrowserCode, StringComparison.Ordinal)),
                 "The browser sign-in's token or code is in the server's output, its audit or this desktop's state.");
+            await RemoteSchedulesSteps.FinishAsync(setup, servers, loggers, remoteUiState, scheduledTaskId);
         }
         finally
         {
@@ -1434,7 +1439,6 @@ public sealed class RemoteAdminJourney
         var localProfiles = await desktop.Services.GetRequiredService<ISessionProfileStore>().LoadAsync();
         var servers = desktop.Services.GetRequiredService<IRemoteServers>();
         var loggers = desktop.Services.GetRequiredService<ILoggerFactory>();
-        await RemoteSchedulesSteps.RunAsync(server, servers, loggers, localRoot);
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var window = new MainWindow(windowBoundsStore: null, Server);

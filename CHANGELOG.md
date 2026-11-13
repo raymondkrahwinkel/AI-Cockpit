@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A scheduled one-off task that is created or edited shortly before its time now runs at that time. Before, the schedule was only noticed at the next half-minute check, and a time that passed in between was missed for good.
+
 - AC-2353: A session's process and memory figures no longer include unrelated processes. On Windows a process id reused by a stranger (a service host, the desktop shell) was counted, with everything beneath it, as the session's own; the meter could read 265 processes and 13 GB for a session of about 12 processes.
 
 - AC-2352: The assistant now has the exact parameter names of its core tools (start_agent, send_prompt, stop_agent, remember, create_reminder and more) in its prompt, so it no longer guesses them and fails on the first call.

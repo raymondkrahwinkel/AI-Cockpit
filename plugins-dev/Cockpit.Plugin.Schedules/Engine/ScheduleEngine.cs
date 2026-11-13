@@ -7,7 +7,9 @@ namespace Cockpit.Plugin.Schedules.Engine;
 // mark. Follows Workflows' ScheduleCatchUp in meaning: the mark is written before the action, and one catch-up at most.
 internal sealed class ScheduleEngine : IDisposable
 {
-    public static readonly TimeSpan Tick = TimeSpan.FromSeconds(30);
+    // The env seam is for the journeys only: they wait for a real slot, and 30 s ticks would put that past their hang limit.
+    public static readonly TimeSpan Tick = TimeSpan.FromSeconds(
+        int.TryParse(Environment.GetEnvironmentVariable("COCKPIT_SCHEDULES_TICK_SECONDS"), out var seconds) && seconds > 0 ? seconds : 30);
     public const string StillRunning = "still running";
 
     // One tick of lag is the ordinary gap between a slot and the tick that sees it, not lateness.
@@ -60,6 +62,7 @@ internal sealed class ScheduleEngine : IDisposable
         _runs.FailInterrupted();
         Health = new EngineHealth(time, Tick);
         _timer = time.CreateTimer(_ => _OnTimer(), null, TimeSpan.Zero, Tick);
+        tasks.Saved += _OnTimer;
     }
 
     public EngineHealth Health { get; }
@@ -119,6 +122,7 @@ internal sealed class ScheduleEngine : IDisposable
 
     public void Dispose()
     {
+        _tasks.Saved -= _OnTimer;
         _timer.Dispose();
         _stopping.Cancel();
     }
