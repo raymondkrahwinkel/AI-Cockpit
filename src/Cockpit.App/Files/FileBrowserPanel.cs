@@ -90,13 +90,16 @@ internal sealed class FileBrowserPanel : UserControl
         var generation = ++_generation;
         var previous = _session?.Choice;
         var choices = new List<Choice>();
+        var routes = _routes();
+        var localAvailable = false;
         string? failure = null;
-        foreach (var route in _routes())
+        foreach (var route in routes)
         {
             try
             {
                 choices.AddRange((await new FileSourceChannelClient(route.Channel).ConnectionsAsync(CancellationToken.None).ConfigureAwait(true))
                     .Select(connection => new Choice(route, connection)));
+                localAvailable |= route.Server is null;
             }
             catch (FileSourceException error)
             {
@@ -112,13 +115,22 @@ internal sealed class FileBrowserPanel : UserControl
         _connectionBox.ItemsSource = choices;
         _connectionBox.IsVisible = choices.Count > 0;
         _connectionBox.SelectedItem = choices.FirstOrDefault(choice => choice.Route.WorkspaceTypeId == previous?.Route.WorkspaceTypeId
-            && choice.Connection.Id == previous.Connection.Id) ?? choices.FirstOrDefault();
+            && choice.Connection.Id == previous.Connection.Id)
+            ?? choices.FirstOrDefault(choice => choice.Route.Server is null)
+            ?? (routes.Any(route => route.Server is null) ? null : choices.FirstOrDefault());
         _listing = false;
         await _ShowConnectionAsync().ConfigureAwait(true);
-        if (choices.Count == 0)
+        if (_connectionBox.SelectedItem is null)
         {
-            _SetState(failure is null ? "No file connections" : "Files unavailable",
-                failure ?? "Add a connection in this plugin's settings.", failure is null ? MaterialIconKind.FolderOffOutline : MaterialIconKind.AlertCircleOutline);
+            var empty = localAvailable || failure is null;
+            var message = empty ? "Add a connection in this plugin's settings." : failure;
+            if (localAvailable && failure is not null)
+            {
+                message += $"\n\n{failure}";
+            }
+            _SetState(empty ? "No file connections" : "Files unavailable", message,
+                empty ? MaterialIconKind.FolderOffOutline : MaterialIconKind.AlertCircleOutline);
+            _stateAction.IsVisible = empty && _openSettings is not null;
         }
     }
 
