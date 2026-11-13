@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2351: A session whose MCP server (such as the Depot gateway) fails to connect now says so to the agent in its server instructions instead of silently having no tools. A connect that times out is logged and reported as "Connection timed out" instead of "Needs a sign-in", and the log records how long each server took to connect.
+
 - AC-2350: Options › Voice has a "Keep speech models loaded" option. When on, speech recognition and the voice load in the background after Cockpit starts and stay in memory, so the first dictation starts without waiting for the model. Off by default; it uses more memory.
 
 - AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Loopback endpoints default to 600 seconds, remote endpoints to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.
