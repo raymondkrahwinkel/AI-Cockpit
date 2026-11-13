@@ -135,12 +135,18 @@ internal sealed partial class VaultHub : ISingletonService
     // The audit ring: the newest AuditCapacity events, names only. False while the vault is not available.
     public async Task<bool> TryAppendAuditAsync(VaultAuditEvent entry, CancellationToken cancellationToken = default)
     {
-        return await _TryUpdateAsync(section =>
+        var appended = await _TryUpdateAsync(section =>
         {
             var ring = _Parse<List<VaultAuditEvent>>(section.AuditSecret) ?? [];
             ring.Add(entry);
             section.AuditSecret = JsonSerializer.Serialize(ring.TakeLast(AuditCapacity), StateOptions);
         }, cancellationToken).ConfigureAwait(false);
+        if (appended)
+        {
+            _RaiseChanged();
+        }
+
+        return appended;
     }
 
     private VaultAvailability _Evaluate() => EvaluateAsync().GetAwaiter().GetResult();

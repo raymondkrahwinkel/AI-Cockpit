@@ -115,6 +115,10 @@ public partial class OptionsDialog : Window
             _EnsurePluginContent();
             _ApplySearch(_searchCockpit?.OptionsSearchText);
             _ShowPageLoading();
+            if ((CategoryNav.SelectedItem as ListBoxItem)?.Tag is "vault" && DataContext is CockpitViewModel { Vault: { } vault })
+            {
+                _ = vault.RefreshAsync(providers: true);
+            }
         };
         DataContextChanged += (_, _) =>
         {

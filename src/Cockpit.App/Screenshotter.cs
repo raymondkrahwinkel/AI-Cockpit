@@ -25,6 +25,7 @@ using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Vault;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
@@ -265,6 +266,11 @@ internal static partial class Screenshotter
         ["statusbar-hover"] = (_, _) => _StatusBarScene(busy: false),
         ["statusbar-busy"] = (_, _) => _StatusBarScene(busy: true),
         ["statusbar-disk-popup"] = (_, _) => _StatusBarScene(busy: false),
+        // AC-2347: the vault hub's screens.
+        ["vault-options"] = (_, _) => _VaultOptions(VaultAvailability.Available),
+        ["vault-options-encryption-off"] = (_, _) => _VaultOptions(VaultAvailability.EncryptionOff),
+        ["vault-statusbar-panel"] = (_, _) => _VaultStatusBarScene(),
+        ["vault-consent"] = (width, height) => _VaultConsent(width, height),
         ["test-runs"] = (_, _) => _TestRunsScene(),
         ["child-history-sidebar"] = (_, _) => _ChildHistorySidebar(),
         ["child-history-sidebar-open"] = (_, _) => _ChildHistorySidebar(),
@@ -1621,6 +1627,7 @@ internal static partial class Screenshotter
         ["statusbar-hover"] = _HoverStatusMeters,
         ["statusbar-busy"] = window => _UseDisks(window, critical: true, open: false),
         ["statusbar-disk-popup"] = window => _UseDisks(window, critical: true, open: true),
+        ["vault-statusbar-panel"] = window => _OpenVaultPanel(window),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
         ["child-history-sidebar-open"] = _OpenSidebarChild,
         ["agents-child-open"] = _OpenAgentChild,
