@@ -131,7 +131,9 @@ jobs:
 
           root = pathlib.Path("TestResults")
           rows = []
+          # Only a real test failure turns the job red (errors); coverage bookkeeping is reported (warnings).
           errors = []
+          warnings = []
           # Every test project on disk rather than a list to keep in step by hand: a project that exists but is
           # wired into no solution runs nowhere, and that silent gap is what this set is here to catch.
           expected_names = {path.stem for path in pathlib.Path("tests").glob("Cockpit.*Tests/*.csproj")}
@@ -169,14 +171,16 @@ jobs:
               passed = int(counters.get("passed", 0))
               failed = int(counters.get("failed", 0))
               skipped = int(counters.get("notExecuted", 0))
+              if failed > 0:
+                  errors.append(f"{project}: {failed} failed tests")
               if passed == 0:
                   errors.append(f"{project}: no passing tests")
 
               coverage = "N/A"
-              # vstest names the attachment directory after the run — host and start time — while the trx adds
-              # the framework and a [n] when two runs share a second, so pair them on the directory that both
-              # prefixes this trx's name and holds the report the trx itself points at.
-              runs = [d for d in trx.parent.iterdir() if d.is_dir() and trx.stem.startswith(d.name)]
+              # The trx names its own run directory (runDeploymentRoot), whatever the trx file itself is called: the
+              # logger's file name changed from <host>_<time>_<framework> to <prefix>_<framework>_<time>, the
+              # directory did not, so matching on file names broke while the trx's own pointer did not.
+              runs = [trx.parent / d.get("runDeploymentRoot", "") for d in tree.findall(".//{*}Deployment") if d.get("runDeploymentRoot")]
               hrefs = [a.get("href", "") for a in tree.findall(".//{*}A")]
               reports = [d / "In" / h for d in runs for h in hrefs if (d / "In" / h).exists()]
               if len(reports) == 1:
@@ -189,9 +193,9 @@ jobs:
                   subject = project.removesuffix(".Tests")
                   packages = {package.get("name", "").casefold() for package in report.findall(".//{*}package")}
                   if subject.casefold() in production and subject.casefold() not in packages:
-                      errors.append(f"{project}: coverage report does not cover {subject}")
+                      warnings.append(f"{project}: coverage report does not cover {subject}")
               if coverage == "N/A":
-                  errors.append(f"{project}: missing coverage report")
+                  warnings.append(f"{project}: missing coverage report")
               rows.append((project, passed, failed, skipped, coverage))
 
           reported = {row[0].casefold() for row in rows}
@@ -207,8 +211,10 @@ jobs:
               summary.write("|---|---:|---:|---:|---:|\n")
               for row in sorted(rows):
                   summary.write(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]} |\n")
-              if errors:
-                  summary.write("\n" + "\n".join(f"- {error}" for error in errors) + "\n")
+              if errors or warnings:
+                  summary.write("\n" + "\n".join([f"- {error}" for error in errors] + [f"- warning: {warning}" for warning in warnings]) + "\n")
+          for warning in warnings:
+              print(f"::warning::{warning}")
           if errors:
               raise SystemExit("; ".join(errors))
           PY

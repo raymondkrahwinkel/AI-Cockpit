@@ -80,7 +80,7 @@ tar -C /source --exclude=.git --exclude=.superpowers --exclude=TestResults \
 
 mkdir -p "$HOME/.config"
 apt-get update --quiet
-apt-get install --yes --no-install-recommends --quiet libfontconfig1
+apt-get install --yes --no-install-recommends --quiet libfontconfig1 python3
 ensure_linux_browser plugins-dev/Cockpit.Plugin.Browser.Tests/Cockpit.Plugin.Browser.Tests.csproj
 
 red=()
