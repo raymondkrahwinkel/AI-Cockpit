@@ -41,6 +41,7 @@ using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Vault;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -319,6 +320,9 @@ public sealed class PluginLiveLifecycleTests
                 BuildDownloadPlanAsync = (_, _, _, _) => Task.FromException<ManagedCliDownloadPlan>(new NotSupportedException()),
             });
             host.AddSessionResourceProvider(Substitute.For<ISessionResourceProvider>());
+            var vaultProvider = Substitute.For<IVaultProvider>();
+            vaultProvider.Id.Returns("everything-vault");
+            host.AddVaultProvider(vaultProvider);
             var source = Substitute.For<ISharedProjectSource>();
             source.Key.Returns("shared");
             host.AddSharedProjectSource(source);

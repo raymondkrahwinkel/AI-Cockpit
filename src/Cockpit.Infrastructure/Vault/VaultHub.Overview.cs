@@ -8,7 +8,6 @@ internal sealed partial class VaultHub
 {
     internal const string SessionScope = "session";
     internal const string ProjectScope = "project";
-
     // Raised when a grant or the audit changed; the UI reads again.
     public event EventHandler? Changed;
 
@@ -72,5 +71,4 @@ internal sealed partial class VaultHub
     private void _RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 }
 
-// Scope is `VaultHub.SessionScope` (Owner is a pane id) or `VaultHub.ProjectScope` (Owner is a project id).
 internal sealed record VaultGrantInfo(string Scope, string Owner, string Reference);

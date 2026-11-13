@@ -15,7 +15,6 @@ namespace Cockpit.Infrastructure.Vault;
 internal sealed partial class VaultHub : ISingletonService
 {
     internal const string WipedMessage = "Vault data was removed because credential encryption was turned off.";
-
     internal const int AuditCapacity = 500;
 
     private static readonly JsonSerializerOptions StateOptions = new();
