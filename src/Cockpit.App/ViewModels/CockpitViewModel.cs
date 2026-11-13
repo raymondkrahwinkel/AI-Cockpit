@@ -2878,6 +2878,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public double VoiceStopReadAloudThresholdValue => (double)VoiceStopReadAloudLevelThreshold;
 
     [ObservableProperty]
+    private bool _voiceKeepModelsLoaded;
+
+    [ObservableProperty]
     private bool _voiceDuckOtherAudio;
 
     [ObservableProperty]
@@ -6336,6 +6339,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
+        VoiceKeepModelsLoaded = settings.KeepModelsLoaded;
         VoiceDuckOtherAudio = CanDuckOtherAudio && settings.DuckOtherAudioWhileSpeaking;
         VoiceDuckingPercent = (decimal)(Math.Clamp(double.IsFinite(settings.DuckingLevel) ? settings.DuckingLevel : 0.4, 0, 1) * 100);
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
@@ -6412,6 +6416,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
+            KeepModelsLoaded = VoiceKeepModelsLoaded,
             DuckOtherAudioWhileSpeaking = CanDuckOtherAudio && VoiceDuckOtherAudio,
             DuckingLevel = (double)VoiceDuckingPercent / 100,
             TtsVoiceSid = SelectedTtsVoice.Sid,
@@ -8412,6 +8417,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = voice.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = voice.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)voice.StopReadAloudLevelThreshold;
+        VoiceKeepModelsLoaded = voice.KeepModelsLoaded;
         VoiceDuckOtherAudio = CanDuckOtherAudio && voice.DuckOtherAudioWhileSpeaking;
         VoiceDuckingPercent = (decimal)(Math.Clamp(double.IsFinite(voice.DuckingLevel) ? voice.DuckingLevel : 0.4, 0, 1) * 100);
         VoiceTtsSpeed = (decimal)voice.TtsSpeed;

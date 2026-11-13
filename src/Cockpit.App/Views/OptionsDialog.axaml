@@ -1200,6 +1200,12 @@
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."/>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <CheckBox Content="Keep speech models loaded"
+                                      IsChecked="{Binding VoiceKeepModelsLoaded}"/>
+                            <materialIcons:MaterialIcon Classes="hint"
+                                ToolTip.Tip="Load speech recognition and the voice when Cockpit starts and keep them in memory, so talking starts instantly. Uses more memory."/>
+                        </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. TRANSCRIPTION"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
