@@ -123,6 +123,7 @@ internal sealed class VaultMcpTools
 
             if (items.FirstOrDefault(item => item.Reference == reference) is not { } item)
             {
+                await _hub.AuditAsync("Denied", session.PaneId, reference, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return _Error($"'{reference}' is not an item of {provider.DisplayName}; see vault_list.");
             }
 
@@ -155,6 +156,7 @@ internal sealed class VaultMcpTools
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 _logger.LogWarning("Vault provider '{ProviderId}' failed to resolve an item ({ExceptionType}).", injection.Provider.Id, exception.GetType().Name);
+                await _hub.AuditAsync("Denied", session.PaneId, injection.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
                 return _Error(_ProviderError(injection.Provider));
             }
         }
