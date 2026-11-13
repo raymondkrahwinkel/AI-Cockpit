@@ -2,7 +2,6 @@ using System.Globalization;
 using Avalonia.Threading;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Infrastructure.Vault;
 using Cockpit.Plugins.Abstractions.Vault;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -15,7 +14,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     internal const string AllEvents = "All events";
 
     private readonly Dictionary<string, (IVaultProvider Provider, VaultProviderStatus Status, IReadOnlyList<VaultItem> Items)> _providers = new(StringComparer.Ordinal);
-    private VaultHub? _hub;
+    private IVaultHub? _hub;
     private ISessionRegistry? _sessions;
     private IProjectStore? _projects;
     private Action<string>? _goToSession;
@@ -124,7 +123,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     public Action? OpenOverview { get; set; }
 
     // The live graph: the hub, the sessions it grants to and the two things only the window can do.
-    internal void Attach(VaultHub hub, ISessionRegistry sessions, IProjectStore? projects, Action<string> goToSession, Action openEncryption, SecurityOptionsViewModel security)
+    internal void Attach(IVaultHub hub, ISessionRegistry sessions, IProjectStore? projects, Action<string> goToSession, Action openEncryption, SecurityOptionsViewModel security)
     {
         (_hub, _sessions, _projects, _goToSession, _openEncryption) = (hub, sessions, projects, goToSession, openEncryption);
         hub.Changed += (_, _) => Dispatcher.UIThread.Post(() => _ = RefreshAsync(providers: false));
@@ -176,7 +175,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         }
     }
 
-    private async Task _ReadAsync(VaultHub hub, bool providers)
+    private async Task _ReadAsync(IVaultHub hub, bool providers)
     {
         Availability = await hub.EvaluateAsync().ConfigureAwait(true);
         if (IsBlocked)
@@ -212,7 +211,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         _Apply(grants, audit, live.ToDictionary(pair => pair.Key, pair => (pair.Value.Title, pair.Value.ProjectId)), projectNames);
     }
 
-    private async Task _ReadProvidersAsync(VaultHub hub)
+    private async Task _ReadProvidersAsync(IVaultHub hub)
     {
         _providers.Clear();
         foreach (var provider in hub.Providers)
@@ -253,10 +252,10 @@ internal sealed class VaultOverviewViewModel : ObservableObject
                 .Select(entry => (DateTimeOffset?)entry.At).DefaultIfEmpty(null).Max();
 
         var rows = new List<VaultPermissionRow>();
-        foreach (var grant in grants.OrderBy(grant => grant.Scope == VaultHub.ProjectScope).ThenBy(grant => grant.Owner, StringComparer.Ordinal))
+        foreach (var grant in grants.OrderBy(grant => grant.Scope == IVaultHub.ProjectScope).ThenBy(grant => grant.Owner, StringComparer.Ordinal))
         {
             var name = ItemName(grant.Reference);
-            var isProject = grant.Scope == VaultHub.ProjectScope;
+            var isProject = grant.Scope == IVaultHub.ProjectScope;
             var panes = isProject
                 ? livePanes.Where(pane => pane.ProjectId == grant.Owner).Select(pane => pane.PaneId).ToHashSet(StringComparer.Ordinal)
                 : new HashSet<string>([grant.Owner], StringComparer.Ordinal);
@@ -271,7 +270,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         var groups = new List<VaultSessionGroup>();
         foreach (var (paneId, title, projectId) in livePanes)
         {
-            var held = grants.Where(grant => (grant.Scope == VaultHub.SessionScope && grant.Owner == paneId) || (grant.Scope == VaultHub.ProjectScope && projectId is not null && grant.Owner == projectId))
+            var held = grants.Where(grant => (grant.Scope == IVaultHub.SessionScope && grant.Owner == paneId) || (grant.Scope == IVaultHub.ProjectScope && projectId is not null && grant.Owner == projectId))
                 .GroupBy(grant => grant.Reference, StringComparer.Ordinal).ToList();
             if (held.Count == 0)
             {
@@ -281,7 +280,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
             var items = held.Select(group =>
             {
                 var name = ItemName(group.Key);
-                var bySession = group.Any(grant => grant.Scope == VaultHub.SessionScope);
+                var bySession = group.Any(grant => grant.Scope == IVaultHub.SessionScope);
                 var since = _When(Latest("Allowed", name, new HashSet<string>([paneId])) ?? Latest("Injected", name, new HashSet<string>([paneId])));
                 var scope = bySession ? "allowed for this session" : $"always allowed for {ProjectName(projectId!)}";
                 return new VaultHeldItem(name, ProviderName(group.Key), $"{ProviderName(group.Key)} · since {since} · {scope}", bySession,
@@ -333,7 +332,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     private static string _AuditDetail(VaultAuditEvent entry) => entry.Kind switch
     {
         "Masked" => entry.Count is { } count ? $"{count} {(count == 1 ? "occurrence" : "occurrences")} in the output" : string.Empty,
-        "VaultWiped" => VaultHub.WipedMessage,
+        "VaultWiped" => IVaultHub.WipedMessage,
         _ => string.Empty,
     };
 

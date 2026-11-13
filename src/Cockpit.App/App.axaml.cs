@@ -38,6 +38,7 @@ using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.Plugins.Abstractions.Vault;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workflows;
 
@@ -1074,7 +1075,7 @@ public partial class App : Application
         _AskForRestoredSignIns(cockpit);
 
         // AC-2336: the vault's start-up check, after unlock; it wipes its section if encryption was turned off.
-        var vault = Program.Services.GetRequiredService<Cockpit.Infrastructure.Vault.VaultHub>();
+        var vault = Program.Services.GetRequiredService<IVaultHub>();
         vault.UseEncryptionSettings(() => Dispatcher.UIThread.InvokeAsync(() => cockpit.OpenOptionsCategoryAsync("security")));
         cockpit.Vault.OpenOverview = () => _ = cockpit.OpenOptionsCategoryAsync("vault");
         cockpit.Vault.Attach(

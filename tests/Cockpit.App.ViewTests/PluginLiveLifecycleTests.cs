@@ -19,6 +19,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Infrastructure.Vault;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.CompanionTools;
@@ -41,6 +42,7 @@ using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Vault;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -246,6 +248,7 @@ public sealed class PluginLiveLifecycleTests
         services.AddSingleton<SettingsCarriers>();
         services.AddSingleton<BackupTargets>();
         services.AddSingleton(new StartupSequence());
+        services.AddSingleton<IVaultHub, VaultHub>();
         return services.BuildServiceProvider();
     }
 
@@ -319,6 +322,9 @@ public sealed class PluginLiveLifecycleTests
                 BuildDownloadPlanAsync = (_, _, _, _) => Task.FromException<ManagedCliDownloadPlan>(new NotSupportedException()),
             });
             host.AddSessionResourceProvider(Substitute.For<ISessionResourceProvider>());
+            var vaultProvider = Substitute.For<IVaultProvider>();
+            vaultProvider.Id.Returns("everything-vault");
+            host.AddVaultProvider(vaultProvider);
             var source = Substitute.For<ISharedProjectSource>();
             source.Key.Returns("shared");
             host.AddSharedProjectSource(source);
