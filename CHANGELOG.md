@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2348: New 1Password plugin connects one 1Password vault to the vault, through a service account and the `op` CLI. Under Options › PLUGINS › 1Password you test a token, see which vaults it can read, and connect only when it reads exactly one; a token that reads more is refused and nothing is saved. Agents can use only items of that vault, and the token reaches `op` only through its environment. While credential encryption is off the page is blocked, with a button to Options › Security (1Password 0.1.0).
+
 - AC-2347: Options › Vault shows the providers and their items, who holds which permission (with Revoke) and an audit of names only. The status bar gets a "Secrets in use" meter that opens a panel to revoke per session or everywhere. While credential encryption is off, the Vault page shows only a block with a Turn on encryption button, and it opens normally as soon as encryption is on, without a restart. The vault's consent card now explains each choice.
 
 - AC-2346: Agents get the `cockpit-vault` MCP once a vault provider is installed. `vault_list` shows items by name only; `vault_run` runs one command with a secret in its environment after you approve it on a card (once, for this session, or always for the project), and replaces the secret in the command's output with `[vault: <name>]`. A grant covers exactly that command; anything else asks again. With credential encryption off or locked, the agent is told to ask you and a toast leads to Options › Security.
