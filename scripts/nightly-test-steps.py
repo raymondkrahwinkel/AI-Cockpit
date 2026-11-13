@@ -2,7 +2,9 @@
 
 scripts/local-gate.sh --nightly pipes this into the Linux container, so the local run executes the workflow's own
 run blocks verbatim and cannot drift from it. Steps that only make sense on a GitHub runner are left out: those
-guarded by !env.ACT (sysctl, artifact upload) and the summary step (python3, GITHUB_STEP_SUMMARY).
+guarded by !env.ACT (sysctl, artifact upload). The "Test and coverage summary" step is run as written, with the
+outcomes its env block would take from GitHub set to success and the step summary printed at the end; with --base
+its expected-project set is narrowed to the projects that ran, since the rest left no result on purpose.
 
 With --base <sha> only the test projects touched since that commit run (selection by scripts/classify-changes.sh,
 which walks the real ProjectReference graph); builds, Journeys and the cross-plugin annotation guard always run.
@@ -86,8 +88,16 @@ for step in steps:
             value = "\n".join(block).strip("\n")
         fields[key] = value
     run, name = fields.get("run"), fields.get("name", "step")
-    if run is None or "!env.ACT" in fields.get("if", "") or "python3" in run:
+    if run is None or "!env.ACT" in fields.get("if", ""):
         continue
+    if "python3" in run:
+        anchor = "expected = {name.casefold(): name for name in expected_names}"
+        if anchor not in run:
+            sys.exit(f"nightly.yml step '{name}' no longer has `{anchor}`; teach nightly-test-steps.py about it")
+        if base:
+            run = run.replace(anchor, anchor[:-1] + f" if name in {sorted(chosen)!r}}}")
+        outcomes = " ".join(f"{k}=success" for k in re.findall(r"os\.environ\[\"(\w+_OUTCOME)\"\]", run))
+        run = f"export GITHUB_STEP_SUMMARY=$(mktemp) {outcomes}\ntrap 'cat \"$GITHUB_STEP_SUMMARY\"' EXIT\n{run}"
     if "${{" in run:
         sys.exit(f"nightly.yml step '{name}' uses an expression; teach nightly-test-steps.py about it")
 
