@@ -688,6 +688,12 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <StackPanel Spacing="2" IsVisible="{Binding IsLocal}">
+                        <TextBlock Classes="FieldLabel" Text="Default role"/>
+                        <TextBlock Classes="FieldHint" Text="Optional — the role from the brain's role list that a session here gets when the assistant names none, e.g. Programmer. Stays on this machine."/>
+                        <TextBox Text="{Binding DefaultRole}" PlaceholderText="none" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="2">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Classes="FieldLabel" Text="Behaviour"/>

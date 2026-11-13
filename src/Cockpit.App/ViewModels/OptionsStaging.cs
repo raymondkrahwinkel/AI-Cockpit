@@ -103,6 +103,7 @@ internal static class OptionsStaging
         "AssistantOptions.ConsentBypassAll",
         "AssistantOptions.IsEnabled",
         "AssistantOptions.PushToTalkKeyName",
+        "AssistantOptions.RequireRole",
         "AssistantOptions.SelectedReadingLevel",
         "AssistantOptions.SpeakReplies",
         "AssistantOptions.WakeWordEnabled",

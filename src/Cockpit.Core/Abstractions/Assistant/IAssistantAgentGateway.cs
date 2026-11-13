@@ -500,6 +500,9 @@ public sealed record AgentSpawnResult(
 
     public string? RoleList { get; init; }
 
+    // AC-2357: a hint for the caller when the brain has no roles to choose from.
+    public string? RoleHint { get; init; }
+
     public IReadOnlyList<string>? McpServers { get; init; }
 
     public bool McpServersConfirmed { get; init; }

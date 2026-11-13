@@ -10,4 +10,5 @@ internal sealed record AssistantServerOptions(
     [property: JsonRequired] string? SpeechProfileLabel,
     [property: JsonRequired] bool ConsentBypassAll,
     [property: JsonRequired] IReadOnlyList<string> ConsentBypassSources,
-    [property: JsonRequired] IReadOnlyList<string> ConsentBypassDangerousSources);
+    [property: JsonRequired] IReadOnlyList<string> ConsentBypassDangerousSources,
+    bool RequireRole = true);
