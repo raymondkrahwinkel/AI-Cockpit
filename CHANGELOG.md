@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2353: A session's process and memory figures no longer include unrelated processes. On Windows a process id reused by a stranger (a service host, the desktop shell) was counted, with everything beneath it, as the session's own; the meter could read 265 processes and 13 GB for a session of about 12 processes.
+
 - AC-2352: The assistant now has the exact parameter names of its core tools (start_agent, send_prompt, stop_agent, remember, create_reminder and more) in its prompt, so it no longer guesses them and fails on the first call.
 
 - AC-2351: A session whose MCP server (such as the Depot gateway) fails to connect now says so to the agent in its server instructions instead of silently having no tools. A connect that times out is logged and reported as "Connection timed out" instead of "Needs a sign-in", and the log records how long each server took to connect.
