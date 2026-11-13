@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2352: The assistant now has the exact parameter names of its core tools (start_agent, send_prompt, stop_agent, remember, create_reminder and more) in its prompt, so it no longer guesses them and fails on the first call.
+
 - AC-2351: A session whose MCP server (such as the Depot gateway) fails to connect now says so to the agent in its server instructions instead of silently having no tools. A connect that times out is logged and reported as "Connection timed out" instead of "Needs a sign-in", and the log records how long each server took to connect.
 
 - AC-2350: Options › Voice has a "Keep speech models loaded" option. When on, speech recognition and the voice load in the background after Cockpit starts and stay in memory, so the first dictation starts without waiting for the model. Off by default; it uses more memory.
