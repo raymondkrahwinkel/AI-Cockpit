@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Secrets;
@@ -63,8 +64,10 @@ internal sealed partial class VaultHub : ISingletonService
         }
     }
 
-    // Null when another provider already holds this id.
-    public IVaultProviderContext? Register(IVaultProvider provider)
+    // Null when another provider already holds this id. `pluginId` is the id the host established for the registrant,
+    // never one the plugin chose: it owns the credential slot, so a plugin that claims another's provider id later
+    // gets an empty slot of its own instead of that provider's token (AC-2333 S1).
+    public IVaultProviderContext? Register(string pluginId, IVaultProvider provider)
     {
         lock (_gate)
         {
@@ -74,7 +77,7 @@ internal sealed partial class VaultHub : ISingletonService
             }
         }
 
-        return new ProviderContext(this, provider);
+        return new ProviderContext(this, provider, _SlotOf(pluginId, provider.Id));
     }
 
     public void Unregister(IVaultProvider provider)
@@ -150,15 +153,17 @@ internal sealed partial class VaultHub : ISingletonService
 
     private VaultAvailability _Evaluate() => EvaluateAsync().GetAwaiter().GetResult();
 
-    private bool _TryStore(string providerId, string value) =>
-        _TryUpdateAsync(section => _WithState(section, state => state.Credentials[providerId] = value), CancellationToken.None)
+    private static string _SlotOf(string pluginId, string providerId) => JsonSerializer.Serialize<string[]>([pluginId, providerId], StateOptions);
+
+    private bool _TryStore(string slot, string value) =>
+        _TryUpdateAsync(section => _WithState(section, state => state.Credentials[slot] = value), CancellationToken.None)
             .GetAwaiter().GetResult();
 
-    private void _Clear(string providerId) =>
-        _TryUpdateAsync(section => _WithState(section, state => state.Credentials.Remove(providerId)), CancellationToken.None)
+    private void _Clear(string slot) =>
+        _TryUpdateAsync(section => _WithState(section, state => state.Credentials.Remove(slot)), CancellationToken.None)
             .GetAwaiter().GetResult();
 
-    private string? _Read(string providerId)
+    private string? _Read(string slot)
     {
         if (_Evaluate() != VaultAvailability.Available)
         {
@@ -166,7 +171,7 @@ internal sealed partial class VaultHub : ISingletonService
         }
 
         var state = _ReadStateAsync(CancellationToken.None).GetAwaiter().GetResult();
-        return state?.Credentials.GetValueOrDefault(providerId);
+        return state?.Credentials.GetValueOrDefault(slot);
     }
 
     // Null means: nothing readable, so nothing is granted.
@@ -234,11 +239,14 @@ internal sealed partial class VaultHub : ISingletonService
         try
         {
             var file = await _config.ReadAsync(cancellationToken).ConfigureAwait(false);
-            if (file?.Vault is null)
+            if (file?.Vault is null && !_BackupHoldsVault())
             {
                 return;
             }
 
+            // AC-2333 S2: every save turns the file it replaces into `.bak`, so the first save leaves the section readable
+            // there. The second one makes `.bak` the already-wiped file; recovery keeps a valid copy, just without the vault.
+            await _config.UpdateAsync(current => current.Vault = null, cancellationToken).ConfigureAwait(false);
             await _config.UpdateAsync(current => current.Vault = null, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -246,8 +254,25 @@ internal sealed partial class VaultHub : ISingletonService
             _wipe.Release();
         }
 
+        _Invalidate();
+
         _logger.LogWarning("Credential encryption is off, so the vault's data was removed from the configuration.");
         _toasts?.Show(WipedMessage, ToastSeverity.Warning, "Open Security", OpenEncryptionSettings);
+    }
+
+    // A wipe that stopped between its two saves leaves the section only in `.bak`; the next check finishes it.
+    private bool _BackupHoldsVault()
+    {
+        try
+        {
+            var backup = _config.ConfigFilePath + ".bak";
+            return File.Exists(backup) && JsonNode.Parse(File.ReadAllText(backup)) is JsonObject root
+                && root.Any(property => string.Equals(property.Key, "vault", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
     }
 
     private void _Note(VaultAvailability availability)
@@ -297,8 +322,8 @@ internal sealed partial class VaultHub : ISingletonService
         public Dictionary<string, List<string>> ProjectGrants { get; set; } = new(StringComparer.Ordinal);
     }
 
-    // A provider's slot; a context whose provider was unregistered or replaced answers like a closed vault.
-    private sealed class ProviderContext(VaultHub hub, IVaultProvider provider) : IVaultProviderContext
+    // A provider's slot, keyed by (owning plugin, provider id); a context whose provider was unregistered or replaced answers like a closed vault.
+    private sealed class ProviderContext(VaultHub hub, IVaultProvider provider, string slot) : IVaultProviderContext
     {
         public VaultAvailability Availability => hub._Evaluate();
 
@@ -308,15 +333,15 @@ internal sealed partial class VaultHub : ISingletonService
             remove => hub.AvailabilityChanged -= value;
         }
 
-        public bool TryStoreCredential(string value) => hub._Holds(provider) && hub._TryStore(provider.Id, value);
+        public bool TryStoreCredential(string value) => hub._Holds(provider) && hub._TryStore(slot, value);
 
-        public string? ReadCredential() => hub._Holds(provider) ? hub._Read(provider.Id) : null;
+        public string? ReadCredential() => hub._Holds(provider) ? hub._Read(slot) : null;
 
         public void ClearCredential()
         {
             if (hub._Holds(provider))
             {
-                hub._Clear(provider.Id);
+                hub._Clear(slot);
             }
         }
 

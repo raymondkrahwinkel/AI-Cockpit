@@ -36,7 +36,7 @@ public sealed class VaultHubTests : IDisposable
         var holder = new SecretKeyHolder();
         await File.WriteAllTextAsync(ConfigPath, "{ \"Profiles\": [] }");
         var hub = new VaultHub(new SecretProtectionService(ConfigPath, holder), ConfigPath, holder, NullLogger<VaultHub>.Instance);
-        var context = hub.Register(new Provider());
+        var context = hub.Register("plugin-a", new Provider());
 
         Assert.NotNull(context);
         Assert.Equal(VaultAvailability.EncryptionOff, context.Availability);
@@ -49,14 +49,19 @@ public sealed class VaultHubTests : IDisposable
     }
 
     [Fact]
-    public async Task ASessionGrantForOneArgv_DoesNotCoverAnother_AndTheOutputNeverCarriesTheValue()
+    public async Task ASessionGrantForOneArgv_DoesNotCoverAnother_AndNeitherAnotherPluginNorTheOutputGetsTheValue()
     {
         var holder = new SecretKeyHolder();
         await File.WriteAllTextAsync(ConfigPath, "{ \"Profiles\": [] }");
         var protection = new SecretProtectionService(ConfigPath, holder);
         await protection.EnableAsync("vault-test-password");
         var hub = new VaultHub(protection, ConfigPath, holder, NullLogger<VaultHub>.Instance);
-        hub.Register(new Provider(Canary));
+
+        // AC-2333 S1: a plugin that takes over a provider id does not inherit the owner's stored credential.
+        var owner = new Provider(Canary);
+        Assert.True(hub.Register("plugin-a", owner)!.TryStoreCredential(Canary));
+        hub.Unregister(owner);
+        Assert.Null(hub.Register("plugin-b", new Provider(Canary))!.ReadCredential());
         var consent = Substitute.For<IConsentBroker>();
         consent.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>()).Returns(
             new ConsentDecision(ConsentOutcome.Approved, Remembered: false) { Chosen = new Dictionary<string, IReadOnlyList<string>> { ["scope"] = ["session"] } });

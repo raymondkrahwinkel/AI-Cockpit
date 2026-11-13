@@ -579,7 +579,7 @@ internal class PluginBackendHost(
     public IVaultProviderContext AddVaultProvider(IVaultProvider provider)
     {
         var hub = services.GetService<VaultHub>();
-        if (hub?.Register(provider) is not { } context)
+        if (hub?.Register(pluginId, provider) is not { } context)
         {
             _Logger()?.LogWarning("Vault provider '{ProviderId}' is already registered or this host has no vault; this registration is ignored", provider.Id);
             return UnavailableVaultProviderContext.Instance;
