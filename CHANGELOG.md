@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2350: Options › Voice has a "Keep speech models loaded" option. When on, speech recognition and the voice load in the background after Cockpit starts and stay in memory, so the first dictation starts without waiting for the model. Off by default; it uses more memory.
+
 - AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Loopback endpoints default to 600 seconds, remote endpoints to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.
 
 - AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).

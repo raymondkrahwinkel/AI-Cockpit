@@ -49,6 +49,8 @@ internal sealed class VoiceSettingsEntry
 
     public double StopReadAloudLevelThreshold { get; set; } = 0.15;
 
+    public bool KeepModelsLoaded { get; set; }
+
     public bool DuckOtherAudioWhileSpeaking { get; set; }
 
     public double DuckingLevel { get; set; } = 0.4;
@@ -73,6 +75,7 @@ internal sealed class VoiceSettingsEntry
         OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
+        KeepModelsLoaded = settings.KeepModelsLoaded,
         DuckOtherAudioWhileSpeaking = settings.DuckOtherAudioWhileSpeaking,
         DuckingLevel = settings.DuckingLevel,
     };
@@ -99,6 +102,7 @@ internal sealed class VoiceSettingsEntry
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = StopReadAloudLevelThreshold,
+        KeepModelsLoaded = KeepModelsLoaded,
         DuckOtherAudioWhileSpeaking = DuckOtherAudioWhileSpeaking,
         DuckingLevel = DuckingLevel,
     };

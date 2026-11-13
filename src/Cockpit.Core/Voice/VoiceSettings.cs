@@ -77,6 +77,9 @@ public sealed record VoiceSettings
     // silence timeout is: a quiet room and a noisy one do not share a number, and neither do two microphones.
     public double StopReadAloudLevelThreshold { get; init; } = 0.15;
 
+    // AC-2350: Load the speech models in the background after startup and never unload them (no Whisper idle-kill). Off by default: the models stay in memory.
+    public bool KeepModelsLoaded { get; init; }
+
     public bool DuckOtherAudioWhileSpeaking { get; init; }
 
     public double DuckingLevel { get; init; } = 0.4;
