@@ -22,6 +22,9 @@ internal static class HeadlessRoutes
         // A screenshot, which needs nothing else running: its scenes carry their own view models and never resolve
         // `Program.Services`, so it also writes nothing into the operator's state directory (AC-1235).
         (Screenshotter.IsRequested, Screenshotter.RunFromCommandLine),
+
+        // The trusted-installation verdict reads files and ACLs only, so it may run beside a live cockpit (AC-2342).
+        (HeadlessTrustedInstallCheck.IsRequested, HeadlessTrustedInstallCheck.Run),
     ];
 
     // The exit code of the route this command line asked for, or false if it asked for none of them.

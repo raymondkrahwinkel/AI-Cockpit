@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2342: `Cockpit.App --verify-trusted-install [folder]` reports whether an installation may be trusted by the coming vault: owned and writable only by SYSTEM, Administrators or TrustedInstaller (root on Linux), including every parent folder, no links or junctions, every file matching the installation's SHA256SUMS with nothing extra, and the main executable signed by a pinned publisher. The report lists names only. Until Cockpit ships signed, no installation passes, so no real vault will start.
+
 - AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Loopback endpoints default to 600 seconds, remote endpoints to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.
 
 - AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).
