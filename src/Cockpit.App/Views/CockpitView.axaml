@@ -2732,6 +2732,9 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- AC-2347: what agents hold from the vault; gone at nought. -->
+                    <controls:VaultStatusMeter DockPanel.Dock="Right"/>
+
                     <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
                          shown only while it has activities, opening a panel with a Kill per item. -->
                     <controls:PluginStatusBarHost DockPanel.Dock="Right"

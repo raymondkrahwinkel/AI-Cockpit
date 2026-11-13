@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Cockpit.Infrastructure;
 
@@ -10,6 +12,71 @@ internal static class CommandRunnerProcess
 
     // A refused kill can keep a pipe open, so abandon a read after a short grace instead of waiting forever.
     private static readonly TimeSpan ReadGrace = TimeSpan.FromSeconds(5);
+
+    private const string Setsid = "/usr/bin/setsid";
+    private const int SigKill = 9;
+
+    // AC-2333 S5: starts a command whose whole tree ends when the result is disposed, orphans included. Windows starts it
+    // suspended inside a kill-on-close job; Linux gives it its own process group. Either containment failing starts
+    // nothing. Elsewhere (macOS) it is the tree walk, which only reaches descendants of a parent still alive.
+    internal static ContainedRun StartContained(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return WindowsContainedStart.Start(NormalizeExecutablePath(executable), arguments, directory, environment);
+        }
+
+        var ownGroup = OperatingSystem.IsLinux();
+        if (ownGroup && !File.Exists(Setsid))
+        {
+            throw new InvalidOperationException($"{Setsid} is missing, so the command's processes could not be contained.");
+        }
+
+        var startInfo = new ProcessStartInfo(ownGroup ? Setsid : executable)
+        {
+            WorkingDirectory = directory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        // Not a group leader, so setsid execs in place: the process keeps its pid, which is now its group id too.
+        foreach (var argument in ownGroup ? arguments.Prepend(executable) : arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        foreach (var (variable, value) in environment)
+        {
+            startInfo.Environment[variable] = value;
+        }
+
+        var process = Process.Start(startInfo) ?? throw new InvalidOperationException("The command did not start.");
+        var id = process.Id;
+        return new ContainedRun(
+            process.StandardOutput,
+            process.StandardError,
+            process.WaitForExitAsync,
+            () => process.HasExited ? process.ExitCode : null,
+            () =>
+            {
+                if (ownGroup)
+                {
+                    _ = kill(-id, SigKill);
+                }
+                else
+                {
+                    _KillTree(process);
+                }
+
+                process.Dispose();
+            });
+    }
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int kill(int pid, int signal);
 
     internal static void _KillTree(Process process)
     {

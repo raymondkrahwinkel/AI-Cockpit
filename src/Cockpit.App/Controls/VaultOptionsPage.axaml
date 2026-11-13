@@ -1,0 +1,157 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Controls.VaultOptionsPage"
+             x:DataType="vm:VaultOverviewViewModel">
+
+    <!-- AC-2347 (mockup 3): Options › Vault. While the vault is closed only the encryption block shows. -->
+    <StackPanel Spacing="8">
+        <TextBlock Text="Vault" FontSize="20" FontWeight="Bold"/>
+        <TextBlock Classes="optionsHint"
+                   Text="Secrets your agents may use. Agents see names and references, never values: a value goes into a process's environment when it starts."/>
+        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+
+        <ContentControl x:Name="EncryptionBlock"/>
+
+        <TabControl IsVisible="{Binding !IsBlocked}">
+            <TabItem Header="Providers and items">
+                <StackPanel Spacing="8" Margin="0,10,0,0">
+                    <TextBlock Classes="optionsSectionHeader" Text="1. CONNECTED PROVIDERS" Margin="0,4,0,2"/>
+                    <TextBlock Classes="optionsHint" Text="No provider is installed." IsVisible="{Binding HasNoProviders}"/>
+                    <ItemsControl ItemsSource="{Binding Providers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:VaultProviderRow">
+                                <Border Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                                        BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="12,11">
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                <TextBlock Classes="optionsHint" Text="{Binding Detail}"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Classes="statusTag run" VerticalAlignment="Center" IsVisible="{Binding IsConnected}">
+                                                <TextBlock Text="{Binding StatusText}"/>
+                                            </Border>
+                                            <Border Grid.Column="1" Classes="tag" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}">
+                                                <TextBlock Text="{Binding StatusText}"/>
+                                            </Border>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="230,*,110" Margin="12,6" IsVisible="{Binding HasItems}">
+                                            <TextBlock Classes="columnHead" Text="ITEM"/>
+                                            <TextBlock Classes="columnHead" Grid.Column="1" Text="REFERENCE"/>
+                                            <TextBlock Classes="columnHead" Grid.Column="2" Text="PERMISSIONS"/>
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:VaultItemRow">
+                                                    <Grid ColumnDefinitions="230,*,110" Margin="12,5">
+                                                        <TextBlock Text="{Binding Name}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Reference}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding Permissions}" FontSize="11.5"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="optionsHint"
+                               Text="Add a provider by installing its plugin from the Plugin store. There is no button that shows a value: not here, not to the agent."/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Permissions"/>
+                        <Border Classes="tag"><TextBlock Text="{Binding PermissionsCount}"/></Border>
+                    </StackPanel>
+                </TabItem.Header>
+                <StackPanel Spacing="8" Margin="0,10,0,0">
+                    <Border Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="*,100,210,100,70,80,84" Margin="12,8">
+                                <TextBlock Classes="columnHead" Text="ITEM"/>
+                                <TextBlock Classes="columnHead" Grid.Column="1" Text="PROVIDER"/>
+                                <TextBlock Classes="columnHead" Grid.Column="2" Text="WHO"/>
+                                <TextBlock Classes="columnHead" Grid.Column="3" Text="SCOPE"/>
+                                <TextBlock Classes="columnHead" Grid.Column="4" Text="GRANTED"/>
+                                <TextBlock Classes="columnHead" Grid.Column="5" Text="LAST USED"/>
+                            </Grid>
+                            <TextBlock Classes="optionsHint" Margin="12,4,12,12" Text="Nothing is granted. An agent asks you on a card when it first needs an item."
+                                       IsVisible="{Binding HasNoPermissions}"/>
+                            <ItemsControl ItemsSource="{Binding Permissions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:VaultPermissionRow">
+                                        <Grid ColumnDefinitions="*,100,210,100,70,80,84" Margin="12,5">
+                                            <TextBlock Text="{Binding Item}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Provider}" FontSize="11.5" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Who}" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Classes="optionsHint" Text="{Binding WhoNote}" IsVisible="{Binding WhoNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="3" Classes="waitingCount" HorizontalAlignment="Left" IsVisible="{Binding IsAlways}">
+                                                <TextBlock Text="{Binding Scope}"/>
+                                            </Border>
+                                            <Border Grid.Column="3" Classes="tag" HorizontalAlignment="Left" IsVisible="{Binding !IsAlways}">
+                                                <TextBlock Text="{Binding Scope}"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="4" Text="{Binding Granted}" FontSize="11.5" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="5" Text="{Binding LastUsed}" FontSize="11.5" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="6" Classes="Compact" Content="Revoke" Click="OnRevoke"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Classes="optionsHint"
+                               Text="“Always” is the only scope that outlives a session; it is shown amber because nobody is asked again. Revoking stops every next start; a process that already started keeps its copy until it ends."/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Audit">
+                <StackPanel Spacing="8" Margin="0,10,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ComboBox ItemsSource="{Binding AuditProviderChoices}" SelectedItem="{Binding AuditProvider}" MinWidth="160"/>
+                        <ComboBox ItemsSource="{Binding AuditEventChoices}" SelectedItem="{Binding AuditEvent}" MinWidth="160"/>
+                    </StackPanel>
+                    <Border Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}">
+                        <StackPanel>
+                            <Grid ColumnDefinitions="60,100,*,170,*" Margin="12,8">
+                                <TextBlock Classes="columnHead" Text="TIME"/>
+                                <TextBlock Classes="columnHead" Grid.Column="1" Text="EVENT"/>
+                                <TextBlock Classes="columnHead" Grid.Column="2" Text="ITEM"/>
+                                <TextBlock Classes="columnHead" Grid.Column="3" Text="SESSION"/>
+                                <TextBlock Classes="columnHead" Grid.Column="4" Text="DETAIL"/>
+                            </Grid>
+                            <TextBlock Classes="optionsHint" Margin="12,4,12,12" Text="No events match." IsVisible="{Binding HasNoAudit}"/>
+                            <ItemsControl ItemsSource="{Binding Audit}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:VaultAuditRow">
+                                        <Grid ColumnDefinitions="60,100,*,170,*" Margin="12,5">
+                                            <TextBlock Text="{Binding Time}" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="1" Classes="tag" HorizontalAlignment="Left"><TextBlock Text="{Binding Event}"/></Border>
+                                            <TextBlock Grid.Column="2" Text="{Binding Item}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding Session}" FontSize="11.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding Detail}" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Classes="optionsHint" Text="The audit keeps the last 500 events. It holds names only, never a value."/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </StackPanel>
+</UserControl>

@@ -85,6 +85,9 @@ public static class ConsentSourceCatalog
     // and never bypassed, for the same reason as `ElevatedCommand`: the card is the whole contract.
     public const string PluginPrompt = "Plugin prompt";
 
+    // The vault MCP server (AC-2346) running a command with a secret. Never in `HostSources`: its card has a scope only the operator can pick.
+    public const string VaultMcp = "Vault MCP";
+
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     // Plugin rows are absent on purpose, `WhiteboardInvite` and `ElevatedCommand` included — see their own comments above.
     public static IReadOnlyList<string> HostSources { get; } =
