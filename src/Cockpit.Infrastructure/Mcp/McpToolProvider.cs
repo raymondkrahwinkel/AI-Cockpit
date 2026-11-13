@@ -308,9 +308,15 @@ internal sealed partial class McpToolProvider(
             {
                 await _oauthCoordinator.ReportInsufficientScopeAsync(server, accessToken, CancellationToken.None).ConfigureAwait(false);
             }
-            else if (!cancellationToken.IsCancellationRequested)
+            else
             {
-                _logger.LogWarning(ex, "MCP server {Name} could not be connected; skipping its tools", server.Name);
+                // A deadline or cancel used to log nothing and read as "needs a sign-in"; it is neither, so it is named.
+                _logger.LogWarning(ex, "MCP server {Name} could not be connected{Cause}; skipping its tools", server.Name,
+                    cancellationToken.IsCancellationRequested ? " (timed out or cancelled)" : string.Empty);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return (null, "Connection timed out.");
+                }
             }
 
             return (null, NeedsSignIn);

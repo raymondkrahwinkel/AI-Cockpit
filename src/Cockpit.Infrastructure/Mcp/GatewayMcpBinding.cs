@@ -45,6 +45,8 @@ internal sealed class GatewayMcpBinding : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            // The first tool list goes out without the servers still connecting; they arrive later through list_changed.
+            _logger.LogWarning("Pane {Pane} did not get all its MCP servers within 3 s.", _paneId);
         }
     }
 
