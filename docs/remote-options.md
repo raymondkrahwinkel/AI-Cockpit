@@ -117,6 +117,7 @@ A session start whose MCP gateway cannot be prepared stops, never falling back t
 | `AssistantOptions.ConsentBypassAll` | Server assistant (AC-2280) |
 | `AssistantOptions.IsEnabled` | Server assistant (AC-2280) |
 | `AssistantOptions.PushToTalkKeyName` | Client presentation/device |
+| `AssistantOptions.RequireRole` | Server assistant (AC-2357) |
 | `AssistantOptions.SelectedReadingLevel` | Server assistant (AC-2280) |
 | `AssistantOptions.SpeakReplies` | Client presentation/device |
 | `AssistantOptions.WakeWordEnabled` | Client presentation/device |

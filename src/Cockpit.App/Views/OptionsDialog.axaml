@@ -1573,6 +1573,12 @@
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="The assistant always picks a fitting agent (role)"
+                                          IsChecked="{Binding AssistantOptions.RequireRole}"
+                                          ToolTip.Tip="While on, the assistant only starts a session with a fitting role from the project's brain, never with none. If no role fits, no session is started and the assistant tells you why. A brain without roles still starts a session without one."/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Chat window reading level" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="How much the chat window shows: Developer sees everything (tool calls, thinking, costs, jargon); Focus folds tool runs and moves cost to the usage pill; Simple drops tool noise and jargon. The same three levels an SDK session's own header dropdown offers — set here instead, since the chat window is a display, not a control panel."/>

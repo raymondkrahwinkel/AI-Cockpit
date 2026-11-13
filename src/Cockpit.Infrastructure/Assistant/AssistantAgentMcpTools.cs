@@ -225,7 +225,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
         [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt, name and role.")] string? node = null,
         [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults; [] keeps only the always-mounted servers. The session's brain server (from the project or profile) is always added and cannot be removed. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null,
-        [Description("A role from list_roles for the target session, or explicit none for general work. Required when that brain has roles. On a node, the node checks its own roles and returns them on refusal.")] string? role = null)
+        [Description("A role from list_roles for the target session. Required when that brain has roles: an empty role takes the project's default role if it has one, otherwise the start is refused with the available roles, and none is refused too while the option 'The assistant always picks a fitting agent (role)' is on (the default). Use none only for a brain without roles, or when that option is off. On a node, the node checks its own roles and returns them on refusal.")] string? role = null)
     {
         try
         {
@@ -292,6 +292,7 @@ internal sealed class AssistantAgentMcpTools(
                     mcpServersConfirmed = result.McpServersConfirmed,
                     role = result.Role,
                     roleList = result.RoleList,
+                    roleHint = result.RoleHint,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }
