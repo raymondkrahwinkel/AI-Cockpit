@@ -657,6 +657,7 @@ public partial class App : Application
         _ = openMicCoordinator.StartAsync();
 
         await Program.Services.GetRequiredService<AudioDuckingCoordinator>().StartAsync();
+        Program.Services.GetRequiredService<SpeechModelWarmupCoordinator>().Start();
 
         // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
         // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.

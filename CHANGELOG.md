@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- AC-2353: A session's process and memory figures no longer include unrelated processes. On Windows a process id reused by a stranger (a service host, the desktop shell) was counted, with everything beneath it, as the session's own; the meter could read 265 processes and 13 GB for a session of about 12 processes.
+
+- AC-2352: The assistant now has the exact parameter names of its core tools (start_agent, send_prompt, stop_agent, remember, create_reminder and more) in its prompt, so it no longer guesses them and fails on the first call.
+
+- AC-2351: A session whose MCP server (such as the Depot gateway) fails to connect now says so to the agent in its server instructions instead of silently having no tools. A connect that times out is logged and reported as "Connection timed out" instead of "Needs a sign-in", and the log records how long each server took to connect.
+
+- AC-2350: Options › Voice has a "Keep speech models loaded" option. When on, speech recognition and the voice load in the background after Cockpit starts and stay in memory, so the first dictation starts without waiting for the model. Off by default; it uses more memory.
+
 - AC-2333: Vault security fixes. A plugin that takes over another provider's id no longer gets that provider's stored token. Turning encryption off no longer leaves the vault's data readable in `cockpit.json.bak`. A revoke, closed or reopened vault, or ended session now also stops a run that was already approved but had not started yet, and an approval that arrives after a revoke no longer brings the permission back. "Revoke for this session" now also stops a project grant in that session, and the status bar shows every grant that still applies. Everything a vault command starts is ended when the command returns or times out, including children that outlived it; when Cockpit cannot contain a command that way, it does not start it. A failed revoke no longer crashes Cockpit; the row stays so you can try again.
 
 - AC-2348: New 1Password plugin connects one 1Password vault to the vault, through a service account and the `op` CLI. Under Options › PLUGINS › 1Password you test a token, see which vaults it can read, and connect only when it reads exactly one; a token that reads more is refused and nothing is saved. Agents can use only items of that vault, and the token reaches `op` only through its environment. While credential encryption is off the page is blocked, with a button to Options › Security (1Password 0.1.0).

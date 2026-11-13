@@ -82,6 +82,7 @@ internal static class OptionsStaging
         "VoiceCustomModelName",
         "VoiceEnabled",
         "VoiceGlobalPushToTalk",
+        "VoiceKeepModelsLoaded",
         "VoiceOpenMicSilenceTimeoutMs",
         "VoicePushToTalkKeyName",
         "VoiceStopReadAloudLevelThreshold",

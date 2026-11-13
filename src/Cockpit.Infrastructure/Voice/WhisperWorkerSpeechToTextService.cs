@@ -206,7 +206,7 @@ internal sealed class WhisperWorkerSpeechToTextService(
         process.BeginErrorReadLine();
         _stdin = process.StandardInput.BaseStream;
         _lastBackend = backend;
-        _idleTimer ??= new Timer(_ => _KillIfIdle(), null, IdleCheckInterval, IdleCheckInterval);
+        _idleTimer ??= new Timer(async _ => await _KillIfIdleAsync().ConfigureAwait(false), null, IdleCheckInterval, IdleCheckInterval);
 
         // Wait for the worker to activate the native runtime and load the model. Throws if it died first (the Exited
         // handler faults the tcs), which the retry above turns into a CPU fallback.
@@ -280,8 +280,22 @@ internal sealed class WhisperWorkerSpeechToTextService(
         await stdin.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private void _KillIfIdle()
+    private async Task _KillIfIdleAsync()
     {
+        // AC-2350: re-read each tick so switching the option on or off applies without a restart.
+        try
+        {
+            if ((await settingsStore.LoadAsync().ConfigureAwait(false)).KeepModelsLoaded)
+            {
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Reading the voice settings for the idle check failed; skipping this tick.");
+            return;
+        }
+
         bool hasWorker;
         bool busy;
         lock (_stateLock)

@@ -273,6 +273,19 @@ public static class AssistantSystemPrompt
         "\n" +
         "Sessions automatically receive the statusline, turn-closing, notify, schema-check and merge rules; do not repeat them in briefs.\n" +
         "\n" +
+        "PARAMETER NAMES (AC-2352). These tools are deferred, so their schema is not loaded: use exactly these " +
+        "names on the first call; `*` = required.\n" +
+        "- `start_agent`(profile*, prompt*, role* = name|none, projectId, workspaceId, workingDirectory, name, kind, options, isolate, node, mcpServers[])\n" +
+        "- `stop_agent`(paneId*)\n" +
+        "- `send_prompt`(paneId*, prompt*)\n" +
+        "- `send_message`(paneId*, kind*, body*)\n" +
+        "- `watch_session`(paneId*, events[]*, afterMinutes, pattern)\n" +
+        "- `note_state`(state*)\n" +
+        "- `remember`(text*, scope* = behaviour|machine, machines[])\n" +
+        "- `list_sessions`(includeNodeCatalog)\n" +
+        "- `read_transcript`(paneId*, count)\n" +
+        "- `create_reminder`(text*, at* = ISO local time, timeZone* = IANA, repeat = cron, delivery[])\n" +
+        "\n" +
         "WHAT EXISTS, AND WHEN TO REACH FOR IT. You may not have all of these; the Assistant Profile decides which " +
         "are mounted. If one is missing, say \"I cannot reach that from here\", never \"that does not exist\".\n" +
         "- Asking with options (AC-955): `ask_structured_question` = one question, 2 to 6 options, `multiSelect` " +

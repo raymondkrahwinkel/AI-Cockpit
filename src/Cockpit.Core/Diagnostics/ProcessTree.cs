@@ -26,6 +26,16 @@ public sealed class ProcessTableSnapshot
         foreach (var row in rows)
         {
             _byId[row.ProcessId] = row;
+        }
+
+        foreach (var row in rows)
+        {
+            // AC-2353: a parent that started after its child is a reused pid, not the real parent — following
+            // that link pulls a stranger's whole subtree into whoever walks through it.
+            if (_byId.TryGetValue(row.ParentProcessId, out var parent) && parent.StartedAt > row.StartedAt)
+            {
+                continue;
+            }
 
             if (!_children.TryGetValue(row.ParentProcessId, out var list))
             {
@@ -36,6 +46,11 @@ public sealed class ProcessTableSnapshot
             list.Add(row.ProcessId);
         }
     }
+
+    // AC-2353: whether `processId` now names a process that began after `moment` — a reused pid, so not whoever held
+    // it when it was remembered. Unknown start times (readers that cannot say) never count as reused.
+    public bool StartedAfter(int processId, DateTimeOffset moment) =>
+        _byId.TryGetValue(processId, out var row) && row.StartedAt > moment;
 
     // An empty result is an exited session, not an error.
     public ResourceSample Sum(int rootProcessId) => SumOf(LiveReachableFrom([rootProcessId]));
@@ -51,8 +66,6 @@ public sealed class ProcessTableSnapshot
         {
             var current = pending.Pop();
 
-            // A process table read while processes come and go can contain a cycle (a reused id whose parent
-            // now points back into the tree). Visiting each id once makes the walk terminate regardless.
             if (!_byId.ContainsKey(current) || !reached.Add(current))
             {
                 continue;
