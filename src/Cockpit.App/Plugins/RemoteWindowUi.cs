@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
+using Avalonia.Threading;
 using Cockpit.App.Docking;
 using Cockpit.App.Composition;
 using Cockpit.App.Services;
@@ -31,6 +32,7 @@ internal sealed class RemoteWindowUi : IDisposable
     private readonly SemaphoreSlim _refreshing = new(1, 1);
     private readonly IPluginDialogHost _dialogs;
     private CockpitViewModel? _cockpit;
+    private Action? _stopWatchingServer;
     private bool _disposed;
 
     internal RemoteWindowUi(Window owner, SurfaceWindows surfaces, ILoggerFactory loggers)
@@ -93,17 +95,32 @@ internal sealed class RemoteWindowUi : IDisposable
             fileRuntime.Add(RemoteFileUi.Attach(fileHost, server));
             _lifetimes.Add(fileRuntime);
             PluginManagerViewModel? manager = null;
+            var restarting = false;
+            var disconnected = false;
+            DateTimeOffset? startedAt = null;
             manager = new PluginManagerViewModel(server.Plugins, new RemotePluginDialogs(_owner, _surfaces), [], serverName,
                 restartService: server.Plugins is IServerRestart restart ? new ServerRestartService(async () =>
                 {
+                    if (manager is null || restarting)
+                    {
+                        return;
+                    }
+                    restarting = true;
+                    disconnected = false;
+                    startedAt = server.State.Key?.StartedAt;
+                    manager.IsBusy = true;
+                    manager.StatusIsError = false;
+                    manager.StatusMessage = $"Restarting {serverName}. Waiting for it to reconnect…";
                     try
                     {
                         await restart.RestartAsync();
                     }
                     catch (Exception exception)
                     {
-                        if (manager is not null)
+                        if (!disconnected)
                         {
+                            restarting = false;
+                            manager.IsBusy = false;
                             manager.StatusMessage = exception.Message;
                             manager.StatusIsError = true;
                         }
@@ -118,8 +135,59 @@ internal sealed class RemoteWindowUi : IDisposable
                     return new UiChange(_changing, folderId);
                 },
             };
+            EventHandler stateChanged = (_, _) =>
+            {
+                var state = server.State;
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    if (_disposed || !restarting)
+                    {
+                        return;
+                    }
+                    if (state.KeyRefused)
+                    {
+                        restarting = false;
+                        manager.IsBusy = false;
+                        manager.StatusIsError = true;
+                        manager.StatusMessage = $"{serverName} refused this window's connect key.";
+                        return;
+                    }
+                    if (!state.IsConnected)
+                    {
+                        disconnected = true;
+                        return;
+                    }
+                    if (startedAt is not null
+                        ? state.Key?.StartedAt is null || state.Key.StartedAt == startedAt
+                        : !disconnected)
+                    {
+                        return;
+                    }
+                    restarting = false;
+                    try
+                    {
+                        await manager.LoadAsync();
+                        await manager.BrowseStoresAsync();
+                        manager.NeedsRestart = false;
+                        manager.StatusIsError = false;
+                        manager.StatusMessage = $"{serverName} restarted and reconnected.";
+                    }
+                    catch (Exception exception)
+                    {
+                        manager.StatusMessage = exception.Message;
+                        manager.StatusIsError = true;
+                    }
+                    finally
+                    {
+                        manager.IsBusy = false;
+                    }
+                });
+            };
+            server.StateChanged += stateChanged;
+            _stopWatchingServer = () => server.StateChanged -= stateChanged;
             cockpit.UseRemotePlugins(manager);
             await manager.LoadAsync();
+            await manager.BrowseStoresAsync();
         }
         catch (Exception exception)
         {
@@ -230,6 +298,7 @@ internal sealed class RemoteWindowUi : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _stopWatchingServer?.Invoke();
         foreach (var (_, runtime) in _pluginRuntimes.Values)
         {
             runtime.Dispose();
