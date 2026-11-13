@@ -275,7 +275,7 @@ public static class AssistantSystemPrompt
         "\n" +
         "PARAMETER NAMES (AC-2352). These tools are deferred, so their schema is not loaded: use exactly these " +
         "names on the first call; `*` = required.\n" +
-        "- `start_agent`(profile, prompt, projectId, workspaceId, workingDirectory, name, kind, options, isolate, node, mcpServers[], role)\n" +
+        "- `start_agent`(profile*, prompt*, role* = name|none, projectId, workspaceId, workingDirectory, name, kind, options, isolate, node, mcpServers[])\n" +
         "- `stop_agent`(paneId*)\n" +
         "- `send_prompt`(paneId*, prompt*)\n" +
         "- `send_message`(paneId*, kind*, body*)\n" +
