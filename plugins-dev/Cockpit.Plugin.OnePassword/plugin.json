@@ -7,7 +7,7 @@
   "uiAssembly": "Cockpit.Plugin.OnePassword.UI.dll",
   "uiEntryType": "Cockpit.Plugin.OnePassword.UI.OnePasswordUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.181.0",
+  "minHostVersion": "0.182.0",
   "description": "Connects one 1Password vault to Cockpit's vault, so agents can use its items without ever seeing a value: vault_run starts a command you approve with the secret in its environment. Uses a 1Password service account through the official `op` CLI (version 2.18.0 or later, installed on this machine or pinned on PATH). The service account must read exactly one vault, ideally a separate one such as \"Agents\"; a token that reads more is refused. Needs Cockpit's credential encryption to be on: the token is stored encrypted by the vault and handed to `op` only as OP_SERVICE_ACCOUNT_TOKEN in its environment.",
   "author": "Cockpit"
 }
