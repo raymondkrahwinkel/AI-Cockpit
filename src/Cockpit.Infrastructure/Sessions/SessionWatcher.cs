@@ -27,9 +27,10 @@ public sealed record WatchedPane(
     // AC-1311: something of this session's own is still running even though Status does not hold on it — the
     // same fact `list_sessions` carries as `hasOutstandingWork`. Without it, "it stopped working" reads as
     // finished for a pane that is really just quiet while a backgrounded shell runs under it.
-    bool HasOutstandingWork = false);
+    bool HasOutstandingWork = false,
+    string Statusline = "");
 
-// The five things a watch can be armed for, spelled the way the assistant passes them.
+// The six things a watch can be armed for, spelled the way the assistant passes them.
 public static class SessionWatchEvents
 {
     public const string BusyToIdle = "busy-to-idle";
@@ -42,7 +43,9 @@ public static class SessionWatchEvents
 
     public const string Pattern = "pattern";
 
-    public static readonly IReadOnlyList<string> All = [BusyToIdle, NeedsAttention, Gone, Stuck, Pattern];
+    public const string Waiting = "waiting";
+
+    public static readonly IReadOnlyList<string> All = [BusyToIdle, NeedsAttention, Gone, Stuck, Pattern, Waiting];
 }
 
 // AC-640: watches the panes the assistant armed it for and puts a message in its inbox when one finishes, gets
@@ -71,6 +74,12 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
     private const int MaxMatchesPerTick = 5;
 
     private const int MaxRowLength = 200;
+
+    // Minutes of idleness at which `waiting` reports, counted from when the pane went quiet.
+    private static readonly int[] WaitingAfterMinutes = [8, 16, 30];
+
+    private static readonly Regex WaitCue = new(@"\b(wacht\w*|geblokkeerd|blokkade|blocked|blocker|waiting)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     private readonly IAgentMessageInbox _inbox;
     private readonly ILogger<SessionWatcher> _logger;
@@ -107,6 +116,10 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
         public bool NeedsAttention { get; set; }
 
         public bool ReportedStuck { get; set; }
+
+        public DateTimeOffset? IdleSince { get; set; }
+
+        public int WaitingReports { get; set; }
 
         // Whether this pane has already been reported as finished or as waiting. What tells a pane that fell over
         // quietly from one that was closed after it said its piece — see the `gone` event.
@@ -164,7 +177,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
         if (wanted.FirstOrDefault(name => !SessionWatchEvents.All.Contains(name, StringComparer.OrdinalIgnoreCase)) is { } unknown)
         {
             return AssistantWatchResult.Refused(
-                $"'{unknown}' is not an event. The five are: {string.Join(", ", SessionWatchEvents.All)}.");
+                $"'{unknown}' is not an event. The six are: {string.Join(", ", SessionWatchEvents.All)}.");
         }
 
         if (Probe is null)
@@ -369,6 +382,8 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
                 pane.LastRows);
         }
 
+        _LookWaiting(paneId, watch, pane);
+
         if (watch.Pattern is { } regex)
         {
             _Match(paneId, pane, regex);
@@ -382,8 +397,54 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
         watch.NeedsAttention = pane.NeedsAttention;
     }
 
+    // Quiet without having closed the turn as done, or done with a wait/blocker named in the statusline or last row.
+    private void _LookWaiting(string paneId, Armed watch, WatchedPane pane)
+    {
+        if (pane.Status is not (SessionStatus.Idle or SessionStatus.Done))
+        {
+            watch.IdleSince = null;
+            watch.WaitingReports = 0;
+            return;
+        }
+
+        watch.IdleSince ??= Clock();
+        var idle = Clock() - watch.IdleSince.Value;
+        if (!watch.Events.Contains(SessionWatchEvents.Waiting)
+            || watch.WaitingReports >= WaitingAfterMinutes.Length
+            || idle < TimeSpan.FromMinutes(WaitingAfterMinutes[watch.WaitingReports])
+            || !(pane.Status is SessionStatus.Idle || _NamesWait(pane)))
+        {
+            return;
+        }
+
+        // Skips the steps already passed, so a late cue does not fire three reports in a row.
+        while (watch.WaitingReports < WaitingAfterMinutes.Length
+            && idle >= TimeSpan.FromMinutes(WaitingAfterMinutes[watch.WaitingReports]))
+        {
+            watch.WaitingReports++;
+        }
+
+        var statusline = string.IsNullOrWhiteSpace(pane.Statusline) ? "none" : _Short(pane.Statusline);
+        _Report(paneId, pane.Title, SessionWatchEvents.Waiting,
+            $"it has been idle for {idle.TotalMinutes:0} minutes without closing its turn as done. Statusline: "
+                + $"{statusline}. Check whether what it waits on is still running.",
+            pane.LastRows);
+    }
+
+    private static bool _NamesWait(WatchedPane pane)
+    {
+        try
+        {
+            return WaitCue.IsMatch(pane.Statusline) || (pane.LastRows.Count > 0 && WaitCue.IsMatch(pane.LastRows[^1]));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
     // A fresh matching row is its own report every time: a second occurrence of a pattern is not the same fact as
-    // the first, so there is nothing here to dedupe on the way the other four events dedupe on state.
+    // the first, so there is nothing here to dedupe on the way the other events dedupe on state.
     private void _Match(string paneId, WatchedPane pane, Regex regex)
     {
         var matches = 0;
@@ -476,7 +537,7 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
 
         if (!handle.HasReadableTranscript)
         {
-            return new WatchedPane(handle.Title, wakeState.SessionStatus, needsAttention, false, 0, [], [], outstandingWorkTask.Result);
+            return new WatchedPane(handle.Title, wakeState.SessionStatus, needsAttention, false, 0, [], [], outstandingWorkTask.Result, handle.Statusline);
         }
 
         var slice = await handle.ReadTranscriptAsync(MaxNewRows).ConfigureAwait(false);
@@ -493,7 +554,8 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
             // rows since the last tick costs two hundred strings.
             [.. rows.Skip(Math.Max(0, rows.Count - Math.Max(0, slice.TotalEntries - since)))],
             [.. rows.TakeLast(TailRows)],
-            outstandingWorkTask.Result);
+            outstandingWorkTask.Result,
+            handle.Statusline);
     };
 
     public void Dispose()
