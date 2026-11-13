@@ -160,7 +160,7 @@ internal sealed class ProfileLoginHealthMonitor : BackgroundService, IProfileLog
             }
             catch (Exception exception)
             {
-                _logger.LogWarning("The sign-in check for profile {Profile} failed ({Error}); its last reading stands.", profile.Label, exception.GetType().Name);
+                _logger.LogWarning(exception, "The sign-in check for profile {Profile} with provider {Provider} failed; its last reading stands.", profile.Label, plugin.ProviderId);
                 if (before is not null)
                 {
                     next.Add(before);

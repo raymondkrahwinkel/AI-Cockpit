@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Server profiles keep offering provider login while sign-in health is unknown or a check fails; failed checks log the profile, provider and exception.
+
 - Bundled plugins now update at startup when the shipped version is newer and compatible, while preserving operator installs, version choices and removals. Remote server windows now show available plugin updates and report restart progress, reloading plugins when the server returns.
 
 - A scheduled one-off task that is created or edited shortly before its time now runs at that time. Before, the schedule was only noticed at the next half-minute check, and a time that passed in between was missed for good.
