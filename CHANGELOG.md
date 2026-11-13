@@ -4,6 +4,8 @@
 
 - A scheduled one-off task that is created or edited shortly before its time now runs at that time. Before, the schedule was only noticed at the next half-minute check, and a time that passed in between was missed for good.
 
+- AC-2357: Options › Assistant has an option "The assistant always picks a fitting agent (role)", on by default. While it is on, the assistant cannot start a session without a fitting role from the project's brain, not even with none: the start is refused with the available roles and the assistant tells you why. A brain without roles still starts a session without one. A project can set a default role, which a session gets when the assistant names none.
+
 - AC-2353: A session's process and memory figures no longer include unrelated processes. On Windows a process id reused by a stranger (a service host, the desktop shell) was counted, with everything beneath it, as the session's own; the meter could read 265 processes and 13 GB for a session of about 12 processes.
 
 - AC-2352: The assistant now has the exact parameter names of its core tools (start_agent, send_prompt, stop_agent, remember, create_reminder and more) in its prompt, so it no longer guesses them and fails on the first call.

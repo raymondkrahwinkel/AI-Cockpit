@@ -49,7 +49,8 @@ internal sealed partial class AssistantAgentGateway(
     ProfileSessionLimit? sessionLimit = null,
     Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
     SessionRoleResolver? roles = null,
-    Cockpit.Infrastructure.Plugins.IProjectMemorySourceRegistry? memorySources = null) : IAssistantAgentGateway, ISingletonService
+    Cockpit.Infrastructure.Plugins.IProjectMemorySourceRegistry? memorySources = null,
+    IAssistantSettingsStore? assistantSettings = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -195,17 +196,29 @@ internal sealed partial class AssistantAgentGateway(
 
         var roleList = await (roles ?? new SessionRoleResolver()).ListAsync(project, profile, cancellationToken).ConfigureAwait(false);
         var role = request.Role?.Trim();
+        // AC-2357: an empty role takes the project's default, when the brain still lists it.
+        if (string.IsNullOrWhiteSpace(role) && project?.DefaultRole?.Trim() is { Length: > 0 } defaultRole
+            && roleList.Roles.Any(candidate => string.Equals(candidate.Name, defaultRole, StringComparison.OrdinalIgnoreCase)))
+        {
+            role = defaultRole;
+        }
+
         var withoutRole = string.IsNullOrWhiteSpace(role) || string.Equals(role, "none", StringComparison.OrdinalIgnoreCase);
         var knownRole = roleList.Roles.FirstOrDefault(candidate => string.Equals(candidate.Name, role, StringComparison.OrdinalIgnoreCase));
-        var missingRequiredChoice = request.RoleChoiceRequired && roleList.Roles.Count > 0 && string.IsNullOrWhiteSpace(role);
+        // AC-2357: only a brain that has roles can demand one; none is no way out while the option is on.
+        var roleRequired = withoutRole && roleList.Roles.Count > 0 && request.Target.Caller == SpawnCaller.Assistant
+            && (assistantSettings is null || (await assistantSettings.LoadAsync(cancellationToken).ConfigureAwait(false)).RequireRole);
+        var missingRequiredChoice = roleRequired || (request.RoleChoiceRequired && roleList.Roles.Count > 0 && string.IsNullOrWhiteSpace(role));
         if ((!withoutRole && knownRole is null) || missingRequiredChoice)
         {
             var choices = string.Join("; ", roleList.Roles.Select(candidate => $"{candidate.Name}: {candidate.Description}"));
-            var reason = roleList.Outcome == RoleSourceOutcome.Unavailable
-                ? "The role list is unavailable; use role: none to start without a role."
-                : roleList.Roles.Count == 0
-                    ? "This session's brain has no roles to load. Use none to start without a role."
-                    : $"Choose a role or explicit none. Available roles: {choices}. Use none to start without a role.";
+            var reason = roleRequired
+                ? $"No session was started: no suitable role was chosen. Available roles: {choices}. This follows from the option 'The assistant always picks a fitting agent (role)' in Options › Assistant; the user can turn it off if the assistant does not have to choose a role."
+                : roleList.Outcome == RoleSourceOutcome.Unavailable
+                    ? "The role list is unavailable; use role: none to start without a role."
+                    : roleList.Roles.Count == 0
+                        ? "This session's brain has no roles to load. Use none to start without a role."
+                        : $"Choose a role or explicit none. Available roles: {choices}. Use none to start without a role.";
             return await _RefuseSpawnAsync(request, workspace.Name, reason, cancellationToken).ConfigureAwait(false);
         }
 
@@ -269,6 +282,9 @@ internal sealed partial class AssistantAgentGateway(
         {
             Role = knownRole?.Name ?? (withoutRole ? role : null),
             RoleList = roleList.Outcome == RoleSourceOutcome.Unavailable ? "unavailable" : null,
+            RoleHint = roleList.Roles.Count == 0 && roleList.Outcome != RoleSourceOutcome.Unavailable
+                ? "This brain has no agents (roles) yet; offer the operator to build one together with fitting skills."
+                : null,
             McpServers = mcpReport?.ConnectedServerNames,
             McpServersConfirmed = mcpReport is not null,
         };

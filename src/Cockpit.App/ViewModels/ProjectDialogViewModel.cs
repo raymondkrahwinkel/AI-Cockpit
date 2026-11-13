@@ -101,6 +101,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
         Assistant = project.Assistant ?? string.Empty;
+        DefaultRole = project.DefaultRole ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
         _originalLogoSource = LogoSource;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
@@ -455,6 +456,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _assistant = string.Empty;
 
+    // AC-2357: the role a session here gets when the assistant names none. Local, like `Assistant`.
+    [ObservableProperty]
+    private string _defaultRole = string.Empty;
+
     // AC-1993: the shared brain picker over `Assistant`, shown instead of the text field once a source has brains.
     // A pick writes the reference there; None writes empty, which saves as null and leaves the profile's brain in force.
     public BrainPickerViewModel BrainPicker { get; private set; }
@@ -677,6 +682,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         {
             Category = _NullIfBlank(Category),
             Assistant = _NullIfBlank(Assistant),
+            DefaultRole = _NullIfBlank(DefaultRole),
             Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
             // Item 0 is this dialog's own SourceDirectory box, exactly as it always was — a project with no folder
             // and no repository rows saves an empty list, same as an empty SourceDirectory used to save null.

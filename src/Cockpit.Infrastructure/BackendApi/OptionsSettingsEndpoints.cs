@@ -38,7 +38,7 @@ internal static class OptionsSettingsEndpoints
             {
                 var value = await services.GetRequiredService<IAssistantSettingsStore>().LoadAsync(ct).ConfigureAwait(false);
                 return new(value.IsEnabled, value.ReadingLevel, value.ContextCompactionPercent, value.SpeechProfileLabel,
-                    value.ConsentBypassAll, value.ConsentBypassSources, value.ConsentBypassDangerousSources);
+                    value.ConsentBypassAll, value.ConsentBypassSources, value.ConsentBypassDangerousSources, value.RequireRole);
             },
             async (value, ct) =>
             {
@@ -48,7 +48,7 @@ internal static class OptionsSettingsEndpoints
                     IsEnabled = value.IsEnabled, ReadingLevel = value.ReadingLevel,
                     ContextCompactionPercent = value.ContextCompactionPercent, SpeechProfileLabel = value.SpeechProfileLabel,
                     ConsentBypassAll = value.ConsentBypassAll, ConsentBypassSources = value.ConsentBypassSources,
-                    ConsentBypassDangerousSources = value.ConsentBypassDangerousSources,
+                    ConsentBypassDangerousSources = value.ConsentBypassDangerousSources, RequireRole = value.RequireRole,
                 }, ct).ConfigureAwait(false);
                 await services.GetRequiredService<IAssistantSessionHost>().ApplySettingsAsync(CancellationToken.None).ConfigureAwait(false);
             }, value => value.ContextCompactionPercent is >= AssistantSettings.MinimumCompactionPercent and <= AssistantSettings.MaximumCompactionPercent
