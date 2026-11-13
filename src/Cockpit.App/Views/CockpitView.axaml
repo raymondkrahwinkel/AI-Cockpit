@@ -2592,7 +2592,8 @@
                 Background="{DynamicResource CockpitSecondaryBgBrush}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
                 Padding="10,4">
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <controls:VaultStatusMeter Grid.Column="2"/>
                 <Button Grid.Column="1"
                         Classes="statusMeter"
                         Padding="8,2"
@@ -2618,33 +2619,6 @@
                                Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
                 </StackPanel>
                 <DockPanel IsVisible="{Binding !IsRemoteWindow}">
-                    <!-- AC-1802: the bell, outermost right, below where toasts appear. Amber with the waiting count when
-                         something needs you, the accent count for unread otherwise. -->
-                    <Button x:Name="NotificationsBell" DockPanel.Dock="Right"
-                            Classes="statusMeter"
-                            Padding="8,2"
-                            Margin="8,0,0,0"
-                            Command="{Binding ToggleNotificationsCommand}"
-                            ToolTip.Tip="Notifications — every toast of this session, with its buttons still live">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
-                            <materialIcons:MaterialIcon Kind="BellOutline" Width="13" Height="13"
-                                       IsVisible="{Binding !Notifications.HasNeedsYou}"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                            <materialIcons:MaterialIcon Kind="BellRingOutline" Width="13" Height="13"
-                                       IsVisible="{Binding Notifications.HasNeedsYou}"
-                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
-                            <Border Classes="waitingCount" IsVisible="{Binding Notifications.HasNeedsYou}">
-                                <TextBlock Text="{Binding Notifications.NeedsYouCount}"/>
-                            </Border>
-                            <Border IsVisible="{Binding Notifications.ShowsUnreadOnly}"
-                                    Background="{DynamicResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}"
-                                    Padding="5,0" MinWidth="16" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Notifications.UnreadCount}" FontSize="10" FontWeight="SemiBold"
-                                           HorizontalAlignment="Center" Foreground="{DynamicResource CockpitTextOnAccentBrush}"/>
-                            </Border>
-                        </StackPanel>
-                    </Button>
-
                     <!-- AC-1829: what the window is still waiting for after the splash, so a skeleton is never unexplained. -->
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="8,0,8,0" VerticalAlignment="Center">
                         <StackPanel.IsVisible>
@@ -2660,6 +2634,9 @@
                         <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"
                                    Text="Loading projects…" IsVisible="{Binding !IsRestoringSessions}"/>
                     </StackPanel>
+                    <!-- AC-2028: the disk meter, compact like CPU/RAM; the panel it opens lists every drive. -->
+                    <controls:DiskStorageStatus DockPanel.Dock="Right"/>
+
                     <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
                          the point where the system starts killing things. A number that turns while you work is something
                          you can act on without being interrupted. -->
@@ -2694,8 +2671,31 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- AC-2028: the disk meter, compact like CPU/RAM; the panel it opens lists every drive. -->
-                    <controls:DiskStorageStatus DockPanel.Dock="Right"/>
+                    <!-- Right-docked children are laid out from right to left: disk, CPU/RAM, then notifications. -->
+                    <Button x:Name="NotificationsBell" DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="8,0,0,0"
+                            Command="{Binding ToggleNotificationsCommand}"
+                            ToolTip.Tip="Notifications — every toast of this session, with its buttons still live">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="BellOutline" Width="13" Height="13"
+                                       IsVisible="{Binding !Notifications.HasNeedsYou}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <materialIcons:MaterialIcon Kind="BellRingOutline" Width="13" Height="13"
+                                       IsVisible="{Binding Notifications.HasNeedsYou}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            <Border Classes="waitingCount" IsVisible="{Binding Notifications.HasNeedsYou}">
+                                <TextBlock Text="{Binding Notifications.NeedsYouCount}"/>
+                            </Border>
+                            <Border IsVisible="{Binding Notifications.ShowsUnreadOnly}"
+                                    Background="{DynamicResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}"
+                                    Padding="5,0" MinWidth="16" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Notifications.UnreadCount}" FontSize="10" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Foreground="{DynamicResource CockpitTextOnAccentBrush}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
 
                     <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
                          visible at all: work is happening on your behalf that nothing else on screen would tell you
@@ -2731,9 +2731,6 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
-
-                    <!-- AC-2347: what agents hold from the vault; gone at nought. -->
-                    <controls:VaultStatusMeter DockPanel.Dock="Right"/>
 
                     <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
                          shown only while it has activities, opening a panel with a Kill per item. -->
