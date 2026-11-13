@@ -24,6 +24,7 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Infrastructure.Vault;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.Capabilities;
@@ -42,6 +43,7 @@ using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.Tracking;
+using Cockpit.Plugins.Abstractions.Vault;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -573,6 +575,19 @@ internal class PluginBackendHost(
 
     public IReadOnlyList<ISessionResourceProvider> SessionResourceProviders =>
         services.GetRequiredService<ISessionResourceProviderRegistry>().Providers;
+
+    public IVaultProviderContext AddVaultProvider(IVaultProvider provider)
+    {
+        var hub = services.GetService<VaultHub>();
+        if (hub?.Register(provider) is not { } context)
+        {
+            _Logger()?.LogWarning("Vault provider '{ProviderId}' is already registered or this host has no vault; this registration is ignored", provider.Id);
+            return UnavailableVaultProviderContext.Instance;
+        }
+
+        Runtime.Add(() => hub.Unregister(provider));
+        return context;
+    }
 
     public void AddWorkflowStep(IWorkflowStep step)
     {

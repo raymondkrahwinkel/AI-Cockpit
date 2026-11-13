@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2336: Plugins can connect a password manager to Cockpit's new vault. The vault only stores a provider's sign-in while credential encryption is on and unlocked; when encryption is turned off, Cockpit removes the vault data and says so, with a button to Options › Security.
+
 - AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Loopback endpoints default to 600 seconds, remote endpoints to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.
 
 - AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).

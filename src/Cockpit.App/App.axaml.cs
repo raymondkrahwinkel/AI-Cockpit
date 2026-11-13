@@ -1073,6 +1073,11 @@ public partial class App : Application
 
         _AskForRestoredSignIns(cockpit);
 
+        // AC-2336: the vault's start-up check, after unlock; it wipes its section if encryption was turned off.
+        var vault = Program.Services.GetRequiredService<Cockpit.Infrastructure.Vault.VaultHub>();
+        vault.UseEncryptionSettings(() => Dispatcher.UIThread.InvokeAsync(() => cockpit.OpenOptionsCategoryAsync("security")));
+        vault.CheckAtStartAsync().GetAwaiter().GetResult();
+
         // AC-1506: provisioning's second phase, now that a connection's plugin can redeem the token. Not awaited here:
         // a plugin's sign-in may need this thread. What is left for the operator to do arrives as one toast.
         if (Program.Provisioning is { Failure: null } provisioning)

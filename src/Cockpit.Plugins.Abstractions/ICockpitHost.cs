@@ -1067,6 +1067,14 @@ public interface ICockpitHost
     IReadOnlyList<Sessions.ISessionResourceProvider> SessionResourceProviders => [];
 
     /// <summary>
+    /// Connects a secret store to the host's vault hub (AC-2336) and returns the provider's own encryption-gated context.
+    /// </summary>
+    /// <remarks>
+    /// Default: a context that is never available, so existing implementations keep compiling untouched.
+    /// </remarks>
+    Vault.IVaultProviderContext AddVaultProvider(Vault.IVaultProvider provider) => Vault.UnavailableVaultProviderContext.Instance;
+
+    /// <summary>
     /// Registers a place a plugin can list projects it shares elsewhere but this machine has not bound yet
     /// (AC-245), so the Projects workspace can offer them beside the local ones under a heading named by
     /// <see cref="Projects.SharedProject.SourceName"/>.

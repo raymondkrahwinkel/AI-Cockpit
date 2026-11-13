@@ -16,20 +16,13 @@ public class SharedUsageCacheTests
     /// <summary>A clock that only moves when a test moves it, so the TTL edge is exact rather than a race.</summary>
 
     [Fact]
-    public void TwoConfigs_DifferentCredential_NeverShareAnEntry()
+    public void ConfigsWithADifferentCredential_NeverShareAnEntry()
     {
         var cache = new SharedUsageCache();
         cache.Set(new ClaudeConfig(@"C:\fake\.claude-a"), Status);
-
-        Assert.Null(cache.TryGet(new ClaudeConfig(@"C:\fake\.claude-b")));
-    }
-
-    [Fact]
-    public void PluginConfigs_DifferentConfigJson_NeverShareAnEntry()
-    {
-        var cache = new SharedUsageCache();
         cache.Set(new PluginProviderConfig("codex", "{\"apiKey\":\"k1\"}"), Status);
 
+        Assert.Null(cache.TryGet(new ClaudeConfig(@"C:\fake\.claude-b")));
         Assert.Null(cache.TryGet(new PluginProviderConfig("codex", "{\"apiKey\":\"k2\"}")));
     }
 
