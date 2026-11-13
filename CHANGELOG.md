@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2346: Agents get the `cockpit-vault` MCP once a vault provider is installed. `vault_list` shows items by name only; `vault_run` runs one command with a secret in its environment after you approve it on a card (once, for this session, or always for the project), and replaces the secret in the command's output with `[vault: <name>]`. A grant covers exactly that command; anything else asks again. With credential encryption off or locked, the agent is told to ask you and a toast leads to Options › Security.
+
 - AC-2336: Plugins can connect a password manager to Cockpit's new vault. The vault only stores a provider's sign-in while credential encryption is on and unlocked; when encryption is turned off, Cockpit removes the vault data and says so, with a button to Options › Security.
 
 - AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Loopback endpoints default to 600 seconds, remote endpoints to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.

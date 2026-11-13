@@ -1,12 +1,17 @@
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Secrets;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Vault;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Vault;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Security;
 
-// Category A (AC-2336): the vault's hard condition. If it breaks silently, provider tokens land readable on disk.
+// Category A (AC-2336, AC-2346): the vault's hard boundaries. If one breaks silently, a secret lands on disk or at the model provider.
 public sealed class VaultHubTests : IDisposable
 {
     private const string Canary = "vault-canary-7f3c9e";
@@ -43,7 +48,46 @@ public sealed class VaultHubTests : IDisposable
         Assert.DoesNotContain(Canary, written, StringComparison.Ordinal);
     }
 
-    private sealed class Provider : IVaultProvider
+    [Fact]
+    public async Task ASessionGrantForOneArgv_DoesNotCoverAnother_AndTheOutputNeverCarriesTheValue()
+    {
+        var holder = new SecretKeyHolder();
+        await File.WriteAllTextAsync(ConfigPath, "{ \"Profiles\": [] }");
+        var protection = new SecretProtectionService(ConfigPath, holder);
+        await protection.EnableAsync("vault-test-password");
+        var hub = new VaultHub(protection, ConfigPath, holder, NullLogger<VaultHub>.Instance);
+        hub.Register(new Provider(Canary));
+        var consent = Substitute.For<IConsentBroker>();
+        consent.RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>()).Returns(
+            new ConsentDecision(ConsentOutcome.Approved, Remembered: false) { Chosen = new Dictionary<string, IReadOnlyList<string>> { ["scope"] = ["session"] } });
+        var session = Substitute.For<ISessionHandle>();
+        session.PaneId.Returns("pane-a");
+        session.WorkingDirectory.Returns(_directory);
+        session.ProjectId.Returns((string?)null);
+        var sessions = Substitute.For<ISessionRegistry>();
+        sessions.Find("pane-a").Returns(session);
+        var tools = new VaultMcpTools(hub, consent, sessions, NullLogger<VaultMcpTools>.Instance);
+        string[] printX = OperatingSystem.IsWindows() ? ["cmd", "/c", "echo %X%"] : ["sh", "-c", "echo $X"];
+        string[] printXAgain = [.. printX[..^1], printX[^1] + " again"];
+        var env = new Dictionary<string, string> { ["X"] = "test://deploy" };
+
+        McpRequestContext.Set("pane-a");
+        string[] results =
+        [
+            await tools.RunAsync(printX, env, "test"),
+            await tools.RunAsync(printX, env, "test"),
+            await tools.RunAsync(printXAgain, env, "test"),
+        ];
+
+        await consent.Received(2).RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
+        Assert.All(results, result =>
+        {
+            Assert.Contains("[vault: Deploy token]", result, StringComparison.Ordinal);
+            Assert.DoesNotContain(Canary, result, StringComparison.Ordinal);
+        });
+    }
+
+    private sealed class Provider(string? value = null) : IVaultProvider
     {
         public string Id => "test";
 
@@ -55,9 +99,9 @@ public sealed class VaultHubTests : IDisposable
             Task.FromResult(new VaultProviderStatus(VaultProviderState.Connected));
 
         public Task<IReadOnlyList<VaultItem>> ListItemsAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<VaultItem>>([]);
+            Task.FromResult<IReadOnlyList<VaultItem>>([new VaultItem("test://deploy", "Deploy token")]);
 
         public Task<string> ResolveAsync(string reference, CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("The hub must not resolve while encryption is off.");
+            value is null ? throw new InvalidOperationException("The hub must not resolve while encryption is off.") : Task.FromResult(value);
     }
 }

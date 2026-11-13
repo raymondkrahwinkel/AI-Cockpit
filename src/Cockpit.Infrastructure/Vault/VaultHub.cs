@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.Vault;
 
 // AC-2336: the host's vault hub. Stores and reads nothing unless credential encryption is on and unlocked.
-internal sealed class VaultHub : ISingletonService
+internal sealed partial class VaultHub : ISingletonService
 {
     internal const string WipedMessage = "Vault data was removed because credential encryption was turned off.";
 
@@ -251,6 +251,7 @@ internal sealed class VaultHub : ISingletonService
         {
             var changed = _last is { } last && last != availability;
             _last = availability;
+            _isUnavailableToastShown &= availability != VaultAvailability.Available;
             if (!changed)
             {
                 return;
@@ -286,6 +287,9 @@ internal sealed class VaultHub : ISingletonService
     {
         [JsonPropertyName("credentials")]
         public Dictionary<string, string> Credentials { get; set; } = new(StringComparer.Ordinal);
+
+        [JsonPropertyName("projectGrants")]
+        public Dictionary<string, List<string>> ProjectGrants { get; set; } = new(StringComparer.Ordinal);
     }
 
     // A provider's slot; a context whose provider was unregistered or replaced answers like a closed vault.
@@ -316,4 +320,4 @@ internal sealed class VaultHub : ISingletonService
 }
 
 // One audit line: who, which item, when — never a value.
-internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item);
+internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null);
