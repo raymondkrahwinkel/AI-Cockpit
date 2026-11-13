@@ -5,6 +5,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Core.Worktrees;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -240,7 +241,7 @@ public sealed class SessionLauncher(
         }
 
         // A frontend's pane closes itself, record and worktree included; a backend host is the launcher's to clear.
-        if (hosted is not SessionHostHandle)
+        if (hosted is not (SessionHostHandle or BackendTtySession))
         {
             await hosting.StopAsync(hosted).ConfigureAwait(false);
             return;

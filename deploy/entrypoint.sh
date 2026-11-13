@@ -73,7 +73,8 @@ for path in /home/agent/.claude /home/agent/.codex; do check_dir agent agent 277
 for path in /home/app/.claude /home/app/.codex; do check_dir app agent 2770 "$path"; done
 check_dir agent agent 700 /home/agent/.ssh
 check_dir agent agent 700 /home/agent/Nextcloud
-check_dir agent agent 700 /home/agent/scratch
+# The server enters the working directory before the CLI wrapper can switch to agent.
+check_dir agent agent 2770 /home/agent/scratch
 check_dir agent agent 750 /home/agent
 [ "$bad" = 0 ] || exit 1
 

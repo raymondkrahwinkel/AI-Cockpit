@@ -35,7 +35,8 @@ RUN groupadd --gid 1700 agent \
         /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex /home/agent/Nextcloud /home/agent/scratch \
     && chown -R app:app /state /home/app \
     && chown -R agent:agent /home/agent /home/app/.claude /home/app/.codex \
-    && chmod 700 /home/agent/Nextcloud /home/agent/scratch /state \
+    && chmod 700 /home/agent/Nextcloud /state \
+    && chmod 2770 /home/agent/scratch \
     && chmod 2770 /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex \
     && chmod 700 /home/app/.ssh /home/agent/.ssh \
     && chmod 750 /home/app /home/agent \
