@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Projectless sessions on the headless server can enter their scratch directory before switching to the agent user. Closing a server terminal session now also removes it from the session list and desk.
+
 - Local files defaults to this computer even when no folders have been added. An unavailable server source no longer replaces the local empty state, and remote file errors show their HTTP status without exposing private exception details.
 
 - A scheduled one-off task that is created or edited shortly before its time now runs at that time. Before, the schedule was only noticed at the next half-minute check, and a time that passed in between was missed for good.
