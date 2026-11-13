@@ -136,6 +136,8 @@ internal sealed class VaultMcpTools
             await _hub.AuditAsync("Requested", session.PaneId, injection.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
+        // AC-2333 S3: taken before the grants are read, so a revoke or wipe after this point refuses the start below.
+        var generation = _hub.Generation;
         if (!await _ConsentAsync(session, directory, argv, injections.Select(i => (i.Variable, i.Reference, i.Name)).ToList(), reason, timeout, cancellationToken).ConfigureAwait(false))
         {
             foreach (var injection in injections)
@@ -161,24 +163,45 @@ internal sealed class VaultMcpTools
             }
         }
 
-        var run = await _StartAsync(argv, directory, values, timeout, cancellationToken).ConfigureAwait(false);
-        if (run is null)
+        using var process = new Process { StartInfo = _StartInfo(argv, directory, values) };
+        IDisposable? tree = null;
+        bool started;
+        try
+        {
+            started = _hub.TryStart(
+                generation,
+                () => !cancellationToken.IsCancellationRequested && _CallerSession()?.PaneId == session.PaneId,
+                () => tree = CommandRunnerProcess.StartContained(process));
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
         {
             return _Error($"Could not start '{argv[0]}'.");
         }
+
+        if (!started)
+        {
+            foreach (var injection in injections)
+            {
+                await _hub.AuditAsync("Denied", session.PaneId, injection.Name, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+
+            return _Serialize(new { ok = false, denied = true, error = "Not started: a grant was revoked, the vault closed or the session ended before the command could start." });
+        }
+
+        var run = await _WaitAsync(process, tree!, timeout, cancellationToken).ConfigureAwait(false);
 
         foreach (var injection in injections)
         {
             await _hub.AuditAsync("Injected", session.PaneId, injection.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        var (output, masked) = Redact(run.Value.Output, values.Select(v => (v.Value, v.Name)));
+        var (output, masked) = Redact(run.Output, values.Select(v => (v.Value, v.Name)));
         await _hub.AuditAsync("Masked", session.PaneId, string.Join(", ", injections.Select(i => i.Name)), masked, cancellationToken).ConfigureAwait(false);
         return _Serialize(new
         {
             ok = true,
-            exitCode = run.Value.ExitCode,
-            timedOut = run.Value.TimedOut,
+            exitCode = run.ExitCode,
+            timedOut = run.TimedOut,
             output = output.Length > OutputLimit ? output[^OutputLimit..] : output,
             masked,
         });
@@ -231,7 +254,7 @@ internal sealed class VaultMcpTools
                 _hub.GrantSession(session.PaneId, keys);
                 break;
             case Project when session.ProjectId is { } project:
-                if (!await _hub.TryGrantProjectAsync(project, keys, cancellationToken).ConfigureAwait(false))
+                if (!await _hub.TryGrantProjectAsync(session.PaneId, project, keys, cancellationToken).ConfigureAwait(false))
                 {
                     return false;
                 }
@@ -282,9 +305,7 @@ internal sealed class VaultMcpTools
         };
     }
 
-    // ponytail: reads the whole output before trimming to the last 64 KB; stream it if a command prints gigabytes.
-    private static async Task<(int ExitCode, string Output, bool TimedOut)?> _StartAsync(
-        string[] argv, string directory, List<(string Variable, string Value, string Name)> values, TimeSpan timeout, CancellationToken cancellationToken)
+    private static ProcessStartInfo _StartInfo(string[] argv, string directory, List<(string Variable, string Value, string Name)> values)
     {
         var startInfo = new ProcessStartInfo(CommandRunnerProcess.NormalizeExecutablePath(argv[0]))
         {
@@ -306,29 +327,30 @@ internal sealed class VaultMcpTools
             startInfo.Environment[variable] = value;
         }
 
-        using var process = new Process { StartInfo = startInfo };
-        try
-        {
-            process.Start();
-        }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return null;
-        }
+        return startInfo;
+    }
 
+    // AC-2333 S5: `tree` holds everything the run started; disposing it ends what is left, also children that outlived
+    // the command itself, before the output is drained, so nothing with the secrets in its environment survives the call.
+    // ponytail: reads the whole output before trimming to the last 64 KB; stream it if a command prints gigabytes.
+    private static async Task<(int ExitCode, string Output, bool TimedOut)> _WaitAsync(
+        Process process, IDisposable tree, TimeSpan timeout, CancellationToken cancellationToken)
+    {
         var readOutput = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
         var readError = process.StandardError.ReadToEndAsync(CancellationToken.None);
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
         var timedOut = false;
-        try
+        using (tree)
         {
-            await process.WaitForExitAsync(timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            timedOut = true;
-            CommandRunnerProcess._KillTree(process);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutSource.CancelAfter(timeout);
+            try
+            {
+                await process.WaitForExitAsync(timeoutSource.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                timedOut = true;
+            }
         }
 
         var output = await CommandRunnerProcess._DrainAsync(readOutput).ConfigureAwait(false)

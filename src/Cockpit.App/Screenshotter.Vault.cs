@@ -94,12 +94,12 @@ internal static partial class Screenshotter
         {
             new("pane-1", "Session 1", "Invoices",
             [
-                new("staging-db / password", "1Password", "1Password · since 14:02 · allowed for this session", true, _Done, _Done),
+                new("staging-db / password", "1Password", "1Password · since 14:02 · allowed for this session", _Done, _Done),
             ]),
             new("pane-2", "Session 2", "Webshop",
             [
-                new("smtp-relay / password", "Bitwarden", "Bitwarden · since 11:15 · allowed for this session", true, _Done, _Done),
-                new("deploy-bot / token", "1Password", "1Password · since 14:07 · always allowed for Webshop", false, null, _Done),
+                new("smtp-relay / password", "Bitwarden", "Bitwarden · since 11:15 · allowed for this session", _Done, _Done),
+                new("deploy-bot / token", "1Password", "1Password · since 14:07 · always allowed for Webshop", _Done, _Done),
             ]),
         };
         vault.Apply(availability, providers, permissions, audit, groups);

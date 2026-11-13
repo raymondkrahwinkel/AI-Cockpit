@@ -6,6 +6,7 @@ internal interface IVaultOverviewService
 {
     const string SessionScope = "session";
     const string ProjectScope = "project";
+    const string BlockedScope = "blocked";
     const string WipedMessage = "Vault data was removed because credential encryption was turned off.";
 
     event EventHandler? AvailabilityChanged;

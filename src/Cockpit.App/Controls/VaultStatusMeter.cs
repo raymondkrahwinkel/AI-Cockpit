@@ -165,11 +165,7 @@ internal sealed class VaultStatusMeter : Button
         name.Bind(TextBlock.FontFamilyProperty, this.GetResourceObservable("CockpitMonoFont"));
         name.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextPrimaryBrush"));
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        if (item.HeldBySession)
-        {
-            actions.Children.Add(_Revoke("Revoke for this session", item.RevokeSession));
-        }
-
+        actions.Children.Add(_Revoke("Revoke for this session", item.RevokeSession));
         actions.Children.Add(_Revoke("Revoke everywhere", item.RevokeEverywhere));
         var body = new StackPanel { Spacing = 3, Children = { name, _Faint(item.Detail), actions } };
         var edge = new Border { BorderThickness = new Thickness(1, 0, 0, 0), Padding = new Thickness(10, 0, 0, 0), Margin = new Thickness(15, 0, 0, 0), Child = body };

@@ -11,7 +11,26 @@ internal sealed partial class VaultHub
     internal const string UnavailableToast = "An agent asked for the vault, but Cockpit's credential encryption is not on and unlocked.";
 
     private readonly Dictionary<string, HashSet<string>> _sessionGrants = new(StringComparer.Ordinal);
+
+    // AC-2333 S4: references a pane revoked for itself; its project's grants no longer cover them there until it approves again.
+    private readonly Dictionary<string, HashSet<string>> _sessionBlocks = new(StringComparer.Ordinal);
     private bool _isUnavailableToastShown;
+
+    // AC-2333 S3: raised by every revoke and wipe once it took effect. A run reads it before it looks at its grants
+    // and may only start while it is unchanged.
+    // ponytail: one counter for every grant, so an unrelated revoke also refuses a run in flight; per key if that bites.
+    private long _generation;
+
+    public long Generation
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _generation;
+            }
+        }
+    }
 
     public bool HasProviders
     {
@@ -43,9 +62,11 @@ internal sealed partial class VaultHub
         string paneId, string? projectId, CancellationToken cancellationToken)
     {
         HashSet<string> session;
+        HashSet<string> blocked;
         lock (_gate)
         {
             session = _sessionGrants.TryGetValue(paneId, out var keys) ? [.. keys] : [];
+            blocked = _sessionBlocks.TryGetValue(paneId, out var references) ? [.. references] : [];
         }
 
         if (projectId is null)
@@ -54,7 +75,23 @@ internal sealed partial class VaultHub
         }
 
         var state = await _ReadStateAsync(cancellationToken).ConfigureAwait(false);
-        return (session, state?.ProjectGrants.GetValueOrDefault(projectId)?.ToHashSet(StringComparer.Ordinal) ?? []);
+        return (session, state?.ProjectGrants.GetValueOrDefault(projectId)?.Where(key => !blocked.Contains(ReferenceOf(key))).ToHashSet(StringComparer.Ordinal) ?? []);
+    }
+
+    // Starts the run's process only if nothing was revoked or wiped since `generation`, the key is still in hand and
+    // `stillWanted` holds. Serialised with every revoke, so none can land between this check and the start.
+    public bool TryStart(long generation, Func<bool> stillWanted, Action start)
+    {
+        lock (_gate)
+        {
+            if (generation != _generation || _keyHolder.Protector is null || !stillWanted())
+            {
+                return false;
+            }
+
+            start();
+            return true;
+        }
     }
 
     public void GrantSession(string paneId, IEnumerable<string> grantKeys)
@@ -67,18 +104,28 @@ internal sealed partial class VaultHub
             }
 
             keys.UnionWith(grantKeys);
+            _Unblock(paneId, keys);
         }
 
         _RaiseChanged();
     }
 
-    public async Task<bool> TryGrantProjectAsync(string projectId, IEnumerable<string> grantKeys, CancellationToken cancellationToken)
+    // An approval in a pane that revoked an item for itself lifts that pane's block again.
+    public async Task<bool> TryGrantProjectAsync(string paneId, string projectId, IReadOnlyCollection<string> grantKeys, CancellationToken cancellationToken)
     {
         var granted = await _TryUpdateAsync(section => _WithState(section, state =>
         {
             var keys = state.ProjectGrants.GetValueOrDefault(projectId) ?? [];
             state.ProjectGrants[projectId] = [.. keys.Union(grantKeys, StringComparer.Ordinal)];
         }), cancellationToken).ConfigureAwait(false);
+        if (granted)
+        {
+            lock (_gate)
+            {
+                _Unblock(paneId, grantKeys);
+            }
+        }
+
         _RaiseChanged();
         return granted;
     }
@@ -93,6 +140,11 @@ internal sealed partial class VaultHub
             {
                 ended |= _sessionGrants.Remove(paneId);
             }
+
+            foreach (var paneId in _sessionBlocks.Keys.Where(paneId => !livePaneIds.Contains(paneId)).ToList())
+            {
+                _sessionBlocks.Remove(paneId);
+            }
         }
 
         if (ended)
@@ -101,12 +153,20 @@ internal sealed partial class VaultHub
         }
     }
 
-    // For the status bar and Options › Vault: one pane's grants for this item end; a process already running keeps its copy.
+    // For the status bar and Options › Vault: this item is no longer covered in this pane, by its own grants nor by its
+    // project's, until a card approves it again; a process already running keeps its copy.
     public async Task RevokeSessionAsync(string paneId, string reference, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             _sessionGrants.GetValueOrDefault(paneId)?.RemoveWhere(key => ReferenceOf(key) == reference);
+            if (!_sessionBlocks.TryGetValue(paneId, out var blocked))
+            {
+                _sessionBlocks[paneId] = blocked = new HashSet<string>(StringComparer.Ordinal);
+            }
+
+            blocked.Add(reference);
+            _generation++;
         }
 
         _RaiseChanged();
@@ -131,6 +191,7 @@ internal sealed partial class VaultHub
                 keys.RemoveAll(key => ReferenceOf(key) == reference);
             }
         }), cancellationToken).ConfigureAwait(false);
+        _Invalidate();
         _RaiseChanged();
         await AuditAsync("Revoked", null, reference, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
@@ -152,5 +213,21 @@ internal sealed partial class VaultHub
         }
 
         _toasts?.Show(UnavailableToast, ToastSeverity.Warning, "Open Security", OpenEncryptionSettings);
+    }
+
+    private void _Invalidate()
+    {
+        lock (_gate)
+        {
+            _generation++;
+        }
+    }
+
+    private void _Unblock(string paneId, IEnumerable<string> grantKeys)
+    {
+        if (_sessionBlocks.GetValueOrDefault(paneId) is { } blocked)
+        {
+            blocked.ExceptWith(grantKeys.Select(ReferenceOf));
+        }
     }
 }

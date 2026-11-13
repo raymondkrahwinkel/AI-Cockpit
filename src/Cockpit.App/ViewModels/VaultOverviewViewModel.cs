@@ -5,6 +5,8 @@ using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Vault;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
 
@@ -238,7 +240,10 @@ internal sealed class VaultOverviewViewModel : ObservableObject
                 .Select(entry => (DateTimeOffset?)entry.At).DefaultIfEmpty(null).Max();
 
         var rows = new List<VaultPermissionRow>();
-        foreach (var grant in grants.OrderBy(grant => grant.Scope == IVaultOverviewService.ProjectScope).ThenBy(grant => grant.Owner, StringComparer.Ordinal))
+        bool Blocked(string paneId, string reference) =>
+            grants.Any(grant => grant.Scope == IVaultOverviewService.BlockedScope && grant.Owner == paneId && grant.Reference == reference);
+        foreach (var grant in grants.Where(grant => grant.Scope != IVaultOverviewService.BlockedScope)
+                     .OrderBy(grant => grant.Scope == IVaultOverviewService.ProjectScope).ThenBy(grant => grant.Owner, StringComparer.Ordinal))
         {
             var name = ItemName(grant.Reference);
             var isProject = grant.Scope == IVaultOverviewService.ProjectScope;
@@ -247,8 +252,8 @@ internal sealed class VaultOverviewViewModel : ObservableObject
                 : new HashSet<string>([grant.Owner], StringComparer.Ordinal);
             var who = isProject ? $"Project {ProjectName(grant.Owner)}" : SessionName(grant.Owner) + (live.GetValueOrDefault(grant.Owner).ProjectId is { } project ? $" · {ProjectName(project)}" : string.Empty);
             Func<Task>? revoke = _hub is null ? null : isProject
-                ? () => _hub.RevokeProjectAsync(grant.Owner, grant.Reference)
-                : () => _hub.RevokeSessionAsync(grant.Owner, grant.Reference);
+                ? _Guarded(() => _hub.RevokeProjectAsync(grant.Owner, grant.Reference))
+                : _Guarded(() => _hub.RevokeSessionAsync(grant.Owner, grant.Reference));
             rows.Add(new VaultPermissionRow(name, ProviderName(grant.Reference), who, isProject ? "every session" : null,
                 isProject ? "Always" : "This session", isProject, _When(Latest("Allowed", name, panes)), _When(Latest("Injected", name, panes)), revoke));
         }
@@ -256,7 +261,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
         var groups = new List<VaultSessionGroup>();
         foreach (var (paneId, title, projectId) in livePanes)
         {
-            var held = grants.Where(grant => (grant.Scope == IVaultOverviewService.SessionScope && grant.Owner == paneId) || (grant.Scope == IVaultOverviewService.ProjectScope && projectId is not null && grant.Owner == projectId))
+            var held = grants.Where(grant => (grant.Scope == IVaultOverviewService.SessionScope && grant.Owner == paneId) || (grant.Scope == IVaultOverviewService.ProjectScope && projectId is not null && grant.Owner == projectId && !Blocked(paneId, grant.Reference)))
                 .GroupBy(grant => grant.Reference, StringComparer.Ordinal).ToList();
             if (held.Count == 0)
             {
@@ -267,11 +272,18 @@ internal sealed class VaultOverviewViewModel : ObservableObject
             {
                 var name = ItemName(group.Key);
                 var bySession = group.Any(grant => grant.Scope == IVaultOverviewService.SessionScope);
+                var byProject = group.Any(grant => grant.Scope == IVaultOverviewService.ProjectScope);
                 var since = _When(Latest("Allowed", name, new HashSet<string>([paneId])) ?? Latest("Injected", name, new HashSet<string>([paneId])));
-                var scope = bySession ? "allowed for this session" : $"always allowed for {ProjectName(projectId!)}";
-                return new VaultHeldItem(name, ProviderName(group.Key), $"{ProviderName(group.Key)} · since {since} · {scope}", bySession,
-                    _hub is null ? null : () => _hub.RevokeSessionAsync(paneId, group.Key),
-                    _hub is null ? null : () => _hub.RevokeEverywhereAsync(group.Key));
+                // AC-2333 S4: every grant that still covers the item shows; revoking for this session also stops the project's grant here.
+                var scope = (bySession, byProject) switch
+                {
+                    (true, true) => $"allowed for this session and always for {ProjectName(projectId!)}",
+                    (true, false) => "allowed for this session",
+                    _ => $"always allowed for {ProjectName(projectId!)}",
+                };
+                return new VaultHeldItem(name, ProviderName(group.Key), $"{ProviderName(group.Key)} · since {since} · {scope}",
+                    _hub is null ? null : _Guarded(() => _hub.RevokeSessionAsync(paneId, group.Key)),
+                    _hub is null ? null : _Guarded(() => _hub.RevokeEverywhereAsync(group.Key)));
             }).ToList();
             groups.Add(new VaultSessionGroup(paneId, title, projectId is null ? string.Empty : ProjectName(projectId), items));
         }
@@ -314,6 +326,19 @@ internal sealed class VaultOverviewViewModel : ObservableObject
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    // A revoke runs from a click handler; one that throws must not take the app down. The row stays, so it can be retried.
+    private static Func<Task> _Guarded(Func<Task> revoke) => async () =>
+    {
+        try
+        {
+            await revoke().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            Program.Services?.GetService<ILogger<VaultOverviewViewModel>>()?.LogWarning("Revoking a vault grant failed ({ExceptionType}).", exception.GetType().Name);
+        }
+    };
 
     private static string _AuditDetail(VaultAuditEvent entry) => entry.Kind switch
     {
@@ -378,5 +403,5 @@ internal sealed record VaultAuditRow(string Time, string Event, string Item, str
 
 internal sealed record VaultSessionGroup(string PaneId, string Title, string Project, IReadOnlyList<VaultHeldItem> Items);
 
-// `RevokeSession` is what "Revoke for this session" does; an item held only through a project has nothing to revoke for one session.
-internal sealed record VaultHeldItem(string Name, string Provider, string Detail, bool HeldBySession, Func<Task>? RevokeSession, Func<Task>? RevokeEverywhere);
+// `RevokeSession` is what "Revoke for this session" does; for an item held through the project it stops that grant in this session too.
+internal sealed record VaultHeldItem(string Name, string Provider, string Detail, Func<Task>? RevokeSession, Func<Task>? RevokeEverywhere);
