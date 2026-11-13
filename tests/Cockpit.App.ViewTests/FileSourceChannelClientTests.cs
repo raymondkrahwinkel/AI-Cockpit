@@ -44,6 +44,7 @@ public class FileSourceChannelClientTests
             Task.FromException<JsonElement>(new BackendApiException(HttpStatusCode.Unauthorized, "expired", "private-backend-description")));
         var backend = await Assert.ThrowsAsync<FileSourceException>(() => client.ReadAsync(file, default));
         Assert.Equal(FileSourceErrorKind.Unavailable, backend.Kind);
+        Assert.Contains("HTTP 401", backend.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("private-backend-description", backend.Message, StringComparison.Ordinal);
         channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
             Task.FromResult(JsonSerializer.SerializeToElement("unexpected reply")));
