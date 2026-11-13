@@ -1,8 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
-using Cockpit.Infrastructure.Sessions;
+using System.Text;
 
 namespace Cockpit.Infrastructure;
 
@@ -17,74 +16,67 @@ internal static class CommandRunnerProcess
     private const string Setsid = "/usr/bin/setsid";
     private const int SigKill = 9;
 
-    // AC-2333 S5: a kill-on-close job (Windows) or own process group (Linux); disposing it ends what is left, orphans
-    // included. Without either it falls back to the tree walk, which only reaches a parent still alive.
-    // ponytail: a child spawned before the Windows job assignment escapes it; start suspended if that ever matters.
-    internal static IDisposable StartContained(Process process)
+    // AC-2333 S5: starts a command whose whole tree ends when the result is disposed, orphans included. Windows starts it
+    // suspended inside a kill-on-close job; Linux gives it its own process group. Either containment failing starts
+    // nothing. Elsewhere (macOS) it is the tree walk, which only reaches descendants of a parent still alive.
+    internal static ContainedRun StartContained(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment)
     {
-        var info = process.StartInfo;
-        var ownGroup = OperatingSystem.IsLinux() && File.Exists(Setsid);
-        if (ownGroup)
+        if (OperatingSystem.IsWindows())
         {
-            // Not a group leader, so setsid execs in place: the process keeps its pid, which is now its group id too.
-            info.ArgumentList.Insert(0, info.FileName);
-            info.FileName = Setsid;
+            return WindowsContainedStart.Start(NormalizeExecutablePath(executable), arguments, directory, environment);
         }
 
-        process.Start();
-        if (OperatingSystem.IsWindows() && _Job(process) is { } job)
+        var ownGroup = OperatingSystem.IsLinux();
+        if (ownGroup && !File.Exists(Setsid))
         {
-            return job;
+            throw new InvalidOperationException($"{Setsid} is missing, so the command's processes could not be contained.");
         }
 
+        var startInfo = new ProcessStartInfo(ownGroup ? Setsid : executable)
+        {
+            WorkingDirectory = directory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        // Not a group leader, so setsid execs in place: the process keeps its pid, which is now its group id too.
+        foreach (var argument in ownGroup ? arguments.Prepend(executable) : arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        foreach (var (variable, value) in environment)
+        {
+            startInfo.Environment[variable] = value;
+        }
+
+        var process = Process.Start(startInfo) ?? throw new InvalidOperationException("The command did not start.");
         var id = process.Id;
-        return new Ending(() =>
-        {
-            if (ownGroup)
+        return new ContainedRun(
+            process.StandardOutput,
+            process.StandardError,
+            process.WaitForExitAsync,
+            () => process.HasExited ? process.ExitCode : null,
+            () =>
             {
-                _ = kill(-id, SigKill);
-            }
-            else
-            {
-                _KillTree(process);
-            }
-        });
-    }
+                if (ownGroup)
+                {
+                    _ = kill(-id, SigKill);
+                }
+                else
+                {
+                    _KillTree(process);
+                }
 
-    [SupportedOSPlatform("windows")]
-    private static Ending? _Job(Process process)
-    {
-        var job = WindowsJobSessionAnchor.NativeMethods.CreateJobObjectW(IntPtr.Zero, null!);
-        var limits = new WindowsJobSessionAnchor.NativeMethods.ExtendedLimitInformation();
-        limits.BasicLimitInformation.LimitFlags = WindowsJobSessionAnchor.NativeMethods.JobObjectLimitKillOnJobClose;
-        if (job != IntPtr.Zero
-            && WindowsJobSessionAnchor.NativeMethods.SetInformationJobObject(job, WindowsJobSessionAnchor.NativeMethods.JobObjectExtendedLimitInformation, ref limits, (uint)Marshal.SizeOf(limits))
-            && WindowsJobSessionAnchor.NativeMethods.AssignProcessToJobObject(job, process.Handle))
-        {
-            return new Ending(() =>
-            {
-                WindowsJobSessionAnchor.NativeMethods.TerminateJobObject(job, exitCode: 1);
-                WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
+                process.Dispose();
             });
-        }
-
-        if (job != IntPtr.Zero)
-        {
-            WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
-        }
-
-        return null;
     }
 
     [DllImport("libc", SetLastError = true)]
     private static extern int kill(int pid, int signal);
-
-    private sealed class Ending(Action end) : IDisposable
-    {
-        private Action? _end = end;
-
-        public void Dispose() => Interlocked.Exchange(ref _end, null)?.Invoke();
-    }
 
     internal static void _KillTree(Process process)
     {

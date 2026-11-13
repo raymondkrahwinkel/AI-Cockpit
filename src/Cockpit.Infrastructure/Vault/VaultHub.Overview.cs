@@ -68,6 +68,8 @@ internal sealed partial class VaultHub
     // One project's grants for this item end; sessions that already started keep their copy.
     public async Task RevokeProjectAsync(string projectId, string reference, CancellationToken cancellationToken = default)
     {
+        // Raised before the write too, so a project grant that is still on its way is refused under the same gate.
+        _Invalidate();
         await _TryUpdateAsync(section => _WithState(section, state =>
         {
             state.ProjectGrants.GetValueOrDefault(projectId)?.RemoveAll(key => ReferenceOf(key) == reference);

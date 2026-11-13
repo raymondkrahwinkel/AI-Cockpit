@@ -16,19 +16,17 @@ internal sealed partial class VaultHub
     private readonly Dictionary<string, HashSet<string>> _sessionBlocks = new(StringComparer.Ordinal);
     private bool _isUnavailableToastShown;
 
-    // AC-2333 S3: raised by every revoke and wipe once it took effect. A run reads it before it looks at its grants
-    // and may only start while it is unchanged.
+    // AC-2333 S3: raised by every revoke, wipe and ended session. A run takes a lease (this plus the key in hand) before
+    // it reads its grants; it may only store a grant or start while the lease still holds.
     // ponytail: one counter for every grant, so an unrelated revoke also refuses a run in flight; per key if that bites.
     private long _generation;
+    private HashSet<string>? _livePanes;
 
-    public long Generation
+    public VaultLease Lease()
     {
-        get
+        lock (_gate)
         {
-            lock (_gate)
-            {
-                return _generation;
-            }
+            return new VaultLease(_generation, _keyHolder.Protector);
         }
     }
 
@@ -78,13 +76,13 @@ internal sealed partial class VaultHub
         return (session, state?.ProjectGrants.GetValueOrDefault(projectId)?.Where(key => !blocked.Contains(ReferenceOf(key))).ToHashSet(StringComparer.Ordinal) ?? []);
     }
 
-    // Starts the run's process only if nothing was revoked or wiped since `generation`, the key is still in hand and
-    // `stillWanted` holds. Serialised with every revoke, so none can land between this check and the start.
-    public bool TryStart(long generation, Func<bool> stillWanted, Action start)
+    // Starts the run's process only while `lease` holds and `stillWanted` does. Serialised with every revoke and ended
+    // session, so none can land between this check and the start.
+    public bool TryStart(VaultLease lease, Func<bool> stillWanted, Action start)
     {
         lock (_gate)
         {
-            if (generation != _generation || _keyHolder.Protector is null || !stillWanted())
+            if (!_Holds(lease) || !stillWanted())
             {
                 return false;
             }
@@ -94,10 +92,16 @@ internal sealed partial class VaultHub
         }
     }
 
-    public void GrantSession(string paneId, IEnumerable<string> grantKeys)
+    // False, and nothing stored, when a revoke landed after `lease`: an approval that comes back late must not undo it.
+    public bool TryGrantSession(VaultLease lease, string paneId, IEnumerable<string> grantKeys)
     {
         lock (_gate)
         {
+            if (!_Holds(lease))
+            {
+                return false;
+            }
+
             if (!_sessionGrants.TryGetValue(paneId, out var keys))
             {
                 _sessionGrants[paneId] = keys = new HashSet<string>(StringComparer.Ordinal);
@@ -108,13 +112,23 @@ internal sealed partial class VaultHub
         }
 
         _RaiseChanged();
+        return true;
     }
 
-    // An approval in a pane that revoked an item for itself lifts that pane's block again.
-    public async Task<bool> TryGrantProjectAsync(string paneId, string projectId, IReadOnlyCollection<string> grantKeys, CancellationToken cancellationToken)
+    // An approval in a pane that revoked an item for itself lifts that pane's block again. The lease is checked under
+    // the config write gate, which every revoke's own write also takes after raising the generation.
+    public async Task<bool> TryGrantProjectAsync(VaultLease lease, string paneId, string projectId, IReadOnlyCollection<string> grantKeys, CancellationToken cancellationToken)
     {
         var granted = await _TryUpdateAsync(section => _WithState(section, state =>
         {
+            lock (_gate)
+            {
+                if (!_Holds(lease))
+                {
+                    throw new VaultRefusedException();
+                }
+            }
+
             var keys = state.ProjectGrants.GetValueOrDefault(projectId) ?? [];
             state.ProjectGrants[projectId] = [.. keys.Union(grantKeys, StringComparer.Ordinal)];
         }), cancellationToken).ConfigureAwait(false);
@@ -130,12 +144,18 @@ internal sealed partial class VaultHub
         return granted;
     }
 
-    // A pane that closed takes its session grants with it.
+    // A pane that closed takes its session grants with it, and a run of it that has not started yet.
     public void EndSessionsExcept(IReadOnlySet<string> livePaneIds)
     {
         var ended = false;
         lock (_gate)
         {
+            if (_livePanes is null || _livePanes.Any(paneId => !livePaneIds.Contains(paneId)))
+            {
+                _generation++;
+            }
+
+            _livePanes = [.. livePaneIds];
             foreach (var paneId in _sessionGrants.Keys.Where(paneId => !livePaneIds.Contains(paneId)).ToList())
             {
                 ended |= _sessionGrants.Remove(paneId);
@@ -182,6 +202,9 @@ internal sealed partial class VaultHub
             {
                 keys.RemoveWhere(key => ReferenceOf(key) == reference);
             }
+
+            // Raised before the write too, so a project grant that is still on its way is refused under the same gate.
+            _generation++;
         }
 
         await _TryUpdateAsync(section => _WithState(section, state =>
@@ -223,6 +246,10 @@ internal sealed partial class VaultHub
         }
     }
 
+    // Callers hold _gate. The same protector instance, so a gate that closed (and maybe reopened) since the lease fails it.
+    private bool _Holds(VaultLease lease) =>
+        lease.Generation == _generation && lease.Key is not null && ReferenceEquals(lease.Key, _keyHolder.Protector);
+
     private void _Unblock(string paneId, IEnumerable<string> grantKeys)
     {
         if (_sessionBlocks.GetValueOrDefault(paneId) is { } blocked)
@@ -231,3 +258,6 @@ internal sealed partial class VaultHub
         }
     }
 }
+
+// What a run holds from before it reads its grants until its process starts: the generation and the key in hand then.
+internal readonly record struct VaultLease(long Generation, object? Key);
