@@ -1,3 +1,12 @@
+using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using System.Buffers.Text;
 using System.Net;
 using System.Security.Cryptography;
@@ -7,7 +16,9 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Events;
 using Cockpit.Plugin.Depot.Mobile;
 using Cockpit.Plugin.Depot.Model;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests.Mobile;
@@ -17,13 +28,80 @@ namespace Cockpit.Plugin.Depot.Tests.Mobile;
 // from the outside, so every refusal the protocol promises is a row here.
 public class MobileProtocolVectorTests
 {
+    // Category D: an older page must advance within the frame limit without returning the newer tail.
+    private static async Task _OlderTranscriptPagesAsync()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.Sessions.OpenSessions.Returns([new OpenCockpitSession("pane", "Session") { HasReadableTranscript = true }]);
+        host.Sessions.ReadTranscriptBeforeAsync("pane", Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+        {
+            int end = call.ArgAt<int>(1);
+            int count = call.ArgAt<int>(2);
+            int start = Math.Max(0, end - count);
+            int overhead = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                id = end - 1, kind = "toolResult", text = "", resultText = (string?)null, truncated = false,
+            }).Length;
+            int boundaryText = MobileFrameCipher.MaxPlaintextBytes - 1024 - "pane".Length - overhead;
+            PluginTranscriptEntry[] entries = end == 300
+                ? [new(PluginTranscriptEntryKind.ToolResult, new string('x', boundaryText), null) { Index = end - 1 }]
+                : [.. Enumerable.Range(start, end - start).Select(index =>
+                    new PluginTranscriptEntry(PluginTranscriptEntryKind.ToolResult, new string('x', 5000), null) { Index = index, Timestamp = new DateTimeOffset(2026, 11, 11, 13, 0, 0, TimeSpan.FromHours(1)) })];
+            return Task.FromResult<PluginTranscriptSlice?>(new PluginTranscriptSlice(entries, end));
+        });
+        List<byte[]> replies = [];
+        var channel = new MobileSessionChannel(host, (type, write) =>
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", type);
+                writer.WriteStartObject("body");
+                write(writer);
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
+            replies.Add(stream.ToArray());
+        }, null);
+        int before = 300;
+        for (int page = 0; page < 2; page++)
+        {
+            await channel.HistoryAsync("older", "pane", before, 50);
+            byte[] response = replies[^1];
+            Assert.InRange(response.Length, 1, MobileFrameCipher.MaxPlaintextBytes);
+            using JsonDocument document = JsonDocument.Parse(response);
+            JsonElement body = document.RootElement.GetProperty("body");
+            Assert.Equal("session.history", document.RootElement.GetProperty("type").GetString());
+            Assert.Equal("older", body.GetProperty("replyTo").GetString());
+            Assert.True(body.GetProperty("readable").GetBoolean());
+            int[] ids = [.. body.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("id").GetInt32())];
+            JsonElement firstRow = body.GetProperty("rows")[0];
+            if (page == 0)
+            {
+                Assert.False(firstRow.TryGetProperty("timestamp", out _));
+            }
+            else
+            {
+                Assert.Equal(new DateTimeOffset(2026, 11, 11, 13, 0, 0, TimeSpan.FromHours(1)),
+                    firstRow.GetProperty("timestamp").GetDateTimeOffset());
+            }
+            Assert.NotEmpty(ids);
+            Assert.All(ids, id => Assert.InRange(id, 0, before - 1));
+            Assert.Equal(ids.Order(), ids);
+            Assert.Equal(ids[0], body.GetProperty("nextBefore").GetInt32());
+            Assert.True(body.GetProperty("more").GetBoolean());
+            before = ids[0];
+        }
+    }
+
     public static TheoryData<string> Cases =>
     [
         "pairing", "wrongPairingSecret", "replacedPhonePub", "offCurveEphPub", "offCurvePhonePub", "zeroPointEphPub",
         "zeroPointPhonePub", "wrongLength", "wrongVersion", "unknownFlag", "pairingWithoutPending", "expiredPending",
         "secondPairingSamePending", "tamperedTag", "replay", "counterGap", "shortFrame", "mirroredFrame", "replayedHandshake",
         "assistantPairedPhone", "assistantForgottenPhone", "assistantWrongKey", "assistantOpenQuestion",
-        "replacedCockpitPub", "readyTimeout", "assistantBeforeReady",
+        "replacedCockpitPub", "readyTimeout", "assistantBeforeReady", "assistantImages",
     ];
 
     [Theory]
@@ -38,6 +116,11 @@ public class MobileProtocolVectorTests
 
         if (@case.StartsWith("assistant", StringComparison.Ordinal))
         {
+            if (@case == "assistantPairedPhone")
+            {
+                await _OlderTranscriptPagesAsync();
+            }
+
             await _AssistantDoor(@case);
             return;
         }
@@ -59,6 +142,11 @@ public class MobileProtocolVectorTests
         using var cockpitKey = Key("cockpit");
         using var cockpitEphemeral = Key("cockpitEphemeral");
         var cockpitPub = Hex(vectors.GetProperty("keys").GetProperty("cockpit").GetProperty("pub"));
+        if (@case == "pairing")
+        {
+            Assert.Equal("3259 1568 F790 4C01 FFF1 CFD0 2DA7 197D 7D9C 0D73 2BC3 959C 3A1C 3FFA A541 CCB3",
+                MobileKeyFingerprint.Format(cockpitPub, Hex(vectors.GetProperty("keys").GetProperty("phone").GetProperty("pub"))));
+        }
         PairingPayload Pending(TimeSpan expiresIn) =>
             new(Text("depot"), Text("pairingId"), cockpitPub, Convert.FromHexString(Text("pairingSecret")), DateTimeOffset.UtcNow + expiresIn);
         var pending = Pending(PairingPayload.Lifetime);
@@ -188,6 +276,17 @@ public class MobileProtocolVectorTests
         var gateway = Substitute.For<IAssistantChannelGateway>();
         gateway.SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>())
             .Returns(AssistantChannelSendResult.Sent());
+        gateway.AcceptsImages.Returns(true);
+        var host = Substitute.For<ICockpitHost>();
+        host.Sessions.OpenSessions.Returns([new OpenCockpitSession("pane", "Session")]);
+        var operatorChannel = Substitute.For<IOperatorActionChannel>();
+        operatorChannel.Snapshot.Returns([]);
+        var operatorTransport = Substitute.For<IOperatorActionTransport>();
+        operatorTransport.OpenChannel().Returns(operatorChannel);
+        operatorTransport.OpenChannel(device).Returns(operatorChannel);
+        host.OperatorTransport.Returns(operatorTransport);
+        host.SendToSessionAsync("pane", Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>())
+            .Returns(new SessionSendResult(true, "this session cannot see images"));
         var toPhone = new List<byte[]>();
         await using var pairing = new MobilePairing(() => [], _ => null!, _ => null!, storage, null!, _ => gateway,
             send: (_, _, frame) =>
@@ -198,7 +297,7 @@ public class MobileProtocolVectorTests
                 }
 
                 return Task.CompletedTask;
-            });
+            }, host: host);
 
         MobileFrameCipher? Connect(string streamId)
         {
@@ -230,6 +329,10 @@ public class MobileProtocolVectorTests
 
         using var first = Connect("stream-1");
         Say(first, "stream-1", "hallo");
+        if (@case == "assistantImages")
+        {
+            await _Images(first!, json => pairing.Frame(connection, "stream-1", device, first!.Seal(Encoding.UTF8.GetBytes(json))), toPhone, gateway, host, device);
+        }
         if (@case == "assistantForgottenPhone")
         {
             pairing.Forget(connection, device);
@@ -241,8 +344,7 @@ public class MobileProtocolVectorTests
 
         if (@case == "assistantOpenQuestion")
         {
-            // While the assistant's question waits, the host would read "1" as its answer: that stays on the desktop.
-            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, new AssistantChannelRow
+            var question = new AssistantChannelRow
             {
                 Id = Guid.NewGuid(),
                 Kind = AssistantChannelRowKind.Question,
@@ -250,16 +352,228 @@ public class MobileProtocolVectorTests
                 Timestamp = DateTimeOffset.UtcNow,
                 CorrelationId = "question",
                 Questions = [new AssistantChannelQuestion { Question = "Which one?", Options = [] }],
-            });
+            };
+            gateway.PendingQuestions.Returns([question]);
+            operatorChannel.Snapshot.Returns([new OperatorPendingAction("question", "revision", "question", "cockpit-assistant", question.Text, [], "test-capability")
+            {
+                Questions = question.Questions,
+            }]);
+            pairing.Frame(connection, "stream-1", device, first?.Seal("{\"type\":\"operator.pending\",\"id\":\"pending\",\"body\":{}}"u8) ?? []);
+
+            Assert.NotNull(first);
+            var read = 2;
+            JsonElement LatestPending()
+            {
+                JsonElement latest = default;
+                for (; read < toPhone.Count; read++)
+                {
+                    Assert.True(first.TryOpen(toPhone[read], out var plaintext));
+                    using var document = JsonDocument.Parse(plaintext);
+                    if (document.RootElement.GetProperty("type").GetString() == "operator.pending")
+                    {
+                        latest = document.RootElement.GetProperty("body").Clone();
+                    }
+                }
+                return latest.GetProperty("items");
+            }
+            Assert.Equal("question", Assert.Single(LatestPending().EnumerateArray()).GetProperty("id").GetString());
+            gateway.PendingQuestions.Returns([]);
+            operatorChannel.Snapshot.Returns([]);
+            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway,
+                question with { IsUpdate = true, Questions = [] });
+            Assert.Empty(LatestPending().EnumerateArray());
+            gateway.PendingQuestions.Returns([question]);
+            gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, question);
             Say(first, "stream-1", "1");
         }
 
-        var expected = @case is "assistantWrongKey" or "assistantBeforeReady" ? 0 : 1;
+        var expected = @case switch
+        {
+            "assistantWrongKey" or "assistantBeforeReady" => 0,
+            "assistantImages" => 4,
+            _ => 1,
+        };
         await gateway.Received(expected).SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
-        if (expected == 1)
+        if (expected > 0)
         {
             await gateway.Received(1).SendAsync(device, "hallo", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
         }
+    }
+
+    // As a phone writes JSON: base64's + and / as they are, not as \u002B, which would not fit a full chunk in a frame.
+    private static readonly JsonSerializerOptions _Unescaped = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    // AC-2265 (PROTOCOL.md § 12): the vectors' chunks and a 3 MB photo reach the assistant byte for byte, a session without
+    // image input still gets the text and the reason, and every broken attachment is refused once and dropped.
+    private static async Task _Images(MobileFrameCipher phone, Action<string> send, List<byte[]> toPhone, IAssistantChannelGateway gateway, ICockpitHost host, string device)
+    {
+        // Frames 0 and 1 are the handshake reply and the ready the phone already opened.
+        var read = 2;
+        List<(string Type, JsonElement Body)> Replies()
+        {
+            List<(string Type, JsonElement Body)> replies = [];
+            for (; read < toPhone.Count; read++)
+            {
+                Assert.True(phone.TryOpen(toPhone[read], out var plaintext));
+                using var message = JsonDocument.Parse(plaintext);
+                replies.Add((message.RootElement.GetProperty("type").GetString()!, message.RootElement.GetProperty("body").Clone()));
+            }
+
+            return replies;
+        }
+
+        string Chunk(string attachmentId, int seq, int total, string mime, byte[] data) =>
+            JsonSerializer.Serialize(new { type = "attachment.chunk", id = "p", body = new { attachmentId, seq, total, mime, data = Convert.ToBase64String(data) } }, _Unescaped);
+        string Message(string type, object body) => JsonSerializer.Serialize(new { type, id = "p", body });
+        Replies();
+
+        var vectors = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Mobile", "protocol-vectors.json"))).RootElement.GetProperty("attachment");
+        foreach (var chunk in vectors.GetProperty("chunks").EnumerateArray())
+        {
+            send(chunk.GetString()!);
+        }
+
+        send(vectors.GetProperty("send").GetString()!);
+        var image = Convert.FromHexString(vectors.GetProperty("image").GetString()!);
+        await gateway.Received(1).SendAsync(device, "kijk", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1 && images[0].SequenceEqual(image)), Arg.Any<CancellationToken>());
+
+        var photo = new byte[3_000_000];
+        Random.Shared.NextBytes(photo);
+        photo[0] = 0xFF;
+        photo[1] = 0xD8;
+        photo[2] = 0xFF;
+        var pieces = photo.Chunk(MobileAttachments.MaxChunkBytes).ToArray();
+        Assert.Equal(63, pieces.Length);
+        for (var seq = 0; seq < pieces.Length; seq++)
+        {
+            send(Chunk("photo", seq, pieces.Length, "image/jpeg", pieces[seq]));
+        }
+
+        send(Message("assistant.send", new { text = "", attachmentIds = new[] { "photo" } }));
+        await gateway.Received(1).SendAsync(device, "", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1 && images[0].SequenceEqual(photo)), Arg.Any<CancellationToken>());
+
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0];
+        send(Chunk("shot", 0, 1, "image/jpeg", jpeg));
+        send(Message("session.send", new { paneId = "pane", text = "en dit", attachmentIds = new[] { "shot" } }));
+        await host.Received(1).SendToSessionAsync("pane", "en dit", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1));
+        var replies = Replies();
+        Assert.All(replies.Where(reply => reply.Type == "assistant.sent"), reply => Assert.True(reply.Body.GetProperty("ok").GetBoolean()));
+        var sessionSent = Assert.Single(replies, reply => reply.Type == "session.sent").Body;
+        Assert.True(sessionSent.GetProperty("ok").GetBoolean());
+        Assert.Equal("this session cannot see images", sessionSent.GetProperty("imagesRefused").GetString());
+
+        send(Chunk("late", 1, 2, "image/jpeg", jpeg));
+        send(Chunk("png", 0, 1, "image/png", jpeg));
+        send(Chunk("gif", 0, 1, "image/gif", jpeg));
+        send(Chunk("huge", 0, 176, "image/jpeg", jpeg));
+        send(Chunk("swap", 0, 2, "image/jpeg", jpeg));
+        send(Chunk("swap", 1, 2, "image/png", jpeg));
+        for (var open = 0; open < MobileAttachments.MaxOpen; open++)
+        {
+            send(Chunk($"open{open}", 0, 2, "image/jpeg", jpeg));
+        }
+
+        send(Chunk("eleventh", 0, 2, "image/jpeg", jpeg));
+        send(Chunk("late", 0, 2, "image/jpeg", jpeg));
+        send(Message("assistant.send", new { text = "zonder", attachmentIds = new[] { "png" } }));
+        await gateway.Received(1).SendAsync(device, "zonder", Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 0), Arg.Any<CancellationToken>());
+        replies = Replies();
+        Assert.Equal(["late", "png", "gif", "huge", "swap", "eleventh"],
+            replies.Where(reply => reply.Type == "attachment.refused").Select(reply => reply.Body.GetProperty("attachmentId").GetString()));
+        var sent = Assert.Single(replies, reply => reply.Type == "assistant.sent").Body;
+        Assert.True(sent.GetProperty("ok").GetBoolean());
+        Assert.Equal("an attachment was missing, incomplete or refused", sent.GetProperty("imagesRefused").GetString());
+
+        await _ImageCapabilityChangesAsync();
+    }
+
+    // Category D: a connected phone must hear image capability changes without another request or turn.
+    private static async Task _ImageCapabilityChangesAsync()
+    {
+        SessionCapabilities capabilities = SessionCapabilities.ClaudeCli with { SupportsVision = false };
+        var runtime = Substitute.For<ISessionRuntime>();
+        runtime.Capabilities.Returns(_ => capabilities);
+        var manager = Substitute.For<ISessionManager>();
+        manager.Create(Arg.Any<SessionProfile?>()).Returns(runtime);
+        var sessionHost = new SessionHost(() => "assistant", manager, TimeProvider.System);
+        sessionHost.Attach(null);
+        await using var session = new SessionHostHandle("assistant", "Assistant", false, "desk", null, null, sessionHost);
+        var host = Substitute.For<IAssistantSessionHost>();
+        host.Session.Returns(session);
+        var contribution = new AssistantChannelContribution
+        {
+            Id = "phone", Name = "Phone", Access = AssistantChannelAccess.ForSingleUser("device").Access
+                ?? throw new InvalidOperationException(),
+        };
+        var gateway = new AssistantChannelGateway(contribution, host, Substitute.For<IConsentBroker>(),
+            NullLogger<AssistantChannelGateway>.Instance);
+        var logger = Substitute.For<ILogger>();
+        List<byte[]> sent = [];
+        using var channel = new MobileAssistantChannel("device", gateway, bytes => { sent.Add(bytes); return true; }, "Laptop", "1", logger);
+        channel.StreamStarted("stream");
+        channel.Receive("{\"type\":\"cockpit.status\",\"id\":\"first\",\"body\":{}}"u8.ToArray(), "stream");
+        sent.Clear();
+
+        capabilities = capabilities with { SupportsVision = true };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.Equal("cockpit.status", status.RootElement.GetProperty("type").GetString());
+            Assert.True(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        sent.Clear();
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        Assert.Empty(sent);
+
+        capabilities = capabilities with { SupportsVision = false };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.False(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        sent.Clear();
+        capabilities = capabilities with { SupportsVision = true };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        sent.Clear();
+        host.Session.Returns((IAssistantSession?)null);
+        host.PropertyChanged += Raise.Event<System.ComponentModel.PropertyChangedEventHandler>(host,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(IAssistantSessionHost.Session)));
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.False(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        sent.Clear();
+        host.Session.Returns(session);
+        host.PropertyChanged += Raise.Event<System.ComponentModel.PropertyChangedEventHandler>(host,
+            new System.ComponentModel.PropertyChangedEventArgs(nameof(IAssistantSessionHost.Session)));
+        using (JsonDocument status = JsonDocument.Parse(Assert.Single(sent)))
+        {
+            Assert.True(status.RootElement.GetProperty("body").GetProperty("images").GetBoolean());
+        }
+
+        channel.StreamEnded();
+        sent.Clear();
+        capabilities = capabilities with { SupportsVision = false };
+        runtime.EventAppended += Raise.Event<Action<SessionEvent>>(new SessionCapabilitiesChanged { SessionId = "session", Capabilities = capabilities });
+        Assert.Empty(sent);
+
+        channel.StreamStarted("reconnected");
+        channel.Receive("{\"type\":\"cockpit.status\",\"id\":\"again\",\"body\":{}}"u8.ToArray(), "reconnected");
+        var statusLogs = logger.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(ILogger.Log) && call.GetArguments()[0] is LogLevel.Information)
+            .Select(call => call.GetArguments()[2]).OfType<IReadOnlyList<KeyValuePair<string, object?>>>()
+            .Where(entry => entry.Any(pair => pair.Key == "Images"))
+            .Select(entry => ((bool?)entry.Single(pair => pair.Key == "Images").Value,
+                (string?)entry.Single(pair => pair.Key == "Reason").Value));
+        Assert.Equal(new (bool?, string?)[]
+        {
+            (false, "first status"), (true, "capability change"), (false, "capability change"),
+            (true, "capability change"), (false, "capability change"), (true, "capability change"),
+            (false, "reconnect"),
+        }, statusLogs);
     }
 
     private static async Task _KeyConfirmation(string @case)

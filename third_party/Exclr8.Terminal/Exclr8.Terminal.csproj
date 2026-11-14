@@ -20,8 +20,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.6" />
     <!-- WMI for the WmiChildWatcher on Windows; the Windows path is [SupportedOSPlatform]-guarded so
          non-Windows builds link cleanly against the kqueue / no-op backend. -->
     <PackageReference Include="System.Management" Version="9.0.0" />

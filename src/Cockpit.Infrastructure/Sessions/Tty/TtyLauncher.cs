@@ -15,7 +15,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionStdioProcesses? stdioProcesses = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null, SessionStdioProcesses? stdioProcesses = null, GuardNotifications? guardNotifications = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -102,6 +102,11 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         {
             scratchBaseEnvironment[key] = scratch;
         }
+        foreach (var (key, value) in SessionGuardrailEnvironment.Build(profile, workingDirectory, scratch,
+            scratchBaseEnvironment.GetValueOrDefault("CLAUDE_CONFIG_DIR"), orgPolicy?.Current, message => logger.LogWarning("{Message}", message)))
+        {
+            scratchBaseEnvironment[key] = value;
+        }
         baseEnvironment = scratchBaseEnvironment;
 
         var context = new TtyLaunchContext(
@@ -154,6 +159,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         }
         environment = scratchEnvironment;
 
+        foreach (var (key, value) in SessionGuardrailEnvironment.Build(profile, spec.WorkingDirectory, scratch,
+            environment.GetValueOrDefault("CLAUDE_CONFIG_DIR"), orgPolicy?.Current, message => logger.LogWarning("{Message}", message)))
+        {
+            scratchEnvironment[key] = value;
+        }
+
         var process = ptyHostFactory.Start(spec.ExecutablePath, spec.Arguments, spec.WorkingDirectory, environment, columns, rows);
 
         // AC-661: the OS ceiling around this session's tree, applied before the CLI has spawned anything of its own,
@@ -162,14 +173,15 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         if (paneId is not null) { stdioProcesses?.Bind(paneId, process.ProcessId); }
 
         // AC-1519: launch-time, so the TTY route gets the same anchor as the SDK route and dies with the Cockpit.
-        var anchor = processAnchor?.Anchor(process.ProcessId, paneId);
+        var anchor = processAnchor?.Anchor(process.ProcessId, paneId, SessionScratch.JobNameOf(scratch));
 
         // The files this launch wrote live exactly as long as the session needing them (an MCP config holds bearer
         // headers, no business surviving the session that ends). AC-143: a minted pane token needs the same
         // wrapping so its revoke runs on dispose, even when the provider itself wrote no session-scoped files.
         return new TtyProcessOwningSessionFiles(
             process, spec.SessionScopedFiles, spec.StatusFile, keyring, paneId, mintedToken, memoryCap, anchor,
-            processToWait => SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, processToWait).GetAwaiter().GetResult());
+            processToWait => SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, processToWait).GetAwaiter().GetResult(),
+            spec.StatusFile is null ? null : guardNotifications?.Watch(scratchPane, spec.StatusFile));
     }
 
     // AC-1593: launch-time, so the TTY route meets the same mode ceiling as the SDK start (AC-294). Launch already runs

@@ -80,10 +80,19 @@ internal sealed class PluginAdministration(
         {
             await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await bootstrap.ReconcileUpdatesAsync(cancellationToken).ConfigureAwait(false);
+            var folder = PluginFolderName.Normalize(request.Id);
+            var registered = (await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false)).GetValueOrDefault(folder);
+            if (registered?.Source is { } source && !string.Equals(source, request.Store.SourceKey, StringComparison.Ordinal))
+            {
+                request = request with { SwitchSource = true };
+            }
             var result = await provisioning.InstallAsync(request, AbstractionsContract.Version, cancellationToken: cancellationToken, progress: progress, keyConsent: keyConsent).ConfigureAwait(false);
             if (result.IsSuccess && result.FolderId is { } installedFolder)
             {
-                // AC-1980: an update keeps its registration; a fresh install has none until consent, so the manager records it then.
+                if (!(await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false)).ContainsKey(installedFolder))
+                {
+                    await registrations.SaveAsync(installedFolder, new PluginRegistration(false, ""), cancellationToken).ConfigureAwait(false);
+                }
                 await registrations.SetSourceAsync(installedFolder, request.Store.SourceKey, cancellationToken).ConfigureAwait(false);
             }
 
@@ -597,6 +606,7 @@ internal sealed class PluginAdministration(
     private InstalledPlugin _Installed(DiscoveredPlugin plugin, PluginRegistration? registration)
     {
         var failures = diagnostics?.AllForFolder(plugin.FolderId) ?? [];
+        var running = manager?.LoadedParts.FirstOrDefault(entry => entry.Discovered.FolderId == plugin.FolderId).Discovered;
 
         plugin = plugin with { RequiresRestart = manager?.RequiresRestart(plugin.FolderId, plugin.Manifest, plugin.Sha256) ?? plugin.RequiresRestart };
         return new InstalledPlugin(
@@ -605,6 +615,7 @@ internal sealed class PluginAdministration(
             failures.LastOrDefault(failure => IPluginDiagnostics.ActivationPhases.Contains(failure.Phase))?.Error,
             failures.LastOrDefault(failure => failure.Phase == "compatibility")?.Error,
             failures.LastOrDefault(failure => failure.Phase == "mcp-server")?.Error,
-            manager?.LoadedParts.FirstOrDefault(entry => entry.Discovered.FolderId == plugin.FolderId).Discovered?.Manifest.Version);
+            running?.Manifest.Version,
+            running?.Sha256);
     }
 }

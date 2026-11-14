@@ -64,11 +64,6 @@ public partial class OptionsDialog : Window
 
     private CockpitViewModel? _pageLoadingCockpit;
 
-    public OptionsDialog()
-        : this(null, null)
-    {
-    }
-
     private void _WatchPageLoading()
     {
         _UnwatchPageLoading();
@@ -110,17 +105,20 @@ public partial class OptionsDialog : Window
         PageLoadingText.Text = caption;
     }
 
-    // AC-1446: the title bar is drawn once, at construction, so a dialog opened on a server names it there.
-    private OptionsDialog(string? title, string? subtitle)
+    public OptionsDialog()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this, title, subtitle);
+        CockpitWindowChrome.Apply(this);
         _AddHelpHints();
         CategoryNav.SelectionChanged += (_, _) =>
         {
             _EnsurePluginContent();
             _ApplySearch(_searchCockpit?.OptionsSearchText);
             _ShowPageLoading();
+            if ((CategoryNav.SelectedItem as ListBoxItem)?.Tag is "vault" && DataContext is CockpitViewModel { Vault: { } vault })
+            {
+                _ = vault.RefreshAsync(providers: true);
+            }
         };
         DataContextChanged += (_, _) =>
         {
@@ -144,6 +142,14 @@ public partial class OptionsDialog : Window
                 cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
                 cockpit.Security.RefreshHelloCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
+                foreach (var page in this.GetLogicalDescendants().OfType<ScrollViewer>())
+                {
+                    if (page.Tag is string tag && tag is "sessions" or "appearance" or "terminal" or "notifications" or "shortcuts" or "voice" or "debug"
+                        && page.Content is StackPanel body && !_sectionErrorLabels.ContainsKey(tag))
+                    {
+                        body.Children.Insert(1, _SectionErrorLabel(tag));
+                    }
+                }
                 cockpit.PluginOptionsRows.CollectionChanged += _OnPluginOptionsRowsChanged;
                 _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
@@ -166,87 +172,6 @@ public partial class OptionsDialog : Window
             (DataContext as CockpitViewModel)?.OptionsClosed();
         };
         Closing += OnClosingDialog;
-    }
-
-    // AC-1446: this dialog opened on a server rather than a second admin window. Only the server's pages stay, each
-    // acting at once through `admin`, so there is no Apply to stage; F5.6b2 added Projects, b3–b4 add Profiles and Plugins.
-    public static OptionsDialog ForServer(ServerAdminViewModel admin)
-    {
-        var dialog = new OptionsDialog(admin.Title, admin.Chip) { Title = admin.Title, Server = admin };
-        foreach (var overlay in dialog.Root.Children.Where(child => child != dialog.Body).ToList())
-        {
-            dialog.Root.Children.Remove(overlay);
-        }
-
-        dialog.Footer.IsVisible = false;
-        dialog.SearchBox.IsVisible = false;
-        dialog.ServerBanner.DataContext = admin;
-        dialog.ServerBanner.IsVisible = true;
-        dialog.CategoryNav.Items.Clear();
-        dialog.CategoryContent.Children.Clear();
-        if (admin.HasProjectsPage)
-        {
-            dialog._AddServerPage("server-projects", "Projects", MaterialIconKind.FolderMultipleOutline, new ServerProjectsPage { DataContext = admin });
-        }
-
-        if (admin.Profiles is { } profiles)
-        {
-            dialog._AddServerPage("server-profiles", "Profiles", MaterialIconKind.AccountMultiple, new ServerProfilesPage { DataContext = profiles },
-                new Binding { Source = profiles, Path = nameof(profiles.Count) });
-            dialog.Opened += (_, _) => profiles.LoadCommand.Execute(null);
-        }
-
-        if (admin.Assistant is { } assistant)
-        {
-            dialog._AddServerPage("server-assistant", "Assistant", MaterialIconKind.Creation, new ServerAssistantPage { DataContext = assistant });
-            dialog.Opened += (_, _) => assistant.LoadCommand.Execute(null);
-            assistant.OpenPluginsRequested += () => dialog.SelectCategory("server-plugins");
-            assistant.OpenHealthRequested += dialog.Close;
-        }
-
-        if (admin.Storage is { } storage)
-        {
-            dialog._AddServerPage("server-storage", "Storage", MaterialIconKind.Harddisk, new ServerStoragePage { DataContext = storage });
-            dialog.Opened += (_, _) => storage.LoadCommand.Execute(null);
-        }
-
-        dialog._AddServerPage("server-plugins", "Plugins", MaterialIconKind.Puzzle, new ServerPluginsPage { DataContext = admin });
-        dialog._AddServerPage("server-keys", "Connect keys", MaterialIconKind.KeyChainVariant, new ServerConnectKeysPage { DataContext = admin });
-        dialog._AddServerPage("server-audit", "Audit log", MaterialIconKind.History, new ServerAuditLogPage { DataContext = admin });
-        dialog.CategoryNav.SelectedIndex = 0;
-        if (admin.InitialCategory is { } initial)
-        {
-            dialog.SelectCategory(initial);
-        }
-        dialog.Opened += (_, _) => admin.LoadCommand.Execute(null);
-        return dialog;
-    }
-
-    // The server this dialog administers, or null for this cockpit's own Options.
-    public ServerAdminViewModel? Server { get; private init; }
-
-    // `count`, when given, is the faint number after the page's name in the nav, as the mockup has it (AC-1473).
-    private void _AddServerPage(string tag, string label, MaterialIconKind icon, Control page, Binding? count = null)
-    {
-        var item = _BuildPluginNavItem(tag, label, icon);
-        if (count is not null && item.Content is Grid grid)
-        {
-            var number = new TextBlock { FontSize = 11, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextFaintBrush") };
-            number.Bind(TextBlock.TextProperty, count);
-            Grid.SetColumn(number, 2);
-            grid.Children.Add(number);
-        }
-
-        CategoryNav.Items.Add(item);
-        var scroll = new ScrollViewer { Tag = tag, Content = page };
-        scroll.Bind(IsVisibleProperty, new Binding
-        {
-            Source = CategoryNav,
-            Path = nameof(ListBox.SelectedItem),
-            Converter = CategoryTagEqualsConverter.Instance,
-            ConverterParameter = tag,
-        });
-        CategoryContent.Children.Add(scroll);
     }
 
     // Set by the two paths that have already decided what happens to the edits, so the handler below lets that
@@ -310,6 +235,7 @@ public partial class OptionsDialog : Window
     // built page has a label to write the reason into (AC-1084).
     private bool _ReportApplyRefusal(CockpitViewModel cockpit)
     {
+        _ShowSectionErrors(cockpit);
         if (!cockpit.OptionsApplyBlocked)
         {
             return false;
@@ -319,8 +245,6 @@ public partial class OptionsDialog : Window
         {
             SelectCategory(tag);
         }
-
-        _ShowPluginSectionErrors(cockpit);
 
         return true;
     }
@@ -476,21 +400,37 @@ public partial class OptionsDialog : Window
         return item;
     }
 
-    // AC-1084: the label each plugin page carries for the reason its own last Apply refused, by nav tag. The host
-    // draws it rather than leaving it to the view, because only five of the seventeen settings views refuse at all
-    // and just two of those (Discord, Slack) draw an error themselves — the rest would go silent.
-    private readonly Dictionary<string, TextBlock> _pluginErrorLabels = new(StringComparer.Ordinal);
+    // The host owns the refusal label so a failed save remains visible on its own Options page.
+    private readonly Dictionary<string, TextBlock> _sectionErrorLabels = new(StringComparer.Ordinal);
 
-    // Writes each built plugin page's refusal onto that page, and clears the pages that no longer have one, so a
-    // reason the operator has since fixed does not linger next to a section that now saves.
-    private void _ShowPluginSectionErrors(CockpitViewModel cockpit)
+    // Clear a corrected section's error on the same Apply that succeeds.
+    private void _ShowSectionErrors(CockpitViewModel cockpit)
     {
-        foreach (var (tag, label) in _pluginErrorLabels)
+        foreach (var (tag, label) in _sectionErrorLabels)
         {
             var reason = cockpit.OptionsSectionErrors.GetValueOrDefault(tag);
             label.Text = reason;
             label.IsVisible = reason is { Length: > 0 };
         }
+    }
+
+    private TextBlock _SectionErrorLabel(string tag)
+    {
+        var errorLabel = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitStatusWaitingBrush"),
+            FontWeight = FontWeight.SemiBold,
+            IsVisible = false,
+        };
+        _sectionErrorLabels[tag] = errorLabel;
+        if ((DataContext as CockpitViewModel)?.OptionsSectionErrors.GetValueOrDefault(tag) is { Length: > 0 } reason)
+        {
+            errorLabel.Text = reason;
+            errorLabel.IsVisible = true;
+        }
+
+        return errorLabel;
     }
 
     private ScrollViewer _BuildPluginContent(string tag, PluginOptionsRowViewModel row)
@@ -518,20 +458,7 @@ public partial class OptionsDialog : Window
 
         // Under the heading, above the plugin's own view: the reason this section refused the last Apply. Seeded
         // from the view model so a page built by the jump below already carries it (AC-1084).
-        var errorLabel = new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = _Brush("CockpitStatusWaitingBrush"),
-            FontWeight = FontWeight.SemiBold,
-            IsVisible = false,
-        };
-        _pluginErrorLabels[tag] = errorLabel;
-        if ((DataContext as CockpitViewModel)?.OptionsSectionErrors.GetValueOrDefault(tag) is { Length: > 0 } reason)
-        {
-            errorLabel.Text = reason;
-            errorLabel.IsVisible = true;
-        }
-
+        var errorLabel = _SectionErrorLabel(tag);
         body.Children.Add(errorLabel);
 
         // No footer of its own and no window of its own (criteria 3/5): the view sits flat in the content column,

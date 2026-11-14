@@ -1,17 +1,14 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using Avalonia.Controls;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
-using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
 using Microsoft.Extensions.Logging;
@@ -27,7 +24,6 @@ public partial class CockpitViewModel
     private Func<ISessionHandle, string, Task<SessionViewModel>>? _remotePaneOver;
     private INodeSessionsClient? _serverChoices;
     private readonly List<SessionPanelViewModel> _remotePanes = [];
-    private Func<ServerAdminViewModel, Task>? _showServerAdmin;
     private IPluginProviderConfigViews? _providerConfigViews;
 
     public ObservableCollection<ServerGroupViewModel> ServerGroups { get; } = [];
@@ -38,7 +34,7 @@ public partial class CockpitViewModel
 
     public bool HasServerGroups => ServerGroups.Count > 0;
 
-    // AC-1487: the server a `--remote` window shows; null in the cockpit itself. The window then hides what is local.
+    // The target is fixed for the lifetime of a remote window.
     public string? RemoteWindowServer { get; private init; }
 
     public bool IsRemoteWindow => RemoteWindowServer is not null;
@@ -76,21 +72,167 @@ public partial class CockpitViewModel
         _ = _ReloadServersAsync();
     }
 
-    // AC-1487: the `--remote` window's view model: no local session, store or backend, and Admin shown by the window.
+    private Func<Task>? _prepareRemoteProfiles;
+    private Func<Task>? _editRemoteAssistantProfile;
+
+    // AC-2277: use the runtime presentation graph with explicit server services and no desktop backend services.
     internal static CockpitViewModel ForRemoteWindow(
         string server,
         IRemoteServers servers,
         INodeSessionsClient? serverChoices,
         IServerSignIns? signIns,
-        Func<ServerAdminViewModel, Task> showServerAdmin)
+        Func<CockpitViewModel, string?, Task>? presentOptions = null,
+        Func<PluginManagerViewModel, PluginStoreFilter?, Task>? presentPluginStore = null,
+        Func<string, string, string, Task<bool>>? confirm = null,
+        Func<ProjectDialogViewModel, Task>? presentProjectDialog = null,
+        RemoteWindowUi? ui = null)
     {
-        var cockpit = new CockpitViewModel(dockPanelRegistry: null, sessionRegistry: null, withSamples: false)
+        IRemoteServer? Current() => servers.Servers.FirstOrDefault(target => target.Name == server);
+        var options = Composition.DesktopComposition.RemoteOptionsFor(Current);
+
+        // AC-2281: the ordinary Projects page, over the server's projects and its own profiles.
+        var serverProjects = new Composition.RemoteWindowProjects(() => Current()?.Projects);
+        var projectDialogs = presentProjectDialog is not null && confirm is not null
+            ? new RemoteProjectDialogs(server, Current, presentProjectDialog, confirm)
+            : null;
+        var cockpit = new CockpitViewModel(
+            sessionFactory: null, ttySessionFactory: null, dialogService: null,
+            captureService: null, playbackService: null, attentionNotifier: null,
+            notificationSettingsStore: options, transcriptDisplaySettingsStore: options.Transcript,
+            sessionBehaviorSettingsStore: options, layoutSettingsStore: options.Layout,
+            voiceSettingsStore: options.Voice, terminalSettingsStore: options,
+            debugSettingsStore: options, worktreeSettingsStore: options, cloneSettingsStore: options,
+            shortcutSettingsStore: options.Shortcuts, renderingSettingsStore: options.Rendering,
+            usagePillSettingsStore: options.UsagePill, screenshotSettingsStore: options.Screenshots,
+            quickNoteSettingsStore: options.QuickNotes,
+            heavyRunSettingsStore: options, deferOptionsLoad: true,
+            conversationIndex: new Composition.RemoteWindowConversations(() => Current()?.Launcher),
+            projects: new ProjectsViewModel(serverProjects, serverProjects, projectDialogs) { ServerName = server },
+            workspaceTypeRegistry: ui?.WorkspaceTypes, widgetRegistry: ui?.Widgets, dockPanelRegistry: ui?.DockPanels,
+            worktrees: new WorktreesViewModel(null, (title, message, label) => ui?.ConfirmAsync(title, message, label) ?? Task.FromResult(false)))
         {
             RemoteWindowServer = server,
-            _showServerAdmin = showServerAdmin,
+            _presentOptions = presentOptions,
+            _presentPluginStore = presentPluginStore,
+            // AC-2279: the server's own switches and swarm; encryption, screen lock and pairing stay with this device.
+            Security = new SecurityOptionsViewModel(new UnprotectedSecrets(), terminalAccessSettings: options, shellAccessSettings: options),
+            Swarm = new SwarmOptionsViewModel(options.Swarm, options.SwarmLeadership, confirm),
+            // AC-2282: the server's registry; it leaves out its own servers and node wiring itself.
+            McpServers = new McpServersViewModel(options.McpServers, [], options.McpSignIns),
+            _presentWorktrees = ui is null ? null : ui.ShowWorktreesAsync,
+            _presentConfirmation = confirm ?? (ui is null ? null : ui.ConfirmAsync),
+        };
+        cockpit.Workspaces.UseRemoteWorkspaces(() => Current()?.Launcher);
+        cockpit._prepareRemoteProfiles = async () =>
+        {
+            var target = Current() ?? throw new InvalidOperationException("The server is not connected.");
+            var profiles = new ServerProfileServices(server, target.Profiles, signIns, configViews: ui?.ProviderConfigViews);
+            await profiles.PrepareAsync();
+            cockpit.Profiles = profiles.CreateEditor();
+            var slot = new ServerAssistantSlotStore(server, target.AssistantAdministration);
+            cockpit.AssistantOptions = new AssistantOptionsViewModel(options.Assistant, slot,
+                speechProfiles: new ServerProfileServices(server, target.Profiles));
+            await cockpit.AssistantOptions.RefreshAsync();
+            cockpit.OnPropertyChanged(nameof(AssistantOptions));
+            cockpit._editRemoteAssistantProfile = async () =>
+            {
+                if (ui is null)
+                {
+                    return;
+                }
+                var assistantProfiles = new ServerProfileServices(server, target.Profiles, signIns, configViews: ui.ProviderConfigViews);
+                await assistantProfiles.PrepareAsync();
+                var dialog = new AssistantProfileDialogViewModel(new ServerAssistantSlotStore(server, target.AssistantAdministration), assistantProfiles, loginChecker: assistantProfiles,
+                    pluginProviderRegistry: assistantProfiles, mcpServerCatalog: assistantProfiles, tokenEstimator: assistantProfiles,
+                    pluginConfigViews: assistantProfiles, canChooseProvider: false);
+                await dialog.LoadAsync();
+                await ui.ShowAssistantProfileAsync(dialog);
+            };
         };
         cockpit._WireServerGroups(servers, SessionViewModel.OverRemoteAsync, serverChoices, signIns);
+
+        // The server is there once its group is: read its projects then, and again if it comes back as a new object.
+        cockpit.ServerGroups.CollectionChanged += (_, change) =>
+        {
+            if (change.NewItems is { Count: > 0 })
+            {
+                _ = cockpit._LoadServerProjectsAsync();
+            }
+        };
+        _ = cockpit._LoadServerProjectsAsync();
         return cockpit;
+    }
+
+    internal void UseRemotePlugins(PluginManagerViewModel manager)
+    {
+        Plugins = manager;
+        OnPropertyChanged(nameof(Plugins));
+    }
+
+    // AC-2281: a project's Start in the remote window is the server's own start card, on that project and its profile.
+    private async Task _StartServerProjectAsync(Cockpit.Core.Projects.Project project)
+    {
+        if (ServerGroups.FirstOrDefault() is not { } group)
+        {
+            return;
+        }
+
+        await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+        await OpenServerStartAsync(group);
+        var start = group.Start;
+        start.SelectedProject = start.Projects.FirstOrDefault(choice => choice.Id == project.Id) ?? start.SelectedProject;
+        start.SelectedProfile = start.Profiles.FirstOrDefault(choice =>
+            string.Equals(choice.Label, project.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase)) ?? start.SelectedProfile;
+    }
+
+    private async Task<ConversationReopenResult> _ReopenServerConversationAsync(ConversationRecord record)
+    {
+        if (ServerGroups.FirstOrDefault() is not { Server.Launcher: { } launcher } group || record.ProfileId is not { } profile)
+        {
+            return new(false, "The server is not connected.");
+        }
+        try
+        {
+            if (group.Sessions.FirstOrDefault(row => row.Handle.PaneId == record.PaneId) is { } open)
+            {
+                await OpenServerSessionAsync(open);
+                return new(true);
+            }
+            if (record.ConversationId is not { Length: > 0 } conversationId)
+            {
+                return new(false, "This conversation cannot be resumed.");
+            }
+            await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+            var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
+                Workspaces.Active?.Id ?? "", new SessionProfile(profile, new ServerProvider()), null, null, null,
+                PaneSessionKind.Sdk, null, false, record.ProjectId, false, SessionResume.BySessionId(conversationId), PaneId: record.PaneId));
+            if (started is null || started.FailureReason is not null)
+            {
+                return new(false, started?.FailureReason ?? "The conversation could not be resumed.");
+            }
+            _ReconcileServerGroup(group);
+            if (group.Sessions.FirstOrDefault(row => row.Handle.PaneId == started.PaneId) is { } resumed)
+            {
+                await OpenServerSessionAsync(resumed);
+            }
+            return new(true);
+        }
+        catch (Exception exception)
+        {
+            return new(false, exception.Message);
+        }
+    }
+
+    private async Task _LoadServerProjectsAsync()
+    {
+        try
+        {
+            await Projects.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not read the projects of {Server}.", RemoteWindowServer);
+        }
     }
 
     // The headless scenes' way in: the same wiring over a stand-in server, without the node tools behind the start card.
@@ -266,6 +408,37 @@ public partial class CockpitViewModel
         {
             _ = _CloseRemotePaneAsync(row);
         }
+        if (IsRemoteWindow)
+        {
+            Workspaces.ReconcileRemoteWorkspaces();
+            foreach (var row in group.Sessions.Where(row => row.Pane is not null))
+            {
+                if (row.Pane is { } pane)
+                {
+                    pane.WorkspaceId = row.Handle.WorkspaceId;
+                }
+            }
+            _ = _RestoreRemotePanesAsync(group);
+            _OnRemotePanesChanged();
+        }
+    }
+
+    private readonly HashSet<string> _openingRemotePanes = new(StringComparer.Ordinal);
+
+    private async Task _RestoreRemotePanesAsync(ServerGroupViewModel group)
+    {
+        try
+        {
+            foreach (var row in group.Sessions.ToList())
+            {
+                await _OpenServerSessionAsync(row, activate: false);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not restore the server's panes.");
+            ToastHost.Add($"Could not restore the server's panes: {exception.Message}", ToastSeverity.Error, null, null);
+        }
     }
 
     [RelayCommand]
@@ -290,28 +463,77 @@ public partial class CockpitViewModel
     }
 
     [RelayCommand]
-    private async Task OpenServerSessionAsync(ServerSessionRowViewModel row)
+    private Task OpenServerSessionAsync(ServerSessionRowViewModel row) => _OpenServerSessionAsync(row, activate: true);
+
+    private async Task _OpenServerSessionAsync(ServerSessionRowViewModel row, bool activate)
     {
         if (row.Pane is null)
         {
-            if (_remotePaneOver is null || ServerGroups.FirstOrDefault(group => group.Sessions.Contains(row)) is not { } group)
+            if (_remotePaneOver is null || ServerGroups.FirstOrDefault(group => group.Sessions.Contains(row)) is not { } group
+                || !_openingRemotePanes.Add(row.Handle.PaneId))
             {
                 return;
             }
 
-            var handle = group.IsSwarmMember && _swarmSessions is { } nodes
-                ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
-                : row.Handle;
-            var pane = await _remotePaneOver(handle, group.Name);
-            pane.ShowsWhereItRuns = true;
-            _ApplyLink(pane, group);
-            row.Pane = pane;
-            _remotePanes.Add(pane);
-            GridPanes.Add(pane);
-            _OnRemotePanesChanged();
+            try
+            {
+                var handle = group.IsSwarmMember && _swarmSessions is { } nodes
+                    ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
+                    : row.Handle;
+                var pane = group.Server?.TerminalLauncher(handle.PaneId) is { } terminal
+                    ? (SessionPanelViewModel)_ServerTerminalPane(terminal, group, handle.Title, plainShell: false)
+                    : await _remotePaneOver(handle, group.Name);
+                if (!group.Sessions.Contains(row))
+                {
+                    await pane.DisposeAsync();
+                    return;
+                }
+                if (IsRemoteWindow)
+                {
+                    pane.WorkspaceId = handle.WorkspaceId;
+                }
+                pane.ShowsWhereItRuns = true;
+                pane.NameChanged += async (_, _) =>
+                {
+                    try
+                    {
+                        if (group.Server?.Launcher is { } launcher)
+                        {
+                            await launcher.SetSessionNameAsync(handle.PaneId, pane.Title);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        pane.Title = handle.Title;
+                        ToastHost.Add($"Could not rename the session: {exception.Message}", ToastSeverity.Error, null, null);
+                    }
+                };
+                if (pane is SessionViewModel chat)
+                {
+                    _ApplyLink(chat, group);
+                }
+                row.Pane = pane;
+                _remotePanes.Add(pane);
+                GridPanes.Add(pane);
+                _OnRemotePanesChanged();
+            }
+            finally
+            {
+                _openingRemotePanes.Remove(row.Handle.PaneId);
+            }
         }
 
-        if (Workspaces.Active is { } active && active.Type != WorkspaceType.Sessions
+        if (!activate)
+        {
+            return;
+        }
+
+        if (IsRemoteWindow)
+        {
+            await Workspaces.SelectWorkspaceCommand.ExecuteAsync(row.Handle.WorkspaceId);
+        }
+
+        if (!IsRemoteWindow && Workspaces.Active is { } active && active.Type != WorkspaceType.Sessions
             && SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings) is { } sessionsDesk)
         {
             Workspaces.SelectWorkspaceCommand.Execute(sessionsDesk);
@@ -326,6 +548,7 @@ public partial class CockpitViewModel
         if (ServerGroups.SelectMany(group => group.Sessions.Select(row => (Group: group, Row: row)))
                 .FirstOrDefault(entry => ReferenceEquals(entry.Row.Pane, pane)) is not { Row: { } row } entry)
         {
+            await _CloseServerTerminalAsync(pane);
             return;
         }
 
@@ -383,9 +606,58 @@ public partial class CockpitViewModel
         }
     }
 
+    // AC-2288: New terminal in a remote window: a shell on its server, under the key this window connects with.
+    private async Task _OpenServerTerminalAsync()
+    {
+        if (ServerGroups.FirstOrDefault() is not { Server: { } server } group || server.TerminalLauncher(null) is not { } launcher)
+        {
+            return;
+        }
+
+        await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+        var pane = _ServerTerminalPane(launcher, group, $"Terminal on {group.Name}", plainShell: true);
+        pane.CloseRequested += (_, _) => _OnUiThread(() => _ = _CloseServerTerminalAsync(pane));
+        pane.WorkspaceId = Workspaces.Active?.Id ?? string.Empty;
+        _remotePanes.Add(pane);
+        GridPanes.Add(pane);
+        _OnRemotePanesChanged();
+        SelectedSession = pane;
+    }
+
+    // A shell this window opened on the server; its pane going closes the shell there.
+    private async Task _CloseServerTerminalAsync(SessionPanelViewModel pane)
+    {
+        if (pane is not TtyViewModel { IsTerminal: true } || !_remotePanes.Remove(pane))
+        {
+            return;
+        }
+
+        GridPanes.Remove(pane);
+        if (ReferenceEquals(SelectedSession, pane))
+        {
+            SelectedSession = VisibleSessions.FirstOrDefault();
+        }
+
+        _OnRemotePanesChanged();
+        await pane.DisposeAsync();
+    }
+
+    private static TtyViewModel _ServerTerminalPane(ITtyLauncher launcher, ServerGroupViewModel group, string title, bool plainShell)
+    {
+        var pane = new TtyViewModel(launcher, providerResolver: null)
+        {
+            Title = title,
+            RemoteServer = group.Name,
+            ShowsWhereItRuns = true,
+        };
+        pane.LaunchOnServer(title, plainShell);
+        return pane;
+    }
+
     private void _OnRemotePanesChanged()
     {
         OnPropertyChanged(nameof(VisibleSessions));
+        OnPropertyChanged(nameof(SessionWorkspaceGroups));
         OnPropertyChanged(nameof(GridColumns));
         OnPropertyChanged(nameof(ShowZoomButton));
         OnPropertyChanged(nameof(ShowSessionGrid));
@@ -393,6 +665,22 @@ public partial class CockpitViewModel
         OnPropertyChanged(nameof(ShowSessionsSkeleton));
         OnPropertyChanged(nameof(HasSessionsHere));
         RefreshPaneVisibility();
+    }
+
+    internal Action<string, string?> OpenRemoteWindow { get; set; } = Composition.RemoteWindowProcess.Open;
+
+    [RelayCommand]
+    private void OpenServerWindow(ServerGroupViewModel group)
+    {
+        try
+        {
+            OpenRemoteWindow(group.Name, null);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not open the window for {Server}.", group.Name);
+            ToastHost.Add($"Could not open {group.Name}: {exception.Message}", ToastSeverity.Error, null, null);
+        }
     }
 
     [RelayCommand]
@@ -414,84 +702,85 @@ public partial class CockpitViewModel
         }
     }
 
-    // AC-1446: the Options dialog on the server, for an admin key. The server's profiles and projects, read on the same
-    // key, are what the scope editor offers; without them it still offers "all".
     [RelayCommand]
-    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerAdminAsync(group, null);
+    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerOptionsAsync(group, "servers");
 
     // AC-2011: the Servers page's connection card names its server, not its group.
     [RelayCommand]
     private Task OpenServerAdminByNameAsync(string server) =>
         ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
-            ? _OpenServerAdminAsync(group, null)
+            ? _OpenServerOptionsAsync(group, "servers")
             : Task.CompletedTask;
 
-    public Task OpenServerPluginsAsync(string server) =>
+    public Task OpenServerPluginsAsync(string server, string pluginId) =>
         ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
-            ? _OpenServerAdminAsync(group, "server-plugins")
+            ? _OpenServerOptionsAsync(group, $"plugin:{pluginId}")
             : Task.CompletedTask;
 
-    private async Task _OpenServerAdminAsync(ServerGroupViewModel group, string? category)
+    internal Task OpenOptionsCategoryAsync(string category) =>
+        category.StartsWith("plugin:", StringComparison.Ordinal) && !PluginSettings.ContainsKey(category["plugin:".Length..])
+            ? OpenPluginStoreAsync()
+            : _ShowOptionsAsync(category);
+
+    // The remote window's keys and audit share the ordinary Servers category.
+    public ConnectKeysViewModel? RemoteServerKeys
     {
-        var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
-        if (show is null || group.State.Key is not { } key || group.Server is null)
+        get => _remoteServerKeys;
+        private set => SetProperty(ref _remoteServerKeys, value);
+    }
+
+    private ConnectKeysViewModel? _remoteServerKeys;
+
+    internal async Task LoadRemoteServerKeysAsync()
+    {
+        if (ServerGroups.FirstOrDefault() is not { State.Key: { } key, Server: { } server } group)
         {
+            RemoteServerKeys = null;
             return;
         }
 
-        IReadOnlyList<string> profiles = [];
-        IReadOnlyList<NodeProjectChoice> projects = [];
-        if (_serverChoices is not null)
-        {
-            try
-            {
-                var snapshot = await _serverChoices.ReadAsync(group.Name);
-                profiles = [.. snapshot.Profiles.Select(profile => profile.Label)];
-                projects = [.. snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name))];
-            }
-            catch (Exception exception)
-            {
-                _logger?.LogInformation(exception, "Could not read the profiles and projects of {Server}.", group.Name);
-            }
-        }
-
-        var plugins = group.Server.Plugins;
-        // AC-1995: a services instance of its own, so the assistant's dialog and the Profiles page each read the server afresh.
-        var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles,
-            new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart));
-        await Plugins.LoadAsync();
-        var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
-        {
-            RestartAdviceAfter = PluginRestartAdviceAfter,
-            InitialCategory = category,
-            GitHubCredentials = Composition.RemoteServerGitHubCredentials.For(group.Server),
-            Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
-            Assistant = assistant,
-            Storage = group.Server.StorageSettings is { } storage ? new ServerStorageViewModel(storage) : null,
-            HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
-            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, group.Server.Projects, row),
-            IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
-            InstallPluginOnDesktop = row => Plugins.InstallFromStoreByIdAsync(row.Id),
-            RestartDesktop = () => _appRestart?.Restart(),
-        };
-
-        // AC-1475: "Open Server health" on the Assistant page opens this group's Health tab (AC-1457).
-        assistant.OpenHealthRequested += () => _OnUiThread(() =>
-        {
-            group.IsExpanded = true;
-            if (group.Health is { } groupHealth)
-            {
-                groupHealth.IsOpen = true;
-            }
-        });
-        await show(admin);
+        var (profiles, projects) = await _ServerChoicesAsync(group);
+        RemoteServerKeys = new ConnectKeysViewModel(server.Administration, profiles, projects, serverVersion: key.Version);
+        await RemoteServerKeys.LoadAsync();
     }
 
-    // AC-1511: the view the plugin installed here offers for a server, keyed like its own settings.
-    private (string PluginName, Func<IPluginUiChannel, Control> CreateView)? _ServerSettingsFor(ServerPluginRowViewModel row) =>
-        PluginServerSettings.TryGetValue(row.Id, out var byId) ? byId
-        : PluginServerSettings.TryGetValue(row.FolderId, out var byFolder) ? byFolder
-        : null;
+    private async Task<(IReadOnlyList<string> Profiles, IReadOnlyList<NodeProjectChoice> Projects)> _ServerChoicesAsync(ServerGroupViewModel group)
+    {
+        if (_serverChoices is null)
+        {
+            return ([], []);
+        }
+
+        try
+        {
+            var snapshot = await _serverChoices.ReadAsync(group.Name);
+            return ([.. snapshot.Profiles.Select(profile => profile.Label)], [.. snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name))]);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogInformation(exception, "Could not read the profiles and projects of {Server}.", group.Name);
+            return ([], []);
+        }
+    }
+
+    private async Task _OpenServerOptionsAsync(ServerGroupViewModel group, string category)
+    {
+        if (IsRemoteWindow)
+        {
+            await OpenOptionsCategoryAsync(category);
+            return;
+        }
+
+        try
+        {
+            OpenRemoteWindow(group.Name, category);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Could not open the window for {Server}.", group.Name);
+            ToastHost.Add($"Could not open {group.Name}: {exception.Message}", ToastSeverity.Error, null, null);
+        }
+    }
 
     // AC-1571: the UI part of the same plugin on this desktop, for opening its own settings view against the server.
     // Set once the UI parts have initialized.
@@ -504,42 +793,6 @@ public partial class CockpitViewModel
         foreach (var server in _remoteServers?.Servers ?? [])
         {
             register(server);
-        }
-    }
-
-    private (Type UiType, ICockpitUiHost Host, string Version)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>
-        LocalPluginUiPart(row.Id) is { Host.HasSettings: true } part ? part : null;
-
-    // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
-    // local settings view over the server's storage wins (AC-1571); a view it offers only for a server (AC-1511) is the
-    // fallback for a plugin without one.
-    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, IServerProfiles profiles, IServerProjects projects, ServerPluginRowViewModel row)
-    {
-        if (_dialogService is null || plugins is not IPluginChannelRelay relay)
-        {
-            return;
-        }
-
-        if (_LocalSettingsPartFor(row) is { } part)
-        {
-            // Shown by the admin dialog as the error of the click.
-            if (ServerPluginVersions.Differ(part.Version, row.RunningVersion))
-            {
-                throw new InvalidOperationException(ServerPluginVersions.Message(row.Name, server, row.RunningVersion, part.Version));
-            }
-
-            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => ServerPluginTargets.ProfilesAsync(profiles), () => ServerPluginTargets.ProjectsAsync(projects), server) is { } remote)
-            {
-                await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
-            }
-
-            return;
-        }
-
-        if (_ServerSettingsFor(row) is { } settings)
-        {
-            var channel = new RemotePluginUiChannel(relay, row.FolderId);
-            await _dialogService.ShowServerPluginSettingsAsync($"{settings.PluginName} on {server}", () => settings.CreateView(channel));
         }
     }
 
@@ -566,7 +819,7 @@ public partial class CockpitViewModel
                 return;
             }
 
-            // AC-1472: the projects from the backend API, the same list and scope Admin's Projects page writes to.
+            // The backend API returns only projects the key's scope permits.
             if (group.IsSwarmMember)
             {
                 group.Start.Fill(snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
@@ -611,14 +864,19 @@ public partial class CockpitViewModel
         group.Start.IsBusy = true;
         try
         {
+            if (IsRemoteWindow && group.IsAdminKey)
+            {
+                await Workspaces.OpenWorkspaceAsync(WorkspaceType.Sessions.Id);
+            }
             var prompt = group.Start.Prompt.Trim();
             var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
-                launcher.Workspaces.ActiveWorkspaceId ?? "",
+                launcher.Workspaces.Active is { Type: var type } active && type == WorkspaceType.Sessions
+                    ? active.Id : launcher.Workspaces.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? "",
                 new SessionProfile(profile.Label, new ServerProvider()),
                 prompt.Length == 0 ? null : prompt,
                 WorkingDirectory: null,
                 SessionName: null,
-                Kind: PaneSessionKind.Sdk,
+                Kind: group.Start.RunsInATerminal ? PaneSessionKind.Tty : PaneSessionKind.Sdk,
                 LaunchOptions: null,
                 IsolateInWorktree: null,
                 ProjectId: group.Start.SelectedProject?.Id,

@@ -1,8 +1,10 @@
+using System.Text.Json;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -50,7 +52,8 @@ internal static class SessionsEndpoints
                 var registration = providerId is null ? null : providers?.Resolve(providerId);
                 RemoteUsageStatus? usageStatus = null;
                 IReadOnlyList<RemoteQueueItem> queue = [];
-                if (sessions().Find(session.PaneId) is { } handle)
+                var handle = sessions().Find(session.PaneId);
+                if (handle is not null)
                 {
                     await handle.UseControlAsync(control =>
                     {
@@ -74,6 +77,14 @@ internal static class SessionsEndpoints
                     status = session.Status,
                     needsYou = session.NeedsYou,
                     hasOutstandingWork = session.HasOutstandingWork,
+                    worktreeBranch = handle?.WorktreeBranch,
+                    kind = handle is Sessions.Tty.BackendTtySession ? "tty" : "sdk",
+                    workspaceId = handle?.WorkspaceId,
+                    placedWorkspaceId = handle?.PlacedWorkspaceId,
+                    liveState = handle is null ? null : handle.LiveState with { Connection = null },
+                    startedByTheAssistant = handle?.StartedByTheAssistant ?? false,
+                    canTakeAPrompt = handle?.CanTakeAPrompt ?? false,
+                    hasPendingConsent = handle?.HasPendingConsent ?? false,
                     queue,
                     pendingPermissions = pending[session.PaneId].Select(permission => new
                     {
@@ -88,15 +99,33 @@ internal static class SessionsEndpoints
             return Results.Json(new
             {
                 seq,
+                workspaces = caller.Capability == ConnectKeyCapability.Admin && services.GetService<ISessionDesks>() is { } desks
+                    ? await desks.RunExclusiveAsync(() => WorkspacesEndpoints.View(desks.Workspaces, visible.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal))).ConfigureAwait(false)
+                    : null,
                 assistant = sessions().Assistant is { } assistant ? new { paneId = assistant.PaneId, name = assistant.Title } : null,
                 sessions = listed,
             });
         }).RequireOperate();
 
-        api.MapGet("/sessions/{paneId}/transcript", async (string paneId, int? count) =>
+        api.MapGet("/sessions/{paneId}/transcript", async (string paneId, int? count, int? before) =>
         {
-            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false)
-                || await read().ReadTranscriptAsync(paneId, _Count(count)).ConfigureAwait(false) is not { } transcript)
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+
+            if (before is { } boundary)
+            {
+                if (boundary < 0 || sessions().Find(paneId) is not { IsTerminal: false, HasReadableTranscript: true } source)
+                {
+                    return Results.NotFound();
+                }
+
+                SessionTranscriptSlice page = await source.ReadTranscriptBeforeAsync(boundary, _Count(count)).ConfigureAwait(false);
+                return Results.Json(new { before = boundary, totalEntries = page.TotalEntries, entries = page.Entries });
+            }
+
+            if (await read().ReadTranscriptAsync(paneId, _Count(count)).ConfigureAwait(false) is not { } transcript)
             {
                 return Results.NotFound();
             }
@@ -186,7 +215,26 @@ internal static class SessionsEndpoints
             return Results.Json(new { });
         }).RequireAdmin().Audited("end_session_mcp_sign_in", services);
 
-        api.MapPost("/sessions", async (StartSessionBody body) =>
+        api.MapGet("/conversations", async (CancellationToken cancellationToken) =>
+            Results.Json((await _VisibleConversationsAsync(services, _Caller(), cancellationToken).ConfigureAwait(false))
+                .Select(record => record with { WorkingDirectory = null, TranscriptPath = null }))).RequireOperate();
+
+        api.MapGet("/conversations/search", async (string? text, string? projectId, DateTimeOffset? from, DateTimeOffset? to, CancellationToken cancellationToken) =>
+        {
+            var visible = (await _VisibleConversationsAsync(services, _Caller(), cancellationToken).ConfigureAwait(false))
+                .Select(record => (record.PaneId, record.ProfileId, record.ProjectId, record.ConversationId)).ToHashSet();
+            if (services.GetService<SessionTranscriptLog>() is { } transcripts)
+            {
+                await transcripts.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            var found = await services.GetRequiredService<IConversationIndex>().SearchAsync(text ?? "", projectId, from, to, cancellationToken).ConfigureAwait(false);
+            return Results.Json(found.Where(result => visible.Contains((result.Record.PaneId, result.Record.ProfileId, result.Record.ProjectId, result.Record.ConversationId))).Select(result => result with
+            {
+                Record = result.Record with { WorkingDirectory = null, TranscriptPath = null },
+            }));
+        }).RequireOperate();
+
+        api.MapPost("/sessions", async (StartSessionBody body, CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(body.Profile))
             {
@@ -199,9 +247,83 @@ internal static class SessionsEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "out_of_scope", check.Refusal ?? string.Empty);
             }
 
-            if (await policy().ActiveWorkspaceIdAsync().ConfigureAwait(false) is not { } workspaceId)
+            ConversationRecord? conversation = null;
+            if (body.Resume is { Mode: not SessionResumeMode.New } || body.PaneId is not null)
+            {
+                if (body.Kind == "tty")
+                {
+                    return BackendApiRoutes.Error(409, NotStarted, "Recorded SDK conversations require the SDK route.");
+                }
+                if (body.Resume is not { Mode: SessionResumeMode.BySessionId or SessionResumeMode.MostRecent } resume)
+                {
+                    return Results.NotFound();
+                }
+                var visible = await _VisibleConversationsAsync(services, _Caller(), cancellationToken).ConfigureAwait(false);
+                conversation = visible.FirstOrDefault(record =>
+                    string.Equals(record.ProfileId, allowedProfile.Label, StringComparison.OrdinalIgnoreCase)
+                    && record.ProjectId == body.ProjectId
+                    && (body.PaneId is null || record.PaneId == body.PaneId)
+                    && (resume.Mode == SessionResumeMode.MostRecent || record.ConversationId == resume.SessionId));
+                if (conversation is null)
+                {
+                    return Results.NotFound();
+                }
+                if (conversation.WorkingDirectory is { Length: > 0 } directory && !Directory.Exists(directory))
+                {
+                    return BackendApiRoutes.Error(409, NotStarted, "The directory this conversation ran in no longer exists on the server.");
+                }
+                if (sessions().Find(conversation.PaneId) is { } existing)
+                {
+                    if (!await policy().IsVisibleAsync(_Caller(), existing.PaneId).ConfigureAwait(false)
+                        || !string.Equals(existing.ActiveProfileLabel, allowedProfile.Label, StringComparison.OrdinalIgnoreCase)
+                        || existing.ProjectId != body.ProjectId)
+                    {
+                        return Results.NotFound();
+                    }
+                    if (existing is not IHostedSession { AwaitsStart: true })
+                    {
+                        return BackendApiRoutes.Error(409, NotStarted, "This conversation is already running.");
+                    }
+                }
+            }
+
+            var workspaceId = body.WorkspaceId;
+            if (!string.IsNullOrEmpty(workspaceId))
+            {
+                if (_Caller().Capability != ConnectKeyCapability.Admin)
+                {
+                    return BackendApiRoutes.Error(403, "out_of_scope", "Choosing a workspace requires an admin key.");
+                }
+                var desks = services.GetRequiredService<ISessionDesks>();
+                if (!await desks.RunExclusiveAsync(() => desks.Workspaces.Workspaces.Any(workspace =>
+                    workspace.Id == workspaceId && workspace.Type == Cockpit.Core.Workspaces.WorkspaceType.Sessions)).ConfigureAwait(false))
+                {
+                    return BackendApiRoutes.Error(409, NotStarted, "The selected workspace cannot hold a session.");
+                }
+            }
+            else
+            {
+                workspaceId = await policy().ActiveWorkspaceIdAsync().ConfigureAwait(false);
+            }
+            if (workspaceId is null)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status409Conflict, NotStarted, "This node has no desk that can hold a session just now.");
+            }
+
+            if (conversation is not null)
+            {
+                if (services.GetService<SessionTranscriptLog>() is { } transcripts)
+                {
+                    await transcripts.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+                var resumed = await services.GetRequiredService<ISessionLauncher>().StartSessionAsync(new SessionLaunchRequest(
+                    workspaceId, allowedProfile, body.Prompt, conversation.WorkingDirectory, body.Name ?? conversation.Title,
+                    Cockpit.Core.Workspaces.PaneSessionKind.Sdk, null, false, conversation.ProjectId, false,
+                    SessionResume.BySessionId(conversation.ConversationId ?? throw new InvalidOperationException("A resumable conversation has no id.")),
+                    PaneId: conversation.PaneId) { Role = conversation.Role }).ConfigureAwait(false);
+                return resumed is { FailureReason: null, WorktreeDecision: null }
+                    ? Results.Json(new { resumed.PaneId, resumed.Name, resumed.PromptDelivered }, statusCode: 201)
+                    : BackendApiRoutes.Error(409, NotStarted, resumed?.FailureReason ?? "The conversation could not be resumed.");
             }
 
             // The node tool's spawn: the desk read here, the profile as this machine spells it, and no folder or
@@ -212,7 +334,7 @@ internal static class SessionsEndpoints
                 body.ProjectId,
                 body.Prompt,
                 WorkingDirectory: null,
-                SessionName: body.Name, Role: body.Role)).ConfigureAwait(false);
+                SessionName: body.Name, Kind: body.Kind, Role: body.Role)).ConfigureAwait(false);
 
             return result.Ok
                 ? Results.Json(new
@@ -260,6 +382,38 @@ internal static class SessionsEndpoints
                 : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_stopped", result.Error ?? string.Empty);
         }).RequireOperate().Audited("stop_session", services);
 
+        api.MapPost("/sessions/{paneId}/rename", async (string paneId, SessionNameBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false))
+            {
+                return Results.NotFound();
+            }
+            if (string.IsNullOrWhiteSpace(body.Name))
+            {
+                return _TextRequired();
+            }
+            var renamed = await services.GetRequiredService<ISessionLauncher>().SetSessionNameAsync(paneId, body.Name).ConfigureAwait(false);
+            if (renamed)
+            {
+                log().Append("sessions-changed", null, new { });
+            }
+            return Results.Json(new { renamed });
+        }).RequireOperate().Audited("rename_session", services);
+
+        api.MapPost("/sessions/{paneId}/verify", async (string paneId, VerifyResultBody body) =>
+        {
+            if (!await policy().IsVisibleAsync(_Caller(), paneId).ConfigureAwait(false) || sessions().Find(paneId) is not { } handle)
+            {
+                return Results.NotFound();
+            }
+            if (body.ScreenshotPng is not { Length: > 8 and <= 4 * 1024 * 1024 } png
+                || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }))
+            {
+                return BackendApiRoutes.Error(400, "invalid_request", "A PNG screenshot of at most 4 MiB is required.");
+            }
+            return Results.Json(new { accepted = await handle.FeedVerifyResultAsync(body.Caption, png).ConfigureAwait(false) });
+        }).RequireOperate().Audited("submit_verify_result", services);
+
         api.MapPost("/sessions/{paneId}/permissions/{toolUseId}", async (string paneId, string toolUseId, PermissionBody body) =>
         {
             if (!_Caller().MayAnswerPermissions)
@@ -278,6 +432,17 @@ internal static class SessionsEndpoints
             if (!forSession && scope != "once" || forSession && !body.Allow)
             {
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "scope must be once, or session on an allow.");
+            }
+
+            if (body.AnswersJson is { } answersJson)
+            {
+                if (forSession || !body.Allow || !_IsStructuredAnswer(answersJson))
+                {
+                    return BackendApiRoutes.Error(400, "invalid_request", "Structured answers require an allow for this question only.");
+                }
+                var answeredQuestion = sessions().Find(paneId) is { } handle
+                    && await handle.RespondToPermissionWithAnswersAsync(toolUseId, body.Allow, answersJson).ConfigureAwait(false);
+                return Results.Json(new { paneId, toolUseId, answered = answeredQuestion });
             }
 
             var answered = await (forSession
@@ -411,7 +576,7 @@ internal static class SessionsEndpoints
                 paneId = assistant.PaneId,
                 name = assistant.Title,
                 totalEntries = slice.TotalEntries,
-                entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult }),
+                entries = slice.Entries.Select(entry => new { kind = entry.Kind, text = entry.Text, toolResult = entry.ToolResult, timestamp = entry.Timestamp }),
                 rows = snapshot?.Rows,
                 seq = snapshot?.Seq,
             });
@@ -432,7 +597,7 @@ internal static class SessionsEndpoints
 
             return await assistant.SubmitPromptWhenReadyAsync(body.Text).ConfigureAwait(false) is { } delivered
                 ? Results.Json(new { paneId = assistant.PaneId, delivered })
-                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant is still starting and already has a turn waiting; this one was not accepted.");
+                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_delivered", "The assistant cannot accept this task: it may be waiting for a permission or question, not ready, or already holding a task.");
         }).RequireOperate().Audited("assistant_prompt", services).ForAssistantHolderOnly();
     }
 
@@ -463,6 +628,32 @@ internal static class SessionsEndpoints
     private static IResult _TextRequired() =>
         BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "text is required.");
 
+    private static bool _IsStructuredAnswer(string answersJson)
+    {
+        try
+        {
+            using var answers = JsonDocument.Parse(answersJson);
+            return answers.RootElement.ValueKind == JsonValueKind.Object
+                && answers.RootElement.EnumerateObject().All(answer => answer.Value.ValueKind == JsonValueKind.String);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<IReadOnlyList<ConversationRecord>> _VisibleConversationsAsync(IServiceProvider services, NodeCaller caller, CancellationToken cancellationToken)
+    {
+        var reachable = await NodeCallerSessionPolicy.ReachableProfilesAsync(caller,
+            services.GetRequiredService<ISessionProfileStore>(), services.GetService<IProfileLoginChecker>()).ConfigureAwait(false);
+        var pairing = services.GetRequiredService<INodePairingBroker>();
+        var records = await services.GetRequiredService<IConversationIndex>().LoadAsync(cancellationToken).ConfigureAwait(false);
+        return [.. records.Where(record => !record.IsAssistant && record.TranscriptPath is not null && record.ConversationState == SessionConversationIdState.Known
+                && !string.IsNullOrWhiteSpace(record.ConversationId) && record.ProfileId is { } profile
+                && reachable(profile) && caller.AllowsSession(profile, record.ProjectId, pairing))
+            .OrderByDescending(record => record.LastActivityAt)];
+    }
+
     private static int _Count(int? count) =>
         Math.Clamp(count ?? AssistantReadMcpTools.DefaultEntryCount, 1, AssistantReadMcpTools.MaxEntryCount);
 
@@ -487,11 +678,15 @@ internal static class SessionsEndpoints
         McpRequestContext.CurrentNodeCaller ?? throw new InvalidOperationException("A session route ran without a connect-key caller.");
 }
 
-internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null);
+internal sealed record StartSessionBody(string Profile, string? ProjectId, string? Prompt, string? Name, string? Role = null, string? WorkspaceId = null, string? Kind = null, SessionResume? Resume = null, string? PaneId = null);
 
 internal sealed record PromptBody(string Text);
 
-internal sealed record PermissionBody(bool Allow, string? Scope = null);
+internal sealed record PermissionBody(bool Allow, string? Scope = null, string? AnswersJson = null);
+
+internal sealed record SessionNameBody(string Name);
+
+internal sealed record VerifyResultBody(string Caption, byte[] ScreenshotPng);
 
 internal sealed record ModelBody(string? Model);
 

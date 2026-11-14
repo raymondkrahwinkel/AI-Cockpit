@@ -37,30 +37,33 @@ internal sealed class SchedulesScreen : UserControl
         IReadOnlyList<string> profiles,
         string tab = TasksTab,
         IReadOnlyList<PluginServerTarget>? servers = null,
-        IReadOnlyList<string>? folders = null)
+        IReadOnlyList<string>? folders = null,
+        string? server = null)
     {
-        _local = new SchedulesSource(null, host, state, profiles, folders ?? []);
-        _servers = servers ?? [];
+        _local = new SchedulesSource(server, host, state, profiles, folders ?? []);
+        _servers = server is null ? servers ?? [] : [];
+        _chosen = server;
         _source = _local;
         _localViews = _views = _CreateViews(_local);
 
-        var server = _server = new ComboBox
+        var selector = _server = new ComboBox
         {
-            ItemsSource = new[] { "This computer" }.Concat(_servers.Select(target => target.Name)).ToList(),
+            ItemsSource = new[] { server ?? "This computer" }.Concat(_servers.Select(target => target.Name)).ToList(),
             SelectedIndex = 0,
             IsEnabled = _servers.Count > 0,
+            IsVisible = server is null,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        ToolTip.SetTip(server, _servers.Count > 0 ? "Manage the schedules of this computer or of a connected server." : "No server is connected to this computer.");
-        server.SelectionChanged += async (_, _) =>
+        ToolTip.SetTip(selector, _servers.Count > 0 ? "Manage the schedules of this computer or of a connected server." : "No server is connected to this computer.");
+        selector.SelectionChanged += async (_, _) =>
         {
             if (!_settingSwitch)
             {
-                await SwitchAsync(server.SelectedIndex);
+                await SwitchAsync(selector.SelectedIndex);
             }
         };
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-        bar.Children.Add(Ui.Docked(server, Dock.Right));
+        bar.Children.Add(Ui.Docked(selector, Dock.Right));
         var title = Ui.Title("Schedules");
         title.VerticalAlignment = VerticalAlignment.Center;
         title.Margin = new Thickness(0, 0, 16, 0);
@@ -78,12 +81,43 @@ internal sealed class SchedulesScreen : UserControl
                 _overlay,
             },
         };
+        var refresh = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        var refreshing = false;
+        var failed = false;
+        refresh.Tick += async (_, _) =>
+        {
+            if (refreshing || Unavailable is not null)
+            {
+                return;
+            }
+            refreshing = true;
+            try
+            {
+                await _source.State.RefreshAsync();
+                failed = false;
+            }
+            catch (Exception exception)
+            {
+                if (!failed)
+                {
+                    _source.Host.ShowToast($"Schedules refresh failed: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
+                }
+                failed = true;
+            }
+            finally
+            {
+                refreshing = false;
+            }
+        };
+        AttachedToVisualTree += (_, _) => refresh.Start();
+        DetachedFromVisualTree += (_, _) => refresh.Stop();
         DetachedFromVisualTree += (_, _) =>
         {
             // A server still opening when the screen closes is released when it lands, not bound.
             _switching++;
             _Release(_source);
         };
+        _banner.Content = server is null ? null : _Banner(server, state);
         Show(tab);
     }
 
@@ -111,6 +145,7 @@ internal sealed class SchedulesScreen : UserControl
         _RenderTabs();
         _page.Content = tab switch
         {
+            RemindersTab => _views.Reminders,
             RunsTab => _views.Runs,
             SettingsTab => _views.Settings,
             _ => _views.Tasks,
@@ -132,7 +167,7 @@ internal sealed class SchedulesScreen : UserControl
         Unavailable = null;
         if (index <= 0 || index > _servers.Count)
         {
-            _chosen = null;
+            _chosen = _local.Server;
             _Bind(_local, _localViews);
             return;
         }
@@ -233,7 +268,7 @@ internal sealed class SchedulesScreen : UserControl
                 _banner.Content = source.Server is { } server ? _Banner(server, source.State) : null;
             }
         };
-        return new Views(new TasksView(source.State, source.Host, _overlay, Edit), new RunsView(source.State, source.Host), new SettingsView(source.State, source.Host, source.Profiles));
+        return new Views(new TasksView(source.State, source.Host, _overlay, Edit), new RunsView(source.State, source.Host), new RemindersView(source.State, source.Host), new SettingsView(source.State, source.Host, source.Profiles));
     }
 
     // The mockup's band: which server, what that means, and the server's time on the right.
@@ -285,18 +320,12 @@ internal sealed class SchedulesScreen : UserControl
         {
             var tab = Tab;
             // A tab, as the mockup's: the active one underlined in the accent colour, Reminders greyed until it arrives.
-            var button = new Button { Content = label, IsEnabled = key != RemindersTab, Classes = { "Ghost" }, FontWeight = key == tab ? Avalonia.Media.FontWeight.SemiBold : Avalonia.Media.FontWeight.Normal };
-            if (key == RemindersTab)
-            {
-                button.Opacity = 0.45;
-                ToolTip.SetTip(button, "Reminders come in a later version of Schedules.");
-            }
-
+            var button = new Button { Content = label, Classes = { "Ghost" }, FontWeight = key == tab ? Avalonia.Media.FontWeight.SemiBold : Avalonia.Media.FontWeight.Normal };
             button.Click += (_, _) => Show(key);
             var underline = new Border { Child = button, BorderThickness = new Thickness(0, 0, 0, 2) };
             _tabBar.Children.Add(key == tab ? underline.Themed(Border.BorderBrushProperty, "CockpitAccentBrush") : underline);
         }
     }
 
-    private sealed record Views(TasksView Tasks, RunsView Runs, SettingsView Settings);
+    private sealed record Views(TasksView Tasks, RunsView Runs, RemindersView Reminders, SettingsView Settings);
 }

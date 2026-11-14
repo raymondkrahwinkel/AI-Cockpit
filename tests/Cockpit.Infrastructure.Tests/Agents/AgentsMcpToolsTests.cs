@@ -109,6 +109,33 @@ public sealed class AgentsMcpToolsTests : IDisposable
         Assert.Equal("pane-a", inbox[0]!["from"]!.GetValue<string>());
         // The claim is still there — it was not scrubbed — but it sits in the body, not in the origin.
         Assert.Contains("pane-c", inbox[0]!["body"]!.GetValue<string>(), StringComparison.Ordinal);
+
+        var sessions = Substitute.For<Cockpit.Core.Abstractions.Sessions.ISessionRegistry>();
+        var sender = Substitute.For<Cockpit.Core.Abstractions.Sessions.ISessionHandle>();
+        sender.Title.Returns("Verified session");
+        sessions.Find("pane-a").Returns(sender);
+        var phones = new Cockpit.Infrastructure.Plugins.OperatorPhoneNotifications();
+        List<Cockpit.Plugins.Abstractions.Notifications.OperatorPhoneNotification> sent = [];
+        using var registration = phones.Register(ping => { sent.Add(ping); return 1; });
+        var phoneTools = new Cockpit.Infrastructure.Plugins.OperatorPhoneMcpTools(sessions, phones);
+        McpRequestContext.Set(null);
+        phoneTools.NotifyOperatorPhone("From pane-c", "Claimed sender", "assistant");
+        Assert.Empty(sent);
+        McpRequestContext.Set("pane-a");
+        phoneTools.NotifyOperatorPhone("From pane-c", "Claimed sender", "assistant");
+        var ping = Assert.Single(sent);
+        Assert.Equal("pane-a", ping.SenderId);
+        Assert.Equal("Verified session", ping.Sender);
+
+        var now = DateTimeOffset.UtcNow;
+        var limited = new Cockpit.Infrastructure.Plugins.OperatorPhoneNotifications();
+        using var limitRegistration = limited.Register(_ => 1);
+        Assert.Equal(3, Enumerable.Range(0, 12).AsParallel().Count(_ => limited.Send(ping, now).Error is null));
+        Assert.Null(limited.Send(ping with { SenderId = "pane-b" }, now).Error);
+        Assert.Null(limited.Send(ping, now.AddMinutes(1)).Error);
+        using var replacement = limited.Register(_ => 2);
+        limitRegistration.Dispose();
+        Assert.Equal(2, limited.Send(ping with { SenderId = "replacement" }, now).Accepted);
     }
 
     /// <summary>G1 — a notify the transport cannot attribute to a pane has no sender to stamp, so it is refused.</summary>

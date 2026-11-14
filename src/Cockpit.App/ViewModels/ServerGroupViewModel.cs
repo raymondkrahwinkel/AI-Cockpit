@@ -318,9 +318,13 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
 }
 
 // AC-1456: "+ Start on <server>" as the card the mockup draws: the server's own projects and profiles, as far as this
-// key's scope reaches, and a first message that goes along with the start. Only SDK, since the server runs it.
+// key's scope reaches, and a first message that goes along with the start. AC-2288: SDK, or the profile's TUI in a pty
+// the server runs.
 public sealed partial class ServerStartViewModel(string server) : ObservableObject
 {
+    [ObservableProperty]
+    private bool _runsInATerminal;
+
     public string Server { get; } = server;
 
     public string Heading => $"New session on {Server}";

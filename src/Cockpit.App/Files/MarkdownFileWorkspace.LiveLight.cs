@@ -86,11 +86,15 @@ internal sealed partial class MarkdownFileWorkspace
     private bool _CanConfirmLiveRecovery => _loaded && !_closed && !_saving && !_conflict
         && _live is { Status.State: LiveFileState.Live, Status.RequiresRejoin: false, HasUnsentText: false, Failed: false };
 
-    private async Task _ReconcileLiveRecoveryAsync()
+    // Why the last confirmation failed, in words for Retry sync to show.
+    private string _unconfirmed = "";
+
+    private async Task<bool> _ReconcileLiveRecoveryAsync()
     {
+        _unconfirmed = "The live note is still sending or saving; try again in a moment.";
         if (_reconcilingLive || !_CanConfirmLiveRecovery)
         {
-            return;
+            return false;
         }
         _reconcilingLive = true;
         var confirmed = false;
@@ -109,21 +113,31 @@ internal sealed partial class MarkdownFileWorkspace
                 }
                 var snapshot = await live.ReadAsync().ConfigureAwait(true);
                 var persisted = await _ReadSnapshotAsync().ConfigureAwait(true);
-                // Room acceptance and Saved attribution do not acknowledge the current persisted text.
+                // Room acceptance and Saved attribution do not acknowledge the current persisted text. The source's own word does:
+                // its serializer need not reproduce an outside writer's bytes, so text alone can never match (AC-2312).
                 if (_CanConfirmLiveRecovery && ReferenceEquals(live, _live) && snapshot.Rev == live.Revision
                     && snapshot.Text == Editor.Text && snapshot.Text == live.SourceText
-                    && persisted.Text == _WithoutBom(snapshot.SerializedText ?? snapshot.Text))
+                    && (snapshot.PersistedVersion is { } saved && saved == persisted.Version
+                        || persisted.Text == _WithoutBom(snapshot.SerializedText ?? snapshot.Text)))
                 {
                     _liveLightPending = false;
                     _needsFileRefresh = false;
                     _fallbackOrigin = null;
                     _error = null;
+                    // The confirmed text is the new base, so later lines count against it, not against what was opened.
+                    _savedText = snapshot.Text;
+                    _version = persisted.Version;
+                    _hasBom = persisted.HasBom;
                     confirmed = true;
                     break;
                 }
-                _logger.LogInformation("Live recovery for workspace {WorkspaceId} remains unconfirmed: rev {SnapshotRev}/{LiveRev}, editor mismatch {EditorMismatch}, room mismatch {RoomMismatch}, REST mismatch {RestMismatch}; lengths {SnapshotLength}/{EditorLength}/{RoomLength}/{RestLength}/{SerializedLength}.",
+                _unconfirmed = snapshot.Rev != live.Revision || snapshot.Text != Editor.Text || snapshot.Text != live.SourceText
+                    ? "Your latest edits are still reaching the live note; try again in a moment."
+                    : $"{_sourceName} has not saved this text yet. Your text is still here; keep the note open until it is.";
+                _logger.LogInformation("Live recovery for workspace {WorkspaceId} remains unconfirmed: rev {SnapshotRev}/{LiveRev}, editor mismatch {EditorMismatch}, room mismatch {RoomMismatch}, REST mismatch {RestMismatch}, saved version {HasSavedVersion}/{SavedVersionMatch}; lengths {SnapshotLength}/{EditorLength}/{RoomLength}/{RestLength}/{SerializedLength}.",
                     _context.WorkspaceId, snapshot.Rev, live.Revision, snapshot.Text != Editor.Text, snapshot.Text != live.SourceText,
-                    persisted.Text != _WithoutBom(snapshot.SerializedText ?? snapshot.Text), snapshot.Text.Length, Editor.Text.Length,
+                    persisted.Text != _WithoutBom(snapshot.SerializedText ?? snapshot.Text), snapshot.PersistedVersion is not null,
+                    snapshot.PersistedVersion == persisted.Version, snapshot.Text.Length, Editor.Text.Length,
                     live.SourceText.Length, persisted.Text.Length, (snapshot.SerializedText ?? snapshot.Text).Length);
             }
         }
@@ -141,6 +155,7 @@ internal sealed partial class MarkdownFileWorkspace
         {
             _UpdateState();
         }
+        return confirmed;
     }
 
     private async Task _SaveLiveLightAsync()

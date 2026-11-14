@@ -3,6 +3,7 @@
     <Compile Remove="HookRelay/**/*.cs" />
     <ProjectReference Include="$(MSBuildProjectDirectory)/HookRelay/HookRelay.csproj" ReferenceOutputAssembly="false" Private="false" />
     <Compile Include="$(MSBuildThisFileDirectory)TtyChildHooks.cs" Link="TtyChildHooks.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)GuardJournal.cs" Link="GuardJournal.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TtyChildSnapshot.cs" Link="TtyChildSnapshot.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TtyChildSource.cs" Link="TtyChildSource.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ProviderChildLedger.cs" Link="ProviderChildLedger.cs" />

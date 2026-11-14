@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -85,7 +86,7 @@ internal static class ProfileEndpoints
             var signIns = health();
             // AC-1534: the providers a new profile can name, also one no profile uses yet.
             var providers = services.GetService<IPluginProviderRegistry>()?.Registrations.Select(registration => registration.ProviderId) ?? [];
-            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile), EditorKeys(services, profile), services.GetService<IProfileLoginChecker>())), providers }, ConnectKeyEndpoints.Json);
+            return Results.Json(new { profiles = profiles.Select(profile => ToWire(profile, signIns, options(profile), EditorKeys(services, profile), services.GetService<IProfileLoginChecker>(), services.GetService<IProfileLoginStarter>())), providers }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profiles", services);
 
         // The new-session dialog's list for any key: label and provider of what it may start, nothing more.
@@ -174,7 +175,17 @@ internal static class ProfileEndpoints
             {
                 if (body.Settings?.Profile is { } whole)
                 {
-                    return await _WholeAsync(profiles, -1, whole, body.Provider, cancellationToken).ConfigureAwait(false);
+                    SessionProfile? source = null;
+                    if (body.CopyFromLabel is { } sourceLabel)
+                    {
+                        var sourceIndex = IndexOf(profiles, sourceLabel);
+                        if (sourceIndex < 0 || McpRequestContext.CurrentNodeCaller?.AllowsProfile(profiles[sourceIndex].Label, services.GetRequiredService<INodePairingBroker>()) != true)
+                        {
+                            return (null, NoProfile());
+                        }
+                        source = profiles[sourceIndex];
+                    }
+                    return await _WholeAsync(profiles, -1, whole, body.Provider, cancellationToken, source).ConfigureAwait(false);
                 }
 
                 if (string.IsNullOrWhiteSpace(body.Label) || string.IsNullOrWhiteSpace(body.Provider)
@@ -195,7 +206,7 @@ internal static class ProfileEndpoints
                     return (null, refusal);
                 }
 
-                return ([.. profiles, made], Results.Json(ToWire(made, health(), options(made), EditorKeys(services, made), services.GetService<IProfileLoginChecker>()), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
+                return ([.. profiles, made], Results.Json(ToWire(made, health(), options(made), EditorKeys(services, made), services.GetService<IProfileLoginChecker>(), services.GetService<IProfileLoginStarter>()), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created));
             })).RequireAdmin().Audited("create_profile", services);
 
         api.MapPatch("/profiles/{label}", (string label, HttpRequest request, CancellationToken cancellationToken) =>
@@ -220,7 +231,7 @@ internal static class ProfileEndpoints
 
                 List<SessionProfile> next = [.. profiles];
                 next[index] = changed;
-                return (next, Results.Json(ToWire(changed, health(), options(changed), EditorKeys(services, changed), services.GetService<IProfileLoginChecker>()), ConnectKeyEndpoints.Json));
+                return (next, Results.Json(ToWire(changed, health(), options(changed), EditorKeys(services, changed), services.GetService<IProfileLoginChecker>(), services.GetService<IProfileLoginStarter>()), ConnectKeyEndpoints.Json));
             })).RequireAdmin().Audited("update_profile", services);
 
         api.MapDelete("/profiles/{label}", async (string label, CancellationToken cancellationToken) =>
@@ -278,7 +289,7 @@ internal static class ProfileEndpoints
         }
 
         // AC-1585: a whole profile made (`index` -1) or put in place of the one at `index`, which may rename it.
-        async Task<(IReadOnlyList<SessionProfile>? Next, IResult Answer)> _WholeAsync(IReadOnlyList<SessionProfile> profiles, int index, JsonElement json, string? provider, CancellationToken cancellationToken)
+        async Task<(IReadOnlyList<SessionProfile>? Next, IResult Answer)> _WholeAsync(IReadOnlyList<SessionProfile> profiles, int index, JsonElement json, string? provider, CancellationToken cancellationToken, SessionProfile? source = null)
         {
             if (RemoteProfileWire.FromJson(json) is not { } incoming)
             {
@@ -293,7 +304,7 @@ internal static class ProfileEndpoints
             var choices = incoming.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId }
                 ? await ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
                 : null;
-            var (merged, refusal) = MergeWhole(index < 0 ? null : profiles[index], incoming, services, choices);
+            var (merged, refusal) = MergeWhole(index < 0 ? source : profiles[index], incoming, services, choices);
             if (merged is null)
             {
                 return (null, refusal);
@@ -315,7 +326,7 @@ internal static class ProfileEndpoints
                 next[index] = merged;
             }
 
-            return (next, Results.Json(ToWire(merged, health(), options(merged), EditorKeys(services, merged), services.GetService<IProfileLoginChecker>()), ConnectKeyEndpoints.Json, statusCode: index < 0 ? StatusCodes.Status201Created : StatusCodes.Status200OK));
+            return (next, Results.Json(ToWire(merged, health(), options(merged), EditorKeys(services, merged), services.GetService<IProfileLoginChecker>(), services.GetService<IProfileLoginStarter>()), ConnectKeyEndpoints.Json, statusCode: index < 0 ? StatusCodes.Status201Created : StatusCodes.Status200OK));
         }
     }
 
@@ -331,6 +342,11 @@ internal static class ProfileEndpoints
         if (string.IsNullOrWhiteSpace(incoming.Label))
         {
             return (null, _Invalid("A profile needs a label."));
+        }
+
+        if (!StreamSilenceTimeout.IsValid(incoming.Defaults?.OptionDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key)))
+        {
+            return (null, _Invalid(StreamSilenceTimeout.ValidationMessage));
         }
 
         var providerRefused = held is not null
@@ -614,7 +630,7 @@ internal static class ProfileEndpoints
         Options(services, profile).Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
 
     internal static IReadOnlyList<PluginSessionOptionDescriptor> Options(IServiceProvider services, SessionProfile profile) =>
-        services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities.DeclaredOptions ?? [];
+        ProfileOptionReport.CapabilitiesFor(profile, services.GetService<IPluginProviderRegistry>()?.Resolve(SessionsEndpoints.ProviderId(profile))?.Capabilities)?.DeclaredOptions ?? [];
 
     // A credential or a program path anywhere in the request, before any of it is read.
     internal static IResult? Refusal(JsonNode? node)
@@ -679,7 +695,7 @@ internal static class ProfileEndpoints
 
     // Only the option keys the profile's provider declares cross, as list_profiles reports them (AC-649); a stored
     // key it does not declare may hold anything, a plugin's credential included.
-    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlyList<PluginSessionOptionDescriptor> declaredOptions, IReadOnlySet<string>? editorKeys = null, IProfileLoginChecker? logins = null)
+    internal static RemoteProfile ToWire(SessionProfile profile, IReadOnlyList<ProfileLoginHealth> health, IReadOnlyList<PluginSessionOptionDescriptor> declaredOptions, IReadOnlySet<string>? editorKeys = null, IProfileLoginChecker? logins = null, IProfileLoginStarter? loginStarter = null)
     {
         var declared = declaredOptions.Select(option => option.Key).ToHashSet(StringComparer.Ordinal);
         var known = declaredOptions.Where(option => option.KnownValues is { Count: > 0 })
@@ -698,7 +714,8 @@ internal static class ProfileEndpoints
                 : new RemoteProfileVariable(variable.Key, variable.Value))],
             profile.ProviderConfig is LmStudioConfig { ApiKey.Length: > 0 } || (profile.ProviderConfig is PluginProviderConfig held && _HoldsSecret(_ParseObject(held.ConfigJson))),
             profile.ProviderConfig is PluginProviderConfig,
-            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn,
+            health.FirstOrDefault(entry => string.Equals(entry.Profile, profile.Label, StringComparison.Ordinal))?.SignIn
+                ?? (loginStarter?.CanStartLogin(profile) == true ? ProfileSignInKind.NotSignedIn : null),
             known.Count > 0 ? known : null,
             _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null,
             RemoteProfileWire.ToJson(Masked(profile, editorKeys ?? declared)))

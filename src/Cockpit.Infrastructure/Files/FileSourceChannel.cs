@@ -262,6 +262,7 @@ internal static class FileSourceChannel
         return new FileSourceLiveSnapshot(id, Convert.ToBase64String(bytes), snapshot.Rev, snapshot.Status)
         {
             SerializedText = snapshot.SerializedText,
+            PersistedVersion = snapshot.PersistedVersion,
             Peers = (session as ILivePresence)?.Peers,
             OpenUrl = (session as ILivePresence)?.OpenUrl,
         };

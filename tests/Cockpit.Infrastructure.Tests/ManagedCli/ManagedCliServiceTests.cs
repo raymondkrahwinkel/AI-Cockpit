@@ -22,19 +22,29 @@ public sealed class ManagedCliServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task EnsureInstalled_ChecksumMismatch_IsRejected_AndInstallsNothing()
+    public async Task EnsureInstalled_UnverifiedDownload_IsRejected_AndInstallsNothing()
+    {
+        var payload = "the real bytes"u8.ToArray();
+        await _AssertRejectedAsync(_RawPlan(payload) with { ExpectedSha256 = PluginHash.Compute("other bytes"u8.ToArray()) }, "SHA-256");
+        await _AssertRejectedAsync(_RawPlan(payload) with { ExpectedSha256 = string.Empty }, "no SHA-256 or signature verifier");
+        await _AssertRejectedAsync(_RawPlan(payload) with
+        {
+            ExpectedSha256 = string.Empty,
+            VerifySignatureAsync = (_, _, _) => throw new InvalidOperationException("Invalid official signature"),
+        }, "signature");
+    }
+
+    private async Task _AssertRejectedAsync(ManagedCliDownloadPlan plan, string expectedError)
     {
         var payload = "the real bytes"u8.ToArray();
         var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Bytes(payload));
         var service = _Service(handler);
-        // A plan whose expected hash is for different content — the download must be refused.
-        var plan = _RawPlan(payload) with { ExpectedSha256 = PluginHash.Compute("something else entirely"u8.ToArray()) };
         service.Register(_Descriptor("acme", "1.0.0", plan));
 
         var result = await service.EnsureInstalledAsync("acme");
 
         Assert.False(result.Success);
-        Assert.Contains("SHA-256", result.Error);
+        Assert.Contains(expectedError, result.Error);
         Assert.False(Directory.Exists(Path.Combine(_root, "cli", "acme", "1.0.0")));
         Assert.False(Directory.Exists(Path.Combine(_root, "cli", "acme", "1.0.0.download")));
         Assert.Null(service.ResolveInstalledPath("acme"));

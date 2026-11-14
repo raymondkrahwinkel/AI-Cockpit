@@ -15,10 +15,11 @@ public sealed record ManagedCliDownloadPlan
 
     /// <summary>
     /// The expected SHA-256 (hex) of exactly the bytes at <see cref="Url"/>. Verified before anything is unpacked or
-    /// placed; a mismatch is rejected and nothing is installed. Never optional — a managed CLI is executable code
-    /// pulled over the network.
+    /// placed; a mismatch is rejected and nothing is installed. Empty only when VerifySignatureAsync verifies the download instead.
     /// </summary>
     public required string ExpectedSha256 { get; init; }
+
+    public Func<byte[], string, CancellationToken, Task>? VerifySignatureAsync { get; init; }
 
     /// <summary>
     /// The name the executable is given inside its version directory (e.g. <c>claude</c>, <c>claude.exe</c>, <c>codex</c>).

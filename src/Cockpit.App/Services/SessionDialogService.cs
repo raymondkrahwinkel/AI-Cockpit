@@ -5,7 +5,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
@@ -557,49 +556,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             : null;
     }
 
-    // One per server: a second Admin click on the same server brings its dialog forward.
-    public async Task ShowServerAdminDialogAsync(ServerAdminViewModel viewModel)
-    {
-        if (OwnerWindow() is not { } owner)
-        {
-            return;
-        }
-
-        await _ShowSurfaceAsync((typeof(ServerAdminViewModel), viewModel.Server), owner, () => OptionsDialog.ForServer(viewModel));
-    }
-
-    // AC-1511: one per plugin and server, the title naming both. AC-1571: with `persist`, the plugin's own settings view
-    // gets the Save/Close footer a local one gets, and Save writes to the server after the view's own write.
-    public async Task ShowServerPluginSettingsAsync(string title, Func<Control> createView, Func<Task<string?>>? persist = null)
-    {
-        if (OwnerWindow() is not { } owner)
-        {
-            return;
-        }
-
-        await _ShowSurfaceAsync((typeof(ServerPluginRowViewModel), title), owner, () =>
-        {
-            var window = new Window { Width = 560, Height = 460, CanResize = true, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-            var view = createView();
-            if (persist is null)
-            {
-                window.Content = view;
-            }
-            else
-            {
-                var footer = PluginDialogHost.BuildSettingsFooter(window, view, onSaved: null, persist);
-                DockPanel.SetDock(footer, Dock.Bottom);
-                (window.Width, window.Height) = (720, 560);
-                window.Content = new DockPanel { Children = { footer, PluginSettingsBodyBuilder.Build(view).Content } };
-            }
-
-            CockpitWindowChrome.Apply(window, title);
-            return window;
-        });
-    }
-
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null)
     {
+        if (_surfaces.TryActivateAsync(typeof(OptionsDialog), window =>
+            {
+                if (category is not null && window is OptionsDialog options)
+                {
+                    options.SelectCategory(category);
+                }
+            }) is { } existing)
+        {
+            await existing;
+            return;
+        }
+
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
             return;

@@ -134,6 +134,15 @@ public sealed partial class EarlierConversationsViewModel : ObservableObject
         {
             return;
         }
+        catch (Exception exception)
+        {
+            if (!searching.IsCancellationRequested)
+            {
+                Rows.Clear();
+                FoundLabel = $"Could not read conversations: {exception.Message}";
+            }
+            return;
+        }
 
         var rows = new List<EarlierConversationRow>();
         foreach (var result in found.Where(result => !project.WithoutProject || result.Record.ProjectId is null))

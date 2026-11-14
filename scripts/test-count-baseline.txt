@@ -4,7 +4,7 @@
 # format: <project>	<ceiling>
 unit	cases
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	42
-plugins-dev/Cockpit.Plugin.Browser.Tests	10
+plugins-dev/Cockpit.Plugin.Browser.Tests	6
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	70
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	56
 plugins-dev/Cockpit.Plugin.Depot.Tests	146
@@ -22,6 +22,7 @@ plugins-dev/Cockpit.Plugin.Kind.Tests	14
 plugins-dev/Cockpit.Plugin.Kubernetes.Tests	71
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	21
 plugins-dev/Cockpit.Plugin.LocalFiles.Tests	10
+plugins-dev/Cockpit.Plugin.Matomo.Tests	1
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	13
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	18
 plugins-dev/Cockpit.Plugin.Productivity.Tests	8

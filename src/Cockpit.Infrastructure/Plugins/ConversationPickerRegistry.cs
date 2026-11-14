@@ -23,7 +23,7 @@ public interface IConversationPickerRegistry
     IReadOnlyList<ConversationPickerRegistration> Pickers { get; }
 }
 
-internal sealed class ConversationPickerRegistry : IConversationPickerRegistry, ISingletonService
+public sealed class ConversationPickerRegistry : IConversationPickerRegistry, ISingletonService
 {
     private readonly List<ConversationPickerRegistration> _pickers = [];
 

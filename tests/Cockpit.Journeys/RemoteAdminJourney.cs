@@ -12,12 +12,15 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Core.Abstractions.Remote;
@@ -34,8 +37,7 @@ using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
 
-// J10 (AC-1446), Admin on a server: the desktop holds an admin key to Cockpit.Server and opens Options there. F5.6b2
-// added the projects step; b3–b4 add profiles and plugins to this route.
+// RemoteAdmin: a copied desktop registry opens an ordinary Cockpit over an isolated headless fixture server.
 [Collection(JourneyCollection.Alone)]
 public sealed class RemoteAdminJourney
 {
@@ -79,21 +81,6 @@ public sealed class RemoteAdminJourney
         // AC-1525: one door port across the restart, as a container keeps its own. The door listens on every address one
         // above the pairing port, so that is the port found free.
         var checksumFile = Path.Combine(root, "echo-checksum.txt");
-        var githubState = Path.Combine(root, "fake-github-account");
-        await File.WriteAllTextAsync(githubState, "fake-gh");
-        var githubBin = Directory.CreateDirectory(Path.Combine(root, "github-bin")).FullName;
-        var seedDirectory = ServerJourney._Metadata("ServerSeedDirectory");
-        foreach (var file in Directory.EnumerateFiles(seedDirectory))
-        {
-            File.Copy(file, Path.Combine(githubBin, Path.GetFileName(file)));
-        }
-        var executableSuffix = OperatingSystem.IsWindows() ? ".exe" : "";
-        var fakeGitHub = Path.Combine(githubBin, $"gh{executableSuffix}");
-        File.Copy(Path.Combine(seedDirectory, $"Cockpit.ServerSeed{executableSuffix}"), fakeGitHub);
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(fakeGitHub, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
         var port = _FreeDoorPort();
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(
             stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook",
@@ -106,12 +93,10 @@ public sealed class RemoteAdminJourney
                 ["COCKPIT_ALLOW_FILE_CLONES"] = "1",
                 ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri,
                 ["COCKPIT_ECHO_SHARED_CHECKSUM_FILE"] = checksumFile,
-                ["COCKPIT_FAKE_GITHUB_STATE"] = githubState,
-                ["PATH"] = githubBin + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"),
-                ["GH_TOKEN"] = "",
-                ["GITHUB_TOKEN"] = "",
+                ["COCKPIT_SCHEDULES_TICK_SECONDS"] = "5",
             });
         var run = startServer();
+        Action? closeRemote = null;
         try
         {
             await run.Running.WaitAsync(Until.Ceiling);
@@ -123,8 +108,13 @@ public sealed class RemoteAdminJourney
             // AC-1571: the echo fixture on this desktop too, whose own settings view Admin opens for the server's copy.
             var desktopState = Path.Combine(root, "desktop-state");
             await _InstallLocallyAsync(desktopState, Path.Combine(root, "desktop-bundled"), StorePlugin, "EchoProviderDirectory");
-            await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
-            await cockpit.Services.GetRequiredService<IMcpServerStore>().SaveAsync(
+            var remoteUiState = Path.Combine(root, "remote-ui-state");
+            await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-echo"), StorePlugin, "EchoProviderDirectory");
+            await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-workflows"), "workflows", "WorkflowsDirectory");
+            await _InstallLocallyAsync(remoteUiState, Path.Combine(root, "remote-ui-schedules"), "schedules", "SchedulesDirectory");
+            var legacyConfig = Path.Combine(root, "legacy-test-cockpit.json");
+            File.Copy(CockpitConfigPath.For(desktopState), legacyConfig);
+            await new McpServerStore(legacyConfig).SaveAsync(
             [
                 new McpServerConfig
                 {
@@ -138,95 +128,76 @@ public sealed class RemoteAdminJourney
                     PinnedCertificateFingerprint = fingerprint,
                 },
             ]);
+            File.Copy(legacyConfig, CockpitConfigPath.For(desktopState), overwrite: true);
+            await using var cockpit = JourneyHost.Desktop(stateRoot: desktopState);
             await cockpit.StartDesktopAsync();
 
-            var opened = new TaskCompletionSource<OptionsDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((dialog, _) =>
-            {
-                if (dialog.Server is not null)
-                {
-                    opened.TrySetResult(dialog);
-                }
-            });
             var view = cockpit.Cockpit;
-            var adminClosed = Task.CompletedTask;
+            var localRegistry = JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(desktopState)))?["McpServers"]?.DeepClone()
+                ?? throw new InvalidOperationException("The copied test config has no registry.");
+            var servers = cockpit.Services.GetRequiredService<IRemoteServers>();
+            var loggers = cockpit.Services.GetRequiredService<ILoggerFactory>();
+            var requested = (Server: "", Category: (string?)null);
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 await Until.CollectionHolds(view.ServerGroups, () => view.ServerGroups.Count == 1);
-                var group = view.ServerGroups[0];
-                await Until.Holds(group, () => group.IsAdminKey);
-                var options = new OptionsDialog { DataContext = view };
-                options.Show();
-                options.SelectCategory("servers");
-                await Until.LayoutHolds(options, () => options.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, "Manage server")));
-                var manage = options.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Manage server"));
-                Assert.NotNull(manage.Command);
-                manage.Command.Execute(manage.CommandParameter);
-                adminClosed = view.OpenServerAdminByNameCommand.ExecutionTask
-                    ?? throw new InvalidOperationException("Manage server did not start opening its Options.");
-                options.Close();
+                view.OpenRemoteWindow = (server, category) => requested = (server, category);
+                await view.OpenServerAdminByNameCommand.ExecuteAsync(Server);
             });
-            var dialog = await opened.Task.WaitAsync(Until.Ceiling);
-            var admin = dialog.Server ?? throw new InvalidOperationException("Servers opened Options without its server.");
-
-            // AC-1987: the clone card reads the server's gh account, renders device sign-in, and submits a token masked.
-            var githubToken = $"journey-github-{Guid.NewGuid():N}";
+            var remoteWindow = HeadlessAvalonia.Run(() => new MainWindow(windowBoundsStore: null, requested.Server));
+            var remoteUi = HeadlessAvalonia.Run(() => new RemoteWindowUi(remoteWindow, new SurfaceWindows(), loggers));
+            closeRemote = () => HeadlessAvalonia.Run(() =>
+            {
+                remoteWindow.Close();
+                remoteUi.Dispose();
+            });
+            OptionsDialog? currentOptions = null;
+            var remote = HeadlessAvalonia.Run(() => CockpitViewModel.ForRemoteWindow(
+                requested.Server, servers, cockpit.Services.GetRequiredService<INodeSessionsClient>(), new Cockpit.App.Composition.RemoteServerSignIns(servers),
+                presentOptions: (model, category) =>
+                {
+                    currentOptions = new OptionsDialog { DataContext = model };
+                    currentOptions.Show(remoteWindow);
+                    if (category is not null)
+                    {
+                        currentOptions.SelectCategory(category);
+                    }
+                    return Task.CompletedTask;
+                },
+                presentPluginStore: async (manager, filter) =>
+                {
+                    var storeModel = new PluginStoreDialogViewModel(manager, filter);
+                    await storeModel.LoadAsync();
+                    await new PluginStoreDialog { DataContext = storeModel }.ShowDialog(remoteWindow);
+                },
+                confirm: (_, _, _) => Task.FromResult(true), ui: remoteUi));
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                dialog.SelectCategory("server-projects");
-                await Until.Holds(admin, () => admin.GitHubStatus == "Signed in as fake-gh");
-                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "Signed in as fake-gh"));
-                await admin.SignOutGitHubCommand.ExecuteAsync(null);
-                Assert.True(admin.GitHubCanSignIn, admin.GitHubStatus);
-                var signIn = dialog.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Sign in…"));
-                Assert.NotNull(signIn.Command);
-                signIn.Command.Execute(signIn.CommandParameter);
-                try
-                {
-                    await Until.Holds(admin, () => admin.GitHubSignIn is not null);
-                    var started = Assert.IsType<LoginFlowRowViewModel>(admin.GitHubSignIn);
-                    await Until.Holds(started, () => started.HasDeviceCode && started.HasLink);
-                }
-                catch (TimeoutException)
-                {
-                    var flow = admin.GitHubSignIn;
-                    Assert.Fail($"GitHub device sign-in did not reach its code: present={flow is not null}; completed={flow?.IsCompleted}; succeeded={flow?.Succeeded}; message={flow?.Message}; error={flow?.ErrorMessage}; admin={admin.Status}");
-                }
-                var deviceFlow = Assert.IsType<LoginFlowRowViewModel>(admin.GitHubSignIn);
-                Assert.Equal("ABCD-EFGH", deviceFlow.DeviceCode);
-                Assert.Equal("https://github.com/login/device", Assert.IsType<Uri>(deviceFlow.LinkToOpen).AbsoluteUri);
-                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<SelectableTextBlock>().Any(text => text.Text == "ABCD-EFGH"));
-                Assert.False(deviceFlow.ShowCodexDeviceHint);
-
-                await admin.PasteGitHubTokenCommand.ExecuteAsync(null);
-                var tokenFlow = Assert.IsType<LoginFlowRowViewModel>(admin.GitHubSignIn);
-                await Until.Holds(tokenFlow, () => tokenFlow.AwaitsInput);
-                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "Paste a GitHub token" && box.PasswordChar != '\0'));
-                tokenFlow.CodeInput = githubToken;
-                await tokenFlow.SubmitCommand.ExecuteAsync(null);
-                Assert.Empty(tokenFlow.CodeInput);
-                await Until.Holds(tokenFlow, () => tokenFlow.Succeeded);
-                await Until.Holds(admin, () => admin.GitHubStatus == "Signed in as fake-gh");
-                await admin.CloseGitHubSignInCommand.ExecuteAsync(null);
+                remoteWindow.DataContext = remote;
+                remoteWindow.Show();
+                await remoteUi.InitializeAsync(remote, servers, requested.Server, remoteUiState);
+                await remote.OpenOptionsCategoryAsync(requested.Category ?? throw new InvalidOperationException("The legacy Admin entry supplied no category."));
             });
-            Assert.False((await setup.GetAsync<JsonObject>("api/v1/git-credentials/github")).ToJsonString().Contains(githubToken, StringComparison.Ordinal));
-            Assert.False(run.Output.Contains(githubToken, StringComparison.Ordinal), "The server log holds the GitHub token.");
-            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(githubToken, StringComparison.Ordinal), "The audit holds the GitHub token.");
-
+            var dialog = currentOptions ?? throw new InvalidOperationException("The remote window opened no Options.");
+            var admin = remote.RemoteServerKeys ?? throw new InvalidOperationException("Options loaded no server keys.");
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                dialog.SelectCategory("server-plugins");
-                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ServerPluginsPage>().Count() == 1);
+                dialog.SelectCategory("servers");
+                await Until.CollectionHolds(admin.Keys, () => admin.Keys.Any(key => key.Label == Laptop));
+                await remote.CancelOptionsCommand.ExecuteAsync(null);
+                dialog.Close();
             });
-            await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
+            // The Schedules task and reminders are armed now and checked at the end: their moment is a real minute of the
+            // server's clock, and the steps in between take about as long.
+            var scheduledTaskId = await RemoteSchedulesSteps.ArmAsync(setup, servers, loggers, remoteUiState);
             var localPluginIds = view.Plugins.Plugins.Select(plugin => plugin.FolderId).ToArray();
             var storeOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watchStore = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((dialog, _) => storeOpened.TrySetResult(dialog));
             Task openStore = Task.CompletedTask;
-            await HeadlessAvalonia.RunAsync(() =>
+            await HeadlessAvalonia.RunAsync(async () =>
             {
-                openStore = admin.InstallPluginCommand.ExecuteAsync(null);
-                return Task.CompletedTask;
+                await view.OpenServerPluginsAsync(Server, StorePlugin);
+                openStore = remote.OpenOptionsCategoryAsync(requested.Category ?? throw new InvalidOperationException("The legacy Plugins entry supplied no category."));
             });
             var storeDialog = await storeOpened.Task.WaitAsync(Until.Ceiling);
             PluginStoreDialogViewModel? storeViewModel = null;
@@ -240,7 +211,7 @@ public sealed class RemoteAdminJourney
                 throw new InvalidOperationException("Server store did not open its view model.");
             }
 
-            Assert.False(storeViewModel.CanManageStores);
+            Assert.True(storeViewModel.CanManageStores);
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
@@ -274,21 +245,33 @@ public sealed class RemoteAdminJourney
             });
             await openStore;
             var consent = await consented.Task.WaitAsync(Until.Ceiling);
-            Assert.True(admin.Plugins.Any(plugin => plugin.Id == StorePlugin), admin.Status);
+            Assert.True(remote.Plugins.Plugins.Any(plugin => plugin.FolderId == StorePlugin), remote.Plugins.StatusMessage);
             var installed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             var serverEntry = installed.Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
             Assert.Equal($"'Echo provider' is active on {Server}. Running sessions get its new MCP tools when they next start.", installStatus);
             Assert.Equal(serverEntry?["sha256"]?.GetValue<string>(), consent.Sha256);
-            Assert.Equal((false, false), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+            Assert.Equal((false, false), (serverEntry?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), HeadlessAvalonia.Run(() => remote.Plugins.NeedsRestart)));
             Assert.Equal(localPluginIds, view.Plugins.Plugins.Select(plugin => plugin.FolderId));
 
-            // Restart now: the server stops as on a SIGTERM; the journey is its supervisor and starts it on the same state.
-            await HeadlessAvalonia.RunAsync(() => admin.RestartServerCommand.ExecuteAsync(null));
+            var keyBeforeRestart = (await setup.GetAsync<JsonObject>("api/v1/keys"))["keys"]?.AsArray()
+                .Single(key => key?["label"]?.GetValue<string>() == Laptop)?.DeepClone().AsObject() ?? throw new InvalidOperationException("The fixture lost its admin key.");
+            keyBeforeRestart.Remove("lastUsedAt");
+            keyBeforeRestart.Remove("lastUsedFrom");
+            // Only the fixture server restarts; its key and scope and the copied desktop registry survive it.
+            HeadlessAvalonia.Run(() => remote.Plugins.RestartNowCommand.Execute(null));
             await run.Process.WaitForExitAsync().WaitAsync(Until.Ceiling);
             var restartExit = run.Process.ExitCode;
             run.Process.Dispose();
             run = startServer();
             await run.Running.WaitAsync(Until.Ceiling);
+            var keyAfterRestart = (await setup.GetAsync<JsonObject>("api/v1/keys"))["keys"]?.AsArray()
+                .Single(key => key?["label"]?.GetValue<string>() == Laptop)?.DeepClone().AsObject() ?? throw new InvalidOperationException("The restarted fixture lost its admin key.");
+            keyAfterRestart.Remove("lastUsedAt");
+            keyAfterRestart.Remove("lastUsedFrom");
+            Assert.True(JsonNode.DeepEquals(keyBeforeRestart, keyAfterRestart));
+            Assert.True(JsonNode.DeepEquals(localRegistry,
+                JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(desktopState)))?["McpServers"]),
+                "The local registry, including connect keys and certificate pins, changed across the fixture restart.");
             var loaded = (await setup.GetAsync<JsonArray>("api/v1/plugins")).Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
             var created = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/profiles", new { label = "Echo from the store", provider = "echo-provider.echo" });
             var storePane = "";
@@ -308,7 +291,9 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
-            // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
+            await _ExerciseRemotePluginUiAsync(cockpit, setup, remoteUiState);
+
+            // AC-1534/AC-1585: the ordinary Options › Profiles editor writes to the server. Every field it has, key and secret
             // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
             // one that moves the base URL with the key masked is refused.
             var providerKey = $"journey-provider-{Guid.NewGuid():N}";
@@ -318,12 +303,13 @@ public sealed class RemoteAdminJourney
             string[] reopenedProfile = [];
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                var page = admin.Profiles ?? throw new InvalidOperationException("Admin has no Profiles page.");
-                dialog.SelectCategory("server-profiles");
-                await page.LoadCommand.ExecuteAsync(null);
+                await remote.ManageProfilesCommand.ExecuteAsync(null);
+                dialog = currentOptions ?? throw new InvalidOperationException("The remote window opened no Options.");
+                var page = remote.Profiles ?? throw new InvalidOperationException("Options has no Profiles editor.");
+                await page.LoadAsync();
                 await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ProfilesEditor>().Count() == 1);
                 editorKind = dialog.GetVisualDescendants().OfType<ProfilesEditor>().Single().DataContext?.GetType().Name ?? "";
-                var editor = page.Editor ?? throw new InvalidOperationException("The server's profiles did not load.");
+                var editor = page;
                 editor.AddProfileCommand.Execute(null);
                 var made = editor.SelectedProfile ?? throw new InvalidOperationException("Add profile selected nothing.");
                 made.SelectedProvider = made.Providers.Single(provider => provider.PluginProviderId == "echo-provider.echo");
@@ -351,10 +337,10 @@ public sealed class RemoteAdminJourney
                 made.RestrictMcpServers = true;
                 made.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("JOURNEY_REGION", "eu-west", false));
                 made.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("JOURNEY_VARIABLE", variableSecret, true));
-                await page.SaveCommand.ExecuteAsync(null);
-                madeStatus = page.Status;
+                await _SaveProfilesAsync(page);
+                madeStatus = page.StatusMessage;
 
-                var again = page.Editor?.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
+                var again = page.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
                 reopenedProfile =
                 [
                     again.Label, again.Purpose, again.DefaultWorkingDirectory, again.Assistant, again.ProfileSystemPrompt, $"{again.MemoryCapMegabytes}",
@@ -366,14 +352,14 @@ public sealed class RemoteAdminJourney
                     string.Join(",", again.EnvironmentVariables.Select(variable => $"{variable.Key}={variable.Value}:{variable.IsSecret}")),
                 ];
 
-                await page.SaveCommand.ExecuteAsync(null);
-                keptStatus = page.Status;
+                await _SaveProfilesAsync(page);
+                keptStatus = page.StatusMessage;
 
-                var moved = page.Editor?.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
+                var moved = page.Profiles.Single(profile => profile.Label == "Echo keyed") ?? throw new InvalidOperationException("The saved profile did not come back.");
                 _EchoField(moved, "BaseUrl").Text = "https://elsewhere.example/v1";
-                await page.SaveCommand.ExecuteAsync(null);
-                movedStatus = page.Status;
-                await page.LoadCommand.ExecuteAsync(null);
+                await _SaveProfilesAsync(page);
+                movedStatus = page.StatusMessage;
+                await page.LoadAsync();
             });
             var listedProfiles = (await setup.GetAsync<JsonObject>("api/v1/profiles")).ToJsonString();
             var (keyedAnswer, keyedPane) = ("", "");
@@ -386,7 +372,7 @@ public sealed class RemoteAdminJourney
                 keyedAnswer = answered.Data.GetRawText();
             }
 
-            Assert.Equal(("ManageProfilesDialogViewModel", "Saved on the server.", "Saved on the server.", "Enter the key again: this change sends it to a different address."), (editorKind, madeStatus, keptStatus, movedStatus));
+            Assert.Equal(("ManageProfilesDialogViewModel", "", "", "Enter the key again: this change sends it to a different address."), (editorKind, madeStatus, keptStatus, movedStatus));
             Assert.Equal(
             [
                 "Echo keyed", "journey purpose", workFolder, "Journey", "journey standing instructions", "4096", "True", SessionOptionCatalog.ReadingLevels[^1].Label, "Sdk",
@@ -406,16 +392,23 @@ public sealed class RemoteAdminJourney
             // AC-1571: a plugin's own settings view, unchanged, over the server's storage. Git status (nobody adapted it) saves
             // there, not here. The echo fixture's credential reads as set on the server, reopens as only that, survives an
             // untouched Save and clears when emptied; no answer, audit line or log holds it.
-            await _SaveServerSettingsAsync(admin, "git-status", window => window.GetLogicalDescendants().OfType<CheckBox>().Any(), window =>
+            await HeadlessAvalonia.RunAsync(async () =>
             {
-                window.GetLogicalDescendants().OfType<CheckBox>().Single().IsChecked = false;
+                await remote.CancelOptionsCommand.ExecuteAsync(null);
+                currentOptions?.Close();
+            });
+
+            await _SaveServerSettingsAsync(remote, "git-status", window => window.GetLogicalDescendants().OfType<CheckBox>().Any(), window =>
+            {
+                (remote.PluginOptionsRows.Single(row => row.PluginId == "git-status").RawView ?? throw new InvalidOperationException("Git settings did not open."))
+                    .GetLogicalDescendants().OfType<CheckBox>().Single().IsChecked = false;
                 return Task.CompletedTask;
             });
             var gitStatusOnServer = await setup.GetAsync<JsonObject>("api/v1/plugins/git-status/storage");
             var gitStatusHere = cockpit.Services.GetRequiredService<PluginUiManager>().UiPartOf("git-status")?.Host.Storage.Get<bool?>("showBranchName");
 
             var echoKey = $"journey-plugin-key-{Guid.NewGuid():N}";
-            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            await _SaveServerSettingsAsync(remote, StorePlugin, _HoldsApiToken, window =>
             {
                 _Box(window, "Greeting").Text = "hello from the desktop";
                 _Box(window, "API token").Text = echoKey;
@@ -423,14 +416,14 @@ public sealed class RemoteAdminJourney
             });
             var afterSave = await _ReadEchoSettingsAsync(setup);
             var reopened = "";
-            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            await _SaveServerSettingsAsync(remote, StorePlugin, _HoldsApiToken, window =>
             {
                 reopened = _Box(window, "API token").Text ?? "";
                 return Task.CompletedTask;
             });
             var afterKeep = await _ReadEchoSettingsAsync(setup);
             var echoOnServer = (await setup.GetAsync<JsonObject>($"api/v1/plugins/{StorePlugin}/storage")).ToJsonString();
-            await _SaveServerSettingsAsync(admin, StorePlugin, _HoldsApiToken, window =>
+            await _SaveServerSettingsAsync(remote, StorePlugin, _HoldsApiToken, window =>
             {
                 _Box(window, "API token").Text = "";
                 return Task.CompletedTask;
@@ -439,8 +432,8 @@ public sealed class RemoteAdminJourney
 
             Assert.Equal((false, (bool?)null), (gitStatusOnServer["showBranchName"]?.GetValue<bool>(), gitStatusHere));
             Assert.Equal(
-                (("hello from the desktop", true), "(set on the server)", ("hello from the desktop", true), ("hello from the desktop", false)),
-                (afterSave, reopened, afterKeep, afterClear));
+                (("hello from the desktop", true), true, ("hello from the desktop", true), ("hello from the desktop", false)),
+                (afterSave, reopened == "(set on the server)", afterKeep, afterClear));
             Assert.False(echoOnServer.Contains(echoKey, StringComparison.Ordinal), "GET /storage returned the plugin's key.");
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
             Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
@@ -461,9 +454,9 @@ public sealed class RemoteAdminJourney
                 installToken, depotDocuments, depotArtifacts, depotShares, depotCalls, depotBranding));
             using var depotBrowser = new HttpClient();
             var browserVisits = new List<Task<HttpResponseMessage>>();
-            foreach (var remote in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
+            foreach (var target in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
             {
-                ((RemotePluginAdministration)remote.Plugins).BrowserOpener = link =>
+                ((RemotePluginAdministration)target.Plugins).BrowserOpener = link =>
                 {
                     browserVisits.Add(depotBrowser.GetAsync(link));
                     return true;
@@ -471,10 +464,10 @@ public sealed class RemoteAdminJourney
             }
 
             var depotUrl = depot.BaseUrl.TrimEnd('/');
-            var depotHasSettings = HeadlessAvalonia.Run(() => admin.Plugins.Single(plugin => plugin.Id == "depot").HasSettings);
+            var depotHasSettings = HeadlessAvalonia.Run(() => remote.PluginSettings.ContainsKey("depot"));
             var (browser, signedIn, reused, reopenedDepot) = ("", "", "", "");
             byte[] customLogo = [];
-            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
+            await _SaveServerSettingsAsync(remote, "depot", _IsDepotView, async window =>
             {
                 var work = _DepotRows(window)[0];
                 _FillDepotRow(work, "Work", depotUrl, "");
@@ -496,7 +489,7 @@ public sealed class RemoteAdminJourney
             depotBranding.Logo = Convert.FromBase64String(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
             byte[] changedLogo = [];
-            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
+            await _SaveServerSettingsAsync(remote, "depot", _IsDepotView, async window =>
             {
                 var rows = _DepotRows(window);
                 var status = _DepotStatus(rows[0]);
@@ -513,7 +506,7 @@ public sealed class RemoteAdminJourney
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
             depotBranding.CustomLogo = false;
             byte[] defaultLogo = [];
-            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
+            await _SaveServerSettingsAsync(remote, "depot", _IsDepotView, async window =>
             {
                 var work = _DepotRows(window)[0];
                 await Until.Holds(_DepotBrandName(work), () => _DepotBrandName(work).Text == "Depot");
@@ -685,58 +678,40 @@ public sealed class RemoteAdminJourney
                 await admin.LoadCommand.ExecuteAsync(null);
             });
 
-            // Projects: the server clones over file:// and adds the project; "+ Start on" offers it, and a session starts there.
-            var cloneResult = "";
+            var serverProjects = servers.Servers.Single().Projects;
+            var cloned = await serverProjects.CloneAsync(new Uri(origin).AbsoluteUri, "main", Project);
+            Assert.Null(cloned.Error);
             var offered = new List<string>();
             var paneId = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                admin.CloneUrl = new Uri(origin).AbsoluteUri;
-                admin.CloneBranch = "main";
-                admin.CloneName = Project;
-                await admin.CloneCommand.ExecuteAsync(null);
-                cloneResult = admin.CloneResult;
-
-                var group = view.ServerGroups[0];
-                await view.OpenServerStartCommand.ExecuteAsync(group);
+                await remote.OpenProjectsWorkspaceCommand.ExecuteAsync(null);
+                await remote.Projects.LoadAsync();
+                Assert.Contains(remote.Projects.Projects, project => project.Name == Project);
+                var group = remote.ServerGroups[0];
+                await remote.OpenServerStartCommand.ExecuteAsync(group);
                 offered = [.. group.Start.Projects.Select(project => project.Name)];
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
                 group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == Project);
-                await view.StartOnServerCommand.ExecuteAsync(group);
+                await remote.StartOnServerCommand.ExecuteAsync(group);
                 paneId = group.Sessions.Single(session => session.Handle.PaneId != storePane && session.Handle.PaneId != keyedPane).Handle.PaneId;
             });
-
-            // AC-1514: From Depot offers the fixture source's project; "Add on" clones the repository its definition names
-            // and stores it bound, it leaves the list, a second add is refused, and "+ Start on" starts a session in it.
-            var sharedOffered = new List<string>();
+            var sharedOffered = (await serverProjects.ListSharedAsync()).SelectMany(source => source.Projects).Select(project => project.Id).ToList();
             var cloneable = ((await setup.GetAsync<JsonObject>("api/v1/projects/shared"))["sources"]?.AsArray() ?? [])
                 .SelectMany(source => source?["projects"]?.AsArray() ?? [])
                 .ToDictionary(project => project?["id"]?.GetValue<string>() ?? "", project => project?["cloneable"]?.GetValue<bool>() ?? false);
-            ServerSharedProjectRowViewModel? bareRow = null;
-            var sharedResult = "";
-            var sharedAfter = new List<string>();
-            var sharedStatusFlags = (Failed: false, Succeeded: false);
+            var sharedClone = await serverProjects.BindSharedAsync(SharedProject, "Echo");
+            Assert.Null(sharedClone.Error);
+            var sharedAfter = (await serverProjects.ListSharedAsync()).SelectMany(source => source.Projects).Select(project => project.Id).ToList();
             var sharedPane = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                sharedOffered = [.. admin.SharedProjects.Select(project => project.Id)];
-                bareRow = admin.SharedProjects.Single(project => project.Id == BareProject);
-                var sharedProject = admin.SharedProjects.Single(project => project.Id == SharedProject);
-                admin.SharedProfile = null;
-                await admin.AddSharedCommand.ExecuteAsync(sharedProject);
-                sharedStatusFlags.Failed = admin.StatusIsError;
-                admin.SharedProfile = "Echo";
-                await admin.AddSharedCommand.ExecuteAsync(sharedProject);
-                sharedStatusFlags.Succeeded = admin.StatusIsError;
-                sharedResult = admin.CloneResult;
-                sharedAfter = [.. admin.SharedProjects.Select(project => project.Id)];
-
-                var group = view.ServerGroups[0];
+                var group = remote.ServerGroups[0];
                 var running = group.Sessions.Select(session => session.Handle.PaneId).ToHashSet();
-                await view.OpenServerStartCommand.ExecuteAsync(group);
+                await remote.OpenServerStartCommand.ExecuteAsync(group);
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "Echo");
                 group.Start.SelectedProject = group.Start.Projects.First(project => project.Name == SharedName);
-                await view.StartOnServerCommand.ExecuteAsync(group);
+                await remote.StartOnServerCommand.ExecuteAsync(group);
                 sharedPane = group.Sessions.Single(session => !running.Contains(session.Handle.PaneId)).Handle.PaneId;
             });
             var bareAdd = await Assert.ThrowsAsync<BackendApiException>(() =>
@@ -779,20 +754,20 @@ public sealed class RemoteAdminJourney
             var lockoutsAfter = HeadlessAvalonia.Run(() => admin.Lockouts.Count);
 
             // AC-1473: Profiles → Echo gets another model; a new session on Echo starts on the server with that model.
-            var profiles = admin.Profiles ?? throw new InvalidOperationException("Admin opened Options without its Profiles page.");
+            var profiles = remote.Profiles ?? throw new InvalidOperationException("Options has no Profiles editor.");
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                await profiles.LoadCommand.ExecuteAsync(null);
-                var echo = profiles.Editor?.Profiles.Single(profile => profile.Label == "Echo") ?? throw new InvalidOperationException("The server's profiles did not load.");
+                await profiles.LoadAsync();
+                var echo = profiles.Profiles.Single(profile => profile.Label == "Echo") ?? throw new InvalidOperationException("The server's profiles did not load.");
                 echo.PluginOptionDefaults.Single(option => option.Key == "model").Value = "echo-large";
-                await profiles.SaveCommand.ExecuteAsync(null);
+                await _SaveProfilesAsync(profiles);
             });
             using var timeout = new CancellationTokenSource(Until.Ceiling);
             var started = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "hello" });
             var echoPane = started["paneId"]?.GetValue<string>() ?? "";
             var echoed = await setup.StreamEventsAsync(0, timeout.Token)
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(echoPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
-            var profilesStatus = HeadlessAvalonia.Run(() => profiles.Status);
+            var profilesStatus = HeadlessAvalonia.Run(() => profiles.StatusMessage);
 
             // AC-1938: a headless server never runs Chromium for an agent session.
             var (browserPane, browserEndpoint) = await _AskForCdpEndpointAsync(setup);
@@ -804,19 +779,16 @@ public sealed class RemoteAdminJourney
             Assert.Equal("none", disabledBrowserEndpoint);
             await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{disabledBrowserPane}", null);
 
-            // AC-1475: Assistant → Copy in Echo → turn it on; the server reports it running, and both are in the Audit log.
-            var assistant = admin.Assistant ?? throw new InvalidOperationException("Admin opened Options without its Assistant page.");
+            var assistant = servers.Servers.Single().AssistantAdministration;
+            await _EditServerAssistantAsync(remote, null, "Echo");
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                dialog.SelectCategory("server-assistant");
-                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<ServerAssistantPage>().Count() == 1);
-                await assistant.LoadCommand.ExecuteAsync(null);
-                assistant.SelectedCopyChoice = assistant.CopyChoices.Single(choice => choice.Label == "Echo");
-                await assistant.CopyInCommand.ExecuteAsync(null);
-                assistant.IsEnabled = true;
-                await Until.Holds(assistant, () => assistant.IsRunning);
+                await remote.OpenAssistantOptionsCommand.ExecuteAsync(null);
+                remote.AssistantOptions.IsEnabled = true;
+                await remote.AssistantOptions.SaveStagedAsync();
             });
-
+            var assistantAvailable = false;
+            await Until.ReloadHolds(async () => assistantAvailable = (await assistant.GetAsync()).IsAvailable, () => assistantAvailable);
             // AC-1995: Server › Profiles and › Assistant list the server's own Depot brain, which this desktop has no source for.
             // Edit… opens Options › Assistant's own dialog over the server's slot; the pick is saved there, restarts the
             // assistant and reads back on a reopen, and this desktop's own slot stays as it was.
@@ -824,15 +796,15 @@ public sealed class RemoteAdminJourney
             var (profileBrains, pickedBrain, reopenedBrain) = ("", "", "");
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                var page = admin.Profiles ?? throw new InvalidOperationException("Admin has no Profiles page.");
-                await page.LoadCommand.ExecuteAsync(null);
-                var picker = (page.Editor?.Profiles.First() ?? throw new InvalidOperationException("The server's profiles did not load.")).BrainPicker;
+                var page = remote.Profiles ?? throw new InvalidOperationException("Options has no Profiles editor.");
+                await page.LoadAsync();
+                var picker = (page.Profiles.First() ?? throw new InvalidOperationException("The server's profiles did not load.")).BrainPicker;
                 await picker.LoadAsync();
                 profileBrains = string.Join(",", picker.Choices.Select(choice => choice.Reference));
             });
-            pickedBrain = await _EditServerAssistantAsync(assistant, picker => picker.Selected = picker.Choices.FirstOrDefault(choice => choice.Reference?.EndsWith(serverBrain, StringComparison.Ordinal) == true) ?? picker.Selected);
-            var assistantAfterBrain = HeadlessAvalonia.Run(() => (assistant.MessageTitle, assistant.IsRunning));
-            reopenedBrain = await _EditServerAssistantAsync(assistant, null);
+            pickedBrain = await _EditServerAssistantAsync(remote, picker => picker.Selected = picker.Choices.FirstOrDefault(choice => choice.Reference?.EndsWith(serverBrain, StringComparison.Ordinal) == true) ?? picker.Selected);
+            var assistantAfterBrain = (await assistant.GetAsync()).IsAvailable;
+            reopenedBrain = await _EditServerAssistantAsync(remote, null);
             var serverAssistant = (await setup.GetAsync<JsonObject>("api/v1/assistant/settings"))["profile"]?["profile"]?["assistant"]?.GetValue<string>();
             var desktopSlot = (await cockpit.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync()).Profile?.Assistant;
             List<(string Key, string What)> assistantAudit = [];
@@ -842,12 +814,12 @@ public sealed class RemoteAdminJourney
                     await admin.LoadCommand.ExecuteAsync(null);
                     assistantAudit = admin.Audit.Select(row => (row.Key, row.What)).ToList();
                 }),
-                () => assistantAudit.Contains((Laptop, "assistant profile copied from Echo")) && assistantAudit.Contains((Laptop, "assistant turned on")));
-            var assistantState = HeadlessAvalonia.Run(() => (assistant.AvailabilityTitle, assistant.MessageTitle));
+                () => assistantAudit.Contains((Laptop, "assistant profile changed")) && assistantAudit.Contains((Laptop, "options_assistant")));
+            var assistantState = await assistant.GetAsync();
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                dialog.Close();
-                await adminClosed;
+                await remote.CancelOptionsCommand.ExecuteAsync(null);
+                currentOptions?.Close();
             });
 
             Assert.Equal((Phone, "operate"), (who.Label, who.Capability));
@@ -860,20 +832,17 @@ public sealed class RemoteAdminJourney
             Assert.Contains((Laptop, $"revoked · {Phone}"), audit);
             Assert.Contains((Phone, "refused: revoked key"), audit);
             Assert.Contains((Laptop, $"lockout lifted · {lockedOut}"), audit);
-            Assert.StartsWith($"Cloned into {clonePath} · ", cloneResult, StringComparison.Ordinal);
+            Assert.Equal(clonePath, cloned.Path);
             Assert.True(File.Exists(Path.Combine(clonePath, "README.md")), "The clone the server reported holds no checkout.");
             Assert.Contains(Project, offered);
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
             Assert.Contains(SharedProject, sharedOffered);
-            Assert.Equal((true, false), sharedStatusFlags);
             // DEP-381: a definition without a repository is offered as not cloneable, its "Add on" is disabled with the reason,
             // and the server still refuses it.
             Assert.Equal((true, false), (cloneable[SharedProject], cloneable[BareProject]));
-            Assert.Contains("names no repository", bareRow?.NoRepositoryHint, StringComparison.Ordinal);
-            Assert.False(bareRow?.HasRepository);
             Assert.Equal(HttpStatusCode.BadRequest, bareAdd.Status);
-            Assert.StartsWith($"Cloned into {bound.SourceDirectory} · ", sharedResult, StringComparison.Ordinal);
+            Assert.Equal(bound.SourceDirectory, sharedClone.Path);
             Assert.DoesNotContain(SharedProject, sharedAfter);
             Assert.Equal(HttpStatusCode.Conflict, secondAdd.Status);
             Assert.Equal(new ProjectResource(SharedProject, ProjectResourceRole.Memory), bound.Resources[0]);
@@ -882,18 +851,17 @@ public sealed class RemoteAdminJourney
             Assert.True(File.Exists(Path.Combine(bound.SourceDirectory ?? "", "README.md")), "The shared project's clone holds no checkout.");
             Assert.Equal(bound.SourceDirectory, sharedFolder);
             Assert.Equal((false, true, false), (flagBefore, flagAfter, flagCleared));
-            Assert.Equal("Saved on the server.", profilesStatus);
+            Assert.Equal("", profilesStatus);
             Assert.Contains("model echo-large", echoed.Data.GetRawText(), StringComparison.Ordinal);
-            Assert.Equal(("Running", ""), assistantState);
+            Assert.True(assistantState.IsAvailable);
             Assert.EndsWith(serverBrain, pickedBrain, StringComparison.Ordinal);
             Assert.Contains(pickedBrain, profileBrains, StringComparison.Ordinal);
             Assert.Equal((pickedBrain, pickedBrain), (reopenedBrain, serverAssistant));
             Assert.Null(desktopSlot);
-            Assert.Equal(("Saved.", true), assistantAfterBrain);
+            Assert.True(assistantAfterBrain);
             Assert.Contains((Laptop, "assistant profile changed"), assistantAudit);
-            Assert.Contains((Laptop, "assistant profile copied from Echo"), assistantAudit);
-            Assert.Contains((Laptop, "assistant turned on"), assistantAudit);
-            Assert.True(depotHasSettings, "Admin → Plugins offered no Settings for Depot.");
+            Assert.Contains((Laptop, "options_assistant"), assistantAudit);
+            Assert.True(depotHasSettings, "Options offered no Settings for Depot.");
             Assert.Equal(
                 ("Signed in.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
                 (browser, signedIn, reused, reopenedDepot));
@@ -905,13 +873,12 @@ public sealed class RemoteAdminJourney
             var storeDirectory = Path.Combine(root, "fixture-store");
             _CreateFixtureUpdate(storeDirectory);
             await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
-            var (updateLabel, rowLabel) = HeadlessAvalonia.Run(() => (admin.HasAvailableUpdates ? admin.UpdateLabel : "", admin.Plugins.Single(plugin => plugin.Id == StorePlugin).UpdateText));
             var updatesOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watchUpdates = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((storeWindow, _) => updatesOpened.TrySetResult(storeWindow));
             Task openUpdates = Task.CompletedTask;
             await HeadlessAvalonia.RunAsync(() =>
             {
-                openUpdates = admin.UpdatePluginsCommand.ExecuteAsync(null);
+                openUpdates = remote.OpenPluginStoreUpdatesAsync();
                 return Task.CompletedTask;
             });
             var updatesDialog = await updatesOpened.Task.WaitAsync(Until.Ceiling);
@@ -929,18 +896,11 @@ public sealed class RemoteAdminJourney
             });
             await openUpdates;
             var waitingUpdate = (await setup.GetAsync<JsonArray>("api/v1/plugins")).Single(plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
-            Assert.Equal(("Update 1", "1.1.0 available", true, "1.1.0", "1.0.0", false, false, false, false, false),
-                (updateLabel, rowLabel, onUpdates, waitingUpdate?["version"]?.GetValue<string>(), waitingUpdate?["runningVersion"]?.GetValue<string>(),
-                    waitingUpdate?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), updateFailed, staged,
-                    HeadlessAvalonia.Run(() => admin.HasAvailableUpdates), HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+            Assert.Equal((true, "1.1.0", "1.0.0", false, false, false),
+                (onUpdates, waitingUpdate?["version"]?.GetValue<string>(), waitingUpdate?["runningVersion"]?.GetValue<string>(),
+                    waitingUpdate?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), updateFailed, staged));
             Assert.Contains("uses this provider", updateStatus, StringComparison.Ordinal);
-            Assert.Contains("uses this provider", HeadlessAvalonia.Run(() => admin.Status), StringComparison.Ordinal);
-
-            await HeadlessAvalonia.RunAsync(async () =>
-            {
-                await assistant.SwitchCommand.ExecuteAsync(false);
-                await Until.Holds(assistant, () => assistant.IsOff);
-            });
+            await assistant.SetEnabledAsync(false);
             foreach (var session in new[] { storePane, keyedPane, paneId, sharedPane, echoPane })
             {
                 await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{session}", null);
@@ -954,32 +914,28 @@ public sealed class RemoteAdminJourney
             Assert.Equal(("1.1.0", "1.1.0", false),
                 (updated?["version"]?.GetValue<string>(), updated?["runningVersion"]?.GetValue<string>(), updated?["takesEffectAfterServerRestarts"]?.GetValue<bool>()));
 
-            var removedPlugin = admin.Plugins.Single(plugin => plugin.Id == StorePlugin);
-            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(removedPlugin));
-            Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                await remote.Plugins.LoadAsync();
+                var removedPlugin = remote.Plugins.Plugins.Single(plugin => plugin.FolderId == StorePlugin);
+                using var confirmRemoval = Window.WindowOpenedEvent.AddClassHandler<ConfirmationDialog>((confirmation, _) =>
+                {
+                    if (confirmation.DataContext is ConfirmationDialogViewModel { Title: "Remove plugin" })
+                    {
+                        Dispatcher.UIThread.Post(() => confirmation.Close(true));
+                    }
+                });
+                await remote.Plugins.RemovePluginCommand.ExecuteAsync(removedPlugin);
+                Assert.DoesNotContain(remote.Plugins.Plugins, plugin => plugin.FolderId == StorePlugin);
+                await remote.CancelOptionsCommand.ExecuteAsync(null);
+                currentOptions?.Close();
+                remoteWindow.Close();
+            });
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
-
-            // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
-            var remoteServer = view.ServerGroups.Single().Server;
-            Assert.NotNull(remoteServer);
-            var currentAdmin = new ServerAdminViewModel(
-                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
-                serverVersion: "1.2.3", desktopVersion: "1.2.3");
-            await HeadlessAvalonia.RunAsync(() => currentAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
-            var (missingPlugin, missingPluginIsError) = HeadlessAvalonia.Run(() => (currentAdmin.Status, currentAdmin.StatusIsError));
-            Assert.True(missingPluginIsError);
-            Assert.Equal("That plugin is not installed on the server.", missingPlugin);
-
-            var olderAdmin = new ServerAdminViewModel(
-                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
-                serverVersion: "1.2.2", desktopVersion: "1.2.3-nightly.4");
-            await HeadlessAvalonia.RunAsync(() => olderAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
-            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (olderAdmin.Status, olderAdmin.StatusIsError));
-            Assert.True(missingFeatureIsError);
-            Assert.Contains(olderAdmin.ServerVersion, missingFeature, StringComparison.Ordinal);
-            Assert.Contains(olderAdmin.DesktopVersion, missingFeature, StringComparison.Ordinal);
-            Assert.Contains("update the server", missingFeature, StringComparison.OrdinalIgnoreCase);
+            Assert.True(JsonNode.DeepEquals(localRegistry,
+                JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(desktopState)))?["McpServers"]),
+                "Remote administration changed the local registry, connect keys or certificate pins.");
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
             Assert.False(
                 new[] { serverState, run.Output, auditTrail }.Any(text => text.Contains(installToken, StringComparison.Ordinal)),
@@ -989,9 +945,11 @@ public sealed class RemoteAdminJourney
             Assert.False(
                 new[] { run.Output, auditTrail }.Concat(desktopFiles).Any(text => text.Contains(DepotBrowserToken, StringComparison.Ordinal) || text.Contains(DepotBrowserCode, StringComparison.Ordinal)),
                 "The browser sign-in's token or code is in the server's output, its audit or this desktop's state.");
+            await RemoteSchedulesSteps.FinishAsync(setup, servers, loggers, remoteUiState, scheduledTaskId);
         }
         finally
         {
+            closeRemote?.Invoke();
             if (!run.Process.HasExited)
             {
                 run.Process.Kill(entireProcessTree: true);
@@ -1344,14 +1302,15 @@ public sealed class RemoteAdminJourney
 
     // AC-1995: Edit… on the server's Assistant page, in the dialog it opens: waits for the server's brains, applies `pick`
     // and saves, or cancels without one, and answers the brain the picker held.
-    private static async Task<string> _EditServerAssistantAsync(ServerAssistantViewModel assistant, Action<BrainPickerViewModel>? pick)
+    private static async Task<string> _EditServerAssistantAsync(CockpitViewModel remote, Action<BrainPickerViewModel>? pick, string? copyFrom = null)
     {
+        Console.WriteLine("RemoteAdmin: ordinary Assistant Profile opened.");
         var opened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var watch = Window.WindowOpenedEvent.AddClassHandler<AssistantProfileDialog>((window, _) => opened.TrySetResult(window));
         var editing = Task.CompletedTask;
         await HeadlessAvalonia.RunAsync(() =>
         {
-            editing = assistant.EditCommand.ExecuteAsync(null);
+            editing = remote.EditAssistantProfileCommand.ExecuteAsync(null);
             return Task.CompletedTask;
         });
         var window = await opened.Task.WaitAsync(Until.Ceiling);
@@ -1361,22 +1320,27 @@ public sealed class RemoteAdminJourney
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 var dialog = Assert.IsType<AssistantProfileDialogViewModel>(window.DataContext);
+                if (copyFrom is not null)
+                {
+                    dialog.CopyFromProfile = dialog.CopyFromProfiles.Single(profile => profile.Label == copyFrom);
+                    dialog.CopyFromCommand.Execute(null);
+                }
                 var picker = dialog.Profile.BrainPicker;
                 await Until.Holds(picker, () => picker.HasLoaded && !picker.IsLoading);
                 listed = string.Join(", ", picker.Choices.Select(choice => $"{choice.Reference} ({choice.Detail})"));
-                if (pick is null)
+                if (pick is null && copyFrom is null)
                 {
                     brain = picker.Selected?.Reference ?? "";
                     dialog.CancelCommand.Execute(null);
                     return;
                 }
 
-                pick(picker);
+                pick?.Invoke(picker);
                 brain = picker.Selected?.Reference ?? "";
                 await dialog.SaveCommand.ExecuteAsync(null);
                 status = $"{dialog.StatusMessage} valid={dialog.Profile.IsValid} provider={dialog.Profile.SelectedProvider.PluginProviderId} view={dialog.Profile.PluginConfigView is not null}";
             });
-            Assert.True(pick is null || status.StartsWith("Saved.", StringComparison.Ordinal), $"The server's assistant dialog did not save: '{status}'. Brains: {listed}");
+            Assert.True((pick is null && copyFrom is null) || status.StartsWith("Saved.", StringComparison.Ordinal), $"The server's assistant dialog did not save: '{status}'. Brains: {listed}");
             await editing.WaitAsync(Until.Ceiling);
         }
         finally
@@ -1391,64 +1355,41 @@ public sealed class RemoteAdminJourney
             });
         }
 
-        if (pick is not null)
-        {
-            await HeadlessAvalonia.RunAsync(() => Until.Holds(assistant, () => assistant.IsRunning));
-        }
-
+        Console.WriteLine("RemoteAdmin: ordinary Assistant Profile closed.");
         return brain;
     }
 
-    // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
-    // closes only once the server took the save, so a refusal fails here with what the window said.
-    private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
+    private static async Task _SaveProfilesAsync(ManageProfilesDialogViewModel editor)
     {
-        var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var watch = Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) =>
+        if (await editor.PersistAsync())
         {
-            if (isTheView(window))
+            await editor.LoadAsync();
+        }
+    }
+
+    // The same Options transaction as any local plugin, backed by the server's storage.
+    private static async Task _SaveServerSettingsAsync(CockpitViewModel remote, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
+    {
+        Console.WriteLine($"RemoteAdmin: {pluginId} Options started.");
+        var opened = new TaskCompletionSource<OptionsDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((window, _) =>
+        {
+            if (ReferenceEquals(window.DataContext, remote))
             {
                 opened.TrySetResult(window);
             }
         });
-        await HeadlessAvalonia.RunAsync(() =>
+        await HeadlessAvalonia.RunAsync(() => remote.OpenPluginSettingsAsync(pluginId));
+        var settings = await opened.Task.WaitAsync(Until.Ceiling);
+        await HeadlessAvalonia.RunAsync(async () =>
         {
-            _ = admin.OpenPluginSettingsCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == pluginId));
-            return Task.CompletedTask;
+            await Until.LayoutHolds(settings, () => isTheView(settings));
+            await edit(settings);
+            await remote.ApplyOptionsCommand.ExecuteAsync(null);
+            Assert.False(remote.OptionsApplyBlocked, string.Join(" | ", remote.OptionsSectionErrors.Values));
+            settings.Close();
         });
-        await Task.WhenAny(opened.Task, Task.Delay(Until.Ceiling));
-        var rows = HeadlessAvalonia.Run(() => string.Join(", ", admin.Plugins.Select(plugin => $"{plugin.Id}:{plugin.HasSettings}")));
-        Assert.True(opened.Task.IsCompleted, $"No settings window opened for {pluginId}: '{HeadlessAvalonia.Run(() => admin.Status)}' ({rows})");
-        var settings = await opened.Task;
-        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        // A view that throws in a click handler would stop the UI thread; caught here, it fails this step with its reason.
-        Exception? thrown = null;
-        void caught(object? sender, DispatcherUnhandledExceptionEventArgs e)
-        {
-            thrown ??= e.Exception;
-            e.Handled = true;
-        }
-
-        HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException += caught);
-        try
-        {
-            var edited = HeadlessAvalonia.RunAsync(async () =>
-            {
-                settings.Closed += (_, _) => closed.TrySetResult();
-                await edit(settings);
-                _Click(settings, "Save");
-            });
-            await Task.WhenAny(edited, Task.Delay(Until.Ceiling * 2));
-            Assert.True(thrown is null, $"{pluginId}'s settings view threw: {thrown?.Message}");
-            await edited.WaitAsync(TimeSpan.Zero);
-        }
-        finally
-        {
-            HeadlessAvalonia.Run(() => Dispatcher.UIThread.UnhandledException -= caught);
-        }
-        await Task.WhenAny(closed.Task, Task.Delay(Until.Ceiling));
-        var said = HeadlessAvalonia.Run(() => string.Join(" | ", settings.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.IsVisible).Select(text => text.Text)));
-        Assert.True(closed.Task.IsCompleted, $"The settings window stayed open: {said}");
+        Console.WriteLine($"RemoteAdmin: {pluginId} Options saved and closed.");
     }
 
     // Into the desktop's own state root before its host is built, as a plugin the operator already has installed.
@@ -1459,7 +1400,6 @@ public sealed class RemoteAdminJourney
         {
             File.Copy(file, Path.Combine(plugin, Path.GetFileName(file)));
         }
-
         Directory.CreateDirectory(stateRoot);
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         try
@@ -1471,6 +1411,111 @@ public sealed class RemoteAdminJourney
         {
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
         }
+    }
+
+    // AC-2283: the UI-source root never starts a backend; ordinary plugin controls mutate only the server.
+    private static async Task _ExerciseRemotePluginUiAsync(JourneyHost desktop, BackendApiClient server, string localRoot)
+    {
+        await RefuseHostRequestAsync(new { text = new string('é', 32769) });
+        await RefuseHostRequestAsync(new { data = Enumerable.Range(0, 33).ToDictionary(index => index.ToString(), _ => "value") });
+        await RefuseHostRequestAsync(new { data = new Dictionary<string, string> { [new string('k', 129)] = "value" } });
+        await RefuseHostRequestAsync(new { data = new Dictionary<string, string> { ["key"] = new string('é', 4097) } });
+        await RefuseHostRequestAsync(new { paneId = new string('p', 129) });
+        await RefuseHostRequestAsync(new { paneId = "pane\n" });
+        await RefuseHostRequestAsync(new { targetPluginId = new string('p', 129) });
+        await RefuseHostRequestAsync(new { targetPluginId = "plugin\t" });
+        await RefuseHostRequestAsync(new { action = new string('a', 129) });
+        await RefuseHostRequestAsync(new { action = "action\r" });
+
+        async Task RefuseHostRequestAsync(object request)
+        {
+            var refused = await Assert.ThrowsAsync<BackendApiException>(() => server.SendAsync<System.Text.Json.JsonElement>(
+                HttpMethod.Post, $"api/v1/plugins/{StorePlugin}/ui/project-memory", request));
+            Assert.Equal(HttpStatusCode.BadRequest, refused.Status);
+            Assert.Equal("invalid_request", refused.ErrorCode);
+        }
+
+        var before = await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json"));
+        var localProfiles = await desktop.Services.GetRequiredService<ISessionProfileStore>().LoadAsync();
+        var servers = desktop.Services.GetRequiredService<IRemoteServers>();
+        var loggers = desktop.Services.GetRequiredService<ILoggerFactory>();
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var window = new MainWindow(windowBoundsStore: null, Server);
+            using var ui = new RemoteWindowUi(window, new SurfaceWindows(), loggers);
+            var remote = CockpitViewModel.ForRemoteWindow(Server, servers, null, null, ui: ui);
+            window.DataContext = remote;
+            window.Show();
+            try
+            {
+                await ui.InitializeAsync(remote, servers, Server, localRoot);
+                Assert.True(remote.PluginSettings.ContainsKey(StorePlugin), "The fixture's UI did not activate.");
+                var schedules = await OpenPluginAsync("Schedules");
+                try
+                {
+                    await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<Button>().Any(button => Equals(button.Content, "MCP & permissions")));
+                    _Click(schedules, "MCP & permissions");
+                    await Until.LayoutHolds(schedules, () => schedules.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Echo from the store"));
+                    Assert.DoesNotContain(localProfiles, profile => profile.Label == "Echo from the store");
+                }
+                finally
+                {
+                    schedules.Close();
+                }
+
+                await RemoteWorkflowsSteps.RunAsync(window, () => OpenPluginAsync("Workflows"), server, servers, localRoot);
+                var workflows = await OpenPluginAsync("Workflows");
+                try
+                {
+                    await Until.LayoutHolds(workflows, () => workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled"));
+                    var scheduledRow = workflows.GetLogicalDescendants().OfType<TextBlock>().Single(text => text.Text == "Journey scheduled")
+                        .GetLogicalAncestors().OfType<Border>().First();
+                    _Click(scheduledRow, "Duplicate");
+                    await Until.LayoutHolds(workflows, () => workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled (copy)"));
+                    var saved = "";
+                    await Until.ReloadHolds(async () => saved = await server.SendAsync<string>(HttpMethod.Post, "api/v1/plugins/workflows/channel/load", new { }),
+                        () => saved.Contains("Journey scheduled (copy)", StringComparison.Ordinal));
+                    using var confirm = Window.WindowOpenedEvent.AddClassHandler<ConfirmationDialog>((confirmation, _) =>
+                    {
+                        if (confirmation.DataContext is ConfirmationDialogViewModel { Title: "Delete flow" } question
+                            && question.Message.Contains("Journey scheduled (copy)", StringComparison.Ordinal))
+                        {
+                            Dispatcher.UIThread.Post(() => confirmation.Close(true));
+                        }
+                    });
+                    var copiedRow = workflows.GetLogicalDescendants().OfType<TextBlock>().Single(text => text.Text == "Journey scheduled (copy)")
+                        .GetLogicalAncestors().OfType<Border>().First();
+                    _Click(copiedRow, "Delete");
+                    await Until.LayoutHolds(workflows, () => !workflows.GetLogicalDescendants().OfType<TextBlock>().Any(text => text.Text == "Journey scheduled (copy)"));
+                    await Until.ReloadHolds(async () => saved = await server.SendAsync<string>(HttpMethod.Post, "api/v1/plugins/workflows/channel/load", new { }),
+                        () => !saved.Contains("Journey scheduled (copy)", StringComparison.Ordinal));
+                }
+                finally
+                {
+                    workflows.Close();
+                }
+
+                async Task<Window> OpenPluginAsync(string title)
+                {
+                    var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var watch = Window.WindowOpenedEvent.AddClassHandler<Window>((openedWindow, _) =>
+                    {
+                        if (openedWindow.Title == title)
+                        {
+                            opened.TrySetResult(openedWindow);
+                        }
+                    });
+                    remote.PluginSideButtons.Single(button => button.Title == title).OnInvoke();
+                    return await opened.Task.WaitAsync(Until.Ceiling);
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+
+        });
+        Assert.Equal(before, await File.ReadAllBytesAsync(Path.Combine(localRoot, "cockpit.json")));
     }
 
     // The server writes its state while the journey reads it; a shared read waits for no one.

@@ -43,6 +43,10 @@ internal sealed partial class ProjectEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Assistant { get; set; }
 
+    // AC-2357: absent unless set. Always local, like `Assistant`.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DefaultRole { get; set; }
+
     public bool IsolateInWorktreeByDefault { get; set; }
 
     // Absent for a project that changes nothing about the MCP registry, which is most of them.
@@ -104,6 +108,7 @@ internal sealed partial class ProjectEntry
         DefaultProfileLabel = project.DefaultProfileLabel,
         BehaviorPrompt = project.BehaviorPrompt,
         Assistant = string.IsNullOrWhiteSpace(project.Assistant) ? null : project.Assistant,
+        DefaultRole = string.IsNullOrWhiteSpace(project.DefaultRole) ? null : project.DefaultRole,
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault,
         McpOverlay = ProjectMcpOverlayEntry.FromDomain(project.McpOverlay),
         // AC-485: mirrored, not retired yet — writes the same value twice under two names as temporary
@@ -148,6 +153,7 @@ internal sealed partial class ProjectEntry
             DefaultProfileLabel = DefaultProfileLabel,
             BehaviorPrompt = behaviorPrompt,
             Assistant = assistant,
+            DefaultRole = DefaultRole,
             IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
             McpOverlay = McpOverlay?.ToDomain() ?? ProjectMcpOverlay.None,
             LogoPath = LogoPath,

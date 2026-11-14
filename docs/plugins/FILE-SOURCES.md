@@ -50,7 +50,7 @@ Reads and writes carry base64 bytes with a maximum of 1 MiB decoded content; lar
 capability and payload. The source still authorizes every operation, including the individual Depot
 project role. Wire failures carry a typed error and a safe fixed message; cancellation is propagated.
 
-`FileSourceChannelClient` in the host uses `IPluginUiChannel`, so local and server-admin operations use
+`FileSourceChannelClient` in the host uses `IPluginUiChannel`, so local and remote server operations use
 the same transport. A client remains attached to its original plugin/backend channel. The source runs
 where that backend runs: a future local-file source on a server addresses that server's disk.
 

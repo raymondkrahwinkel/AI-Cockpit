@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2147: bring the Browser host integration up to date with main, including the agent redirect boundary fix (Browser 0.12.20).
+
 - AC-2158: wait for the development Browser host and its children before replacing or removing it, roll back incomplete subprocess packages, and remove stopped plugins immediately while keeping browser profiles and caches.
 
 - AC-2157: give each Browser enable its own engine host and stop it during plugin teardown, keeping profiles and caches and leaving a cancelled application shutdown usable.
@@ -35,6 +37,111 @@
 
 - AC-2143: prepare a bounded private connection for the Browser engine host, rejecting stale generations and requests for unregistered tabs.
 
+- AC-2364: A vault connection (1Password, Bitwarden) is no longer removed when Cockpit reads credential encryption as off. A settings save could make that reading happen while encryption was on, which wiped the connection. An unavailable vault now only refuses use; only Disconnect removes a connection, together with its grants. Turning encryption off is refused while a vault is connected. A forgotten-password reset says it removes vault connections and keeps a dated copy of the encrypted cockpit.json.
+
+- Cockpit checks existing managed and PATH copies of the 1Password CLI before installing it, shows the exact version and path in Options, and keeps managed copies updated after signature verification. The masked service-account field stays within the available width, and “Turn on encryption” opens Security even when Options is already open.
+
+- Projectless sessions on the headless server can enter their scratch directory before switching to the agent user. Closing a server terminal session now also removes it from the session list and desk.
+
+- The desktop status bar shows notifications, CPU/RAM, disk space and managed worktrees from left to right, followed by secrets only while in use.
+- Server profiles keep offering provider login while sign-in health is unknown or a check fails; failed checks log the profile, provider and exception.
+
+- Bundled plugins now update at startup when the shipped version is newer and compatible, while preserving operator installs, version choices and removals. Remote server windows now show available plugin updates and report restart progress, reloading plugins when the server returns.
+- Local files defaults to this computer even when no folders have been added. An unavailable server source no longer replaces the local empty state, and remote file errors show their HTTP status without exposing private exception details.
+
+- A scheduled one-off task that is created or edited shortly before its time now runs at that time. Before, the schedule was only noticed at the next half-minute check, and a time that passed in between was missed for good.
+
+- AC-2357: Options › Assistant has an option "The assistant always picks a fitting agent (role)", on by default. While it is on, the assistant cannot start a session without a fitting role from the project's brain, not even with none: the start is refused with the available roles and the assistant tells you why. A brain without roles still starts a session without one. A project can set a default role, which a session gets when the assistant names none.
+
+- AC-2353: A session's process and memory figures no longer include unrelated processes. On Windows a process id reused by a stranger (a service host, the desktop shell) was counted, with everything beneath it, as the session's own; the meter could read 265 processes and 13 GB for a session of about 12 processes.
+
+- AC-2352: The assistant now has the exact parameter names of its core tools (start_agent, send_prompt, stop_agent, remember, create_reminder and more) in its prompt, so it no longer guesses them and fails on the first call.
+
+- AC-2351: A session whose MCP server (such as the Depot gateway) fails to connect now says so to the agent in its server instructions instead of silently having no tools. A connect that times out is logged and reported as "Connection timed out" instead of "Needs a sign-in", and the log records how long each server took to connect.
+
+- AC-2350: Options › Voice has a "Keep speech models loaded" option. When on, speech recognition and the voice load in the background after Cockpit starts and stay in memory, so the first dictation starts without waiting for the model. Off by default; it uses more memory.
+
+- AC-2333: Vault security fixes. A plugin that takes over another provider's id no longer gets that provider's stored token. Turning encryption off no longer leaves the vault's data readable in `cockpit.json.bak`. A revoke, closed or reopened vault, or ended session now also stops a run that was already approved but had not started yet, and an approval that arrives after a revoke no longer brings the permission back. "Revoke for this session" now also stops a project grant in that session, and the status bar shows every grant that still applies. Everything a vault command starts is ended when the command returns or times out, including children that outlived it; when Cockpit cannot contain a command that way, it does not start it. A failed revoke no longer crashes Cockpit; the row stays so you can try again.
+
+- AC-2348: New 1Password plugin connects one 1Password vault to the vault, through a service account and the `op` CLI. Under Options › PLUGINS › 1Password you test a token, see which vaults it can read, and connect only when it reads exactly one; a token that reads more is refused and nothing is saved. Agents can use only items of that vault, and the token reaches `op` only through its environment. While credential encryption is off the page is blocked, with a button to Options › Security (1Password 0.1.1).
+
+- AC-2347: Options › Vault shows the providers and their items, who holds which permission (with Revoke) and an audit of names only. The status bar gets a "Secrets in use" meter that opens a panel to revoke per session or everywhere. While credential encryption is off, the Vault page shows only a block with a Turn on encryption button, and it opens normally as soon as encryption is on, without a restart. The vault's consent card now explains each choice.
+
+- AC-2346: Agents get the `cockpit-vault` MCP once a vault provider is installed. `vault_list` shows items by name only; `vault_run` runs one command with a secret in its environment after you approve it on a card (once, for this session, or always for the project), and replaces the secret in the command's output with `[vault: <name>]`. A grant covers exactly that command; anything else asks again. With credential encryption off or locked, the agent is told to ask you and a toast leads to Options › Security.
+
+- AC-2336: Plugins can connect a password manager to Cockpit's new vault. The vault only stores a provider's sign-in while credential encryption is on and unlocked; when encryption is turned off, Cockpit removes the vault data and says so, with a button to Options › Security.
+
+- AC-2332: OpenAI-compatible profiles can set and override the stream silence timeout (30?3600 seconds). Loopback endpoints default to 600 seconds, remote endpoints to 120; a silent request is retried once with a transcript note before a clearer error ends the turn.
+
+- AC-2290: Workflows in a remote window keeps flows and run history on the server, including after reopening the editor. Windows command steps now accept quoted file paths. Import and Export keep the client file picker for exchanging flow files with the server (Workflows 0.36.5).
+
+- AC-2289: Schedules in a remote window stays on its server, including profiles and working folders. Reminders can be created, snoozed and marked done through the same server channel; open screens refresh missed changes after reconnect.
+
+- AC-2288: New terminal in a remote Cockpit window opens a shell on the server, not on this machine, and a server session can start in a terminal (TTY) with the server's profile and MCP. A shell needs an admin key and an organisation policy that allows terminal and shell access; a TTY session follows the key's session scope. Every keystroke is checked against the key again, so a revoked key types nothing more and its shells close. A dropped connection reattaches to the same terminal without starting a second one. Terminal contents are never logged.
+
+- AC-2280: Profiles and Assistant Options in a remote window edit the server's profiles and assistant with the ordinary editors. Duplicate and Copy from keep saved secrets on the server; login status, brains and roles come from the server. Editing leaves the assistant's current holder and the local Cockpit configuration unchanged.
+
+- AC-2286: remote windows use the server's workspaces and session placement. Create, rename, select and close workspaces, move sessions, and reopen the window with the same server layout. Changes reach other connected windows; closing a workspace with sessions is refused. Workspace management requires an admin key.
+
+- AC-2282: Options › MCP Servers in a remote Cockpit window edits the server's own MCP registry: add, change and remove HTTP and stdio servers, which run on the server, and sign an OAuth server in there with the browser step on this machine. Admin keys only, every change audited. A stored API key or header value is never shown again; sent back unchanged it stays, but not once the URL changes. The cockpit's own servers and the server's node connections stay off the page and are never overwritten. A session whose MCP gateway cannot be prepared now says why in a short line (such as a timeout or an upstream HTTP status), also in a remote window.
+
+- AC-2283: remote Cockpit windows load trusted plugin UI without starting local plugin engines or an MCP listener. Ordinary plugin menus, dialogs and workspaces use the server's storage and actions; missing or mismatched UI shows why it is unavailable. Files and Worktrees use the server's project paths, including guarded saves and confirmed removal.
+
+- AC-2281: Projects in a remote Cockpit window are the server's projects, in the ordinary Projects page and project editor. New project clones its git URL on the server with the server's own git credentials; editing changes name, category, description, profile, behavior and the worktree switch; Remove takes the project off the server. Start on a project opens the server's start card with that project and its profile picked. A project's links, plugin fields, MCP choice, extra rows and password stay on the server and never reach the window. Changes need an admin key.
+
+- AC-2279: Options › Security, Swarm and Servers in a remote Cockpit window manage the server itself. That covers agent terminal and shell access, the swarm's machines, leader and rank-return choice, removing a machine, leaving the swarm, and the server's own connect keys. Admin keys only, every change audited. A new extra internal network range must lie inside private address space. Pairing, encryption and screen lock stay on each device's own screen.
+
+- AC-2285: a server serves its projects' files and worktrees by project and relative path only: browse, read, save, create, rename and delete, plus listing, creating and removing a project's worktrees. A save made on an outdated version is refused and overwrites nothing. A path that leaves the project, or a link that points outside it, is refused. Sessions on a server show their worktree branch, and their file paths are no longer opened or previewed on this machine.
+
+- AC-2278: Options in a remote Cockpit window reads and saves the server's run limits, session behavior, clone/worktree roots, notifications, shell and diagnostics. Presentation stays on the client; webhook secrets remain on the server.
+
+- AC-2277: Open on a connected server starts its own Cockpit window, with ordinary navigation and session start on that server. The window starts no local backend; Options remain read-only until their server adapters are connected.
+
+- AC-2319: each paired phone in Depot settings shows a SHA-256 key fingerprint to compare with the phone's status sheet (Depot 0.66.0).
+
+- AC-2318: the start-up splash now plays the Wispslate entrance: the W arcs in with its streaks, the colour gradient runs once through the logo, then the name and the steps appear. It keeps moving while the main window is built, follows light and dark, and is a still image when Windows animation effects are off. The splash stays at least 1.4 s so the entrance is seen (host 0.180.2).
+
+- AC-2301: paired phones can request byte-bounded older transcript pages without replacing the conversation (Depot 0.65.5, host 0.180.1, SDK 3.93.0).
+
+- AC-2312: a live Depot note that an agent edits while it is open no longer stays on "Not confirmed in Depot yet" with phantom "lines only in this Cockpit". Depot's saver now confirms the version the text is saved as, so formatting the note editor writes differently (tables, lists) no longer blocks the confirmation, and Retry sync says why when it cannot confirm yet (host 0.180.0, plugin SDK 3.92.0, Depot 0.65.4).
+
+- AC-2307: connected phones receive updated image support as soon as the assistant's capabilities change, including after a session replacement. Logs record capability decisions and each mobile Status value with its reason (host 0.179.1, SDK 3.91.0, Depot 0.65.3).
+
+- AC-2310: assistant MCP connections retain their brain scope and stay cached until their configuration or sign-in changes, preventing repeated reconnects and log flooding.
+
+- AC-2308: plugin updates share one Linux build batch and at most one Windows batch after a nightly, then publish together in one store PR. A failed plugin gate leaves the other updates publishable; the manual publisher now lists all 36 plugins.
+
+- AC-2304: the Depot gateway has its own sign-in so it cannot overwrite the Depot connection's authorization. A refused sign-in is remembered until its credential changes, without repeated warnings or sign-in toasts (Depot 0.65.1).
+
+- AC-2298: assistants and agent sessions can deliberately ping a connected phone with their verified session name and a target to open. Pings are limited to three per sender per minute and use the encrypted mobile relay (host 0.179.0, SDK 3.90.0, Depot 0.65.0).
+
+- AC-2296/AC-2297: paired phones show session mail as collapsible cards with sender names and answer assistant question cards through the device-bound operator channel. Closed cards retain their answer or resolution (host 0.178.0, plugin SDK 3.89.0, Depot 0.64.0).
+
+- Fixed paired phones staying offline after signing in to Depot again: the mobile relay reconnects without restarting Cockpit and keeps the saved phone keys (Depot plugin 0.62.2).
+- AC-2275: paired phones can send tasks from the session overview and start or stop agent sessions on a chosen desk through the authenticated operator channel. Retried starts reuse the host result (host 0.177.0, plugin SDK 3.88.0, Depot 0.63.0).
+- AC-2275: externally submitted tasks are refused while a session needs attention or has an open permission or question, so task text cannot approve a TTY permission dialog.
+
+- AC-2273: paired phones can view waiting questions, SDK permissions and the Autopilot epic gate and send a device-bound, one-use decision. Epic approval opens the existing pull request gate; it grants no permission to merge.
+
+- Fixed MCP tool calls with content annotations or resource icons failing during serialization; retained MCP SDK 2.3.0 pending an upstream fix.
+
+- AC-2265: a paired phone can send images with a message to the assistant or to a session, in chunks inside the encrypted channel (JPEG, PNG or WebP, at most 4 per message and 8 MB each). A target that cannot see images still gets the text, and the phone is told why the images stayed behind. Plugins get `SendToSessionAsync(paneId, text, images)` with `SessionSendResult`, plus `AcceptsImages` on `OpenCockpitSession` and `IAssistantChannelGateway` (plugin SDK 3.86.0, host 0.175.0, Depot plugin 0.61.0).
+
+- AC-2260: the Proxmox settings list shows which server is selected, a new server opens empty instead of taking another server's fields, every field has a label and a problem is flagged on its own row. A token without read permission now gets a clear message with the role it needs instead of empty lists, and Proxmox's own reason is passed on when a snapshot is refused (plugin 0.4.1).
+
+- AC-2252: strict Claude profiles enable the OS sandbox on Linux and macOS for both TTY and SDK sessions, with session write paths, open network hosts and no unsandboxed retry. Missing sandbox support still permits startup with a warning. The server image includes bubblewrap and socat.
+
+- AC-2251: path and process guard decisions appear as ordinary notifications with the session name, limited to one per session and target every five minutes.
+
+- AC-2250: on Strict, a session may only stop processes in its own process tree (its Windows job, so a process it started with `Start-Process` still counts) and containers it started with `--label cockpit.pane=$COCKPIT_PANE_ID`. `dotnet build-server shutdown` and stopping by name (`taskkill /IM`, `Stop-Process -Name`, `pkill`, `killall`, a piped `Stop-Process`) are refused without an extra prompt, with a reason that says what is allowed; this covers Claude on TTY and SDK, the local-model `shell` tool and `start_run`. On Warn the command runs and the agent gets a warning.
+
+- AC-2248: on Strict, a Claude session (TTY and SDK, bypass included) is refused, without an extra prompt, when it writes outside its worktree, its scratch folder and the profile's allowed paths with Write, Edit, MultiEdit or NotebookEdit, or with a recognisable shell write (`>`, `tee`, `cp`, `Set-Content` and the like). Interpreters such as `python -c` still get past the shell check. On Warn the write goes ahead and the agent is told it crossed the boundary.
+
+- AC-2249: strict Codex profiles use workspace-write on TTY and app-server, with session write paths and network access; an explicit read-only choice stays read-only. Linked worktrees keep their profile's sandbox because Codex protects the worktree gitdir and otherwise blocks commits.
+
+- AC-2247: coding tools and command working directories follow profile guardrails, including session scratch and allowed paths; strict mode also checks runs from sessions without a worktree.
+
+- AC-2246: profiles can select Strict, Warn or Off guardrails and additional write paths. New profiles start on Strict; existing profiles start on Warn. Sessions receive their effective policy; enforcement follows in the remaining guardrail tickets.
 - AC-2257: a paired phone can list this Cockpit's sessions with their statusline and state, read one session's transcript and its open permission questions, and send that session a message, all inside the encrypted channel; plugins get `PluginTranscriptEntry.Index` (plugin SDK 3.84.0, host 0.173.0).
 
 - AC-2256: plugins can read each open session's statusline, whether it is a terminal and whether its transcript is readable, plus the tail of that transcript and its open permission questions through `Sessions.ReadTranscriptAsync` and `Sessions.ReadPendingPermissionsAsync` (plugin SDK 3.83.0, host 0.172.0).
@@ -239,6 +346,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   keeps the tracker reference; the changelog stays clean.
 
 ## [Unreleased]
+
+- AC-2291: server Admin and plugin settings links open the ordinary Cockpit server window and its Options. The separate admin panel is gone; connect keys and the audit log remain under Servers. Existing connections, certificate pins and key scopes are preserved.
+
+- AC-2284: the ordinary Plugin store in a remote Cockpit window installs, updates, disables and removes plugins on the server. Store sources and publisher trust stay behind Admin access; the matching running UI is cached separately without changing local plugins or configuration. Protected workspaces keep their contents when an automatic UI replacement must wait.
+
+- AC-2287: remote SDK sessions support rename, scoped conversation search and resume, structured permission answers and verify screenshots. Resumes use the server's saved transcript and folder; names, status and session metadata survive reconnect.
+
+- AC-2309: retain saved phone keys when Depot's grant-scoped device list omits them after signing in again; log pairing phases and outcomes without credentials or phone names (Depot plugin 0.65.2).
 
 ### Added
 

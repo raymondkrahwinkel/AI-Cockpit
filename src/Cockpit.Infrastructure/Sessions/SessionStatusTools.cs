@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Configuration;
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
@@ -33,7 +34,8 @@ internal sealed class SessionStatusTools(
     // AC-1717: null only in a test graph that keeps no session timeline.
     SessionTimelineRecorder? timeline = null,
     // AC-1911: null only in test graphs that have no live session registry.
-    ISessionRegistry? sessions = null)
+    ISessionRegistry? sessions = null,
+    GuardNotifications? guardNotifications = null)
 {
     private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
         ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
@@ -147,10 +149,18 @@ internal sealed class SessionStatusTools(
             return _Error("`command` and `workingDirectory` are both required.");
         }
 
-        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal))
+        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal, out var guardrailWarning, orgPolicy?.Current, violation => guardNotifications?.Report(caller, violation)))
         {
             return _Error(confinementRefusal);
         }
+
+        var kill = CodingTools.KillDecision(sessions?.Find(caller), caller,
+            string.Join(' ', new[] { command }.Concat(arguments ?? []).Select(word => $"\"{word.Replace('"', '\'')}\"")), workingDirectory, orgPolicy?.Current, violation => guardNotifications?.Report(caller, violation));
+        if (kill.Deny)
+        {
+            return _Error(kill.Message!);
+        }
+        guardrailWarning = kill.Message is { } killWarning ? CodingTools.WithWarning(guardrailWarning, killWarning) : guardrailWarning;
 
         if (_ParseKind(kind) is not { } runKind)
         {
@@ -179,29 +189,32 @@ internal sealed class SessionStatusTools(
         _ = _RunAndDeliverAsync(caller, runId, label, workingDirectory, command, effectiveArguments, timeout, slot);
 
         return slot.Admitted.IsCompletedSuccessfully
-            ? JsonSerializer.Serialize(new { ok = true, runId, unreachable }, SerializerOptions)
-            : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable }, SerializerOptions);
+            ? JsonSerializer.Serialize(new { ok = true, runId, unreachable, guardrail = guardrailWarning }, SerializerOptions)
+            : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable, guardrail = guardrailWarning }, SerializerOptions);
     }
 
-    // A Cockpit worktree is always a confined session (AC-1911). start_run deliberately remains able to execute any
-    // command a build agent needs, but its process must start inside that worktree. This is a filesystem/work-directory
-    // boundary, not an OS process sandbox; the stronger process boundary belongs to AC-1908.
+    // AC-2247: only Off preserves the legacy exemption for sessions without a worktree.
     internal static bool TryResolveRunWorkingDirectory(
         ISessionRegistry? sessions,
         string caller,
         string requested,
         out string workingDirectory,
-        out string error)
+        out string error,
+        out string warning,
+        ProvisionPolicy? policy = null,
+        Action<Cockpit.Plugins.Shared.GuardViolation>? report = null)
     {
+        warning = string.Empty;
         var session = sessions?.Find(caller);
-        if (session?.WorktreeBranch is null)
+        var mode = OrgPolicyCeilings.GuardrailMode(policy, session?.ActiveProfile?.GuardrailMode ?? SessionProfileEntry.ExistingProfileGuardrailMode);
+        if (session?.WorktreeBranch is null && mode == Core.Profiles.GuardrailMode.Off)
         {
             workingDirectory = requested;
             error = string.Empty;
             return true;
         }
 
-        return CodingTools.TryResolve(session.WorkingDirectory, requested, out workingDirectory, out error);
+        return CodingTools.TryResolveFor(session, requested, policy, out workingDirectory, out error, out warning, report, "start_run");
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]

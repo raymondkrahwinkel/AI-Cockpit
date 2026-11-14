@@ -11,9 +11,13 @@ namespace Cockpit.App.Views;
 
 public partial class SplashWindow : Window
 {
+    // Off for the headless scenes: their compositor never advances, so they would freeze on the first frame.
+    public bool AnimateEntrance { get; init; } = true;
+
     public SplashWindow()
     {
         InitializeComponent();
+        MarkBox.Loaded += (_, _) => _ShowEntrance();
     }
 
     // The main window's screen is the splash's, so the two never open on different monitors.
@@ -32,6 +36,18 @@ public partial class SplashWindow : Window
                 area.X + (int)((area.Width - Width * screen.Scaling) / 2),
                 area.Y + (int)((area.Height - Height * screen.Scaling) / 2));
         }
+    }
+
+    private void _ShowEntrance()
+    {
+        if (AnimateEntrance && !Controls.SplashEntrance.IsReducedMotion)
+        {
+            Controls.SplashEntrance.Run(MarkFull, MarkTrail, MarkBody, NameBox, SheenBand);
+            return;
+        }
+
+        MarkFull.Opacity = 1;
+        NameBox.Opacity = 1;
     }
 
     public async Task FadeOutAsync()

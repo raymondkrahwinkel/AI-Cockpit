@@ -10,12 +10,22 @@ namespace Cockpit.Plugin.Schedules;
 // ask nothing, unlike the same operations over MCP (A4), which an agent makes.
 internal sealed class SchedulesChannelHandlers(
     ICockpitHost host, TaskStore tasks, RunStore runs, ScheduleEngine engine, AgentPromptAction agent, TaskDelivery delivery,
-    SchedulesSettings settings, TimeProvider time)
+    SchedulesSettings settings, TimeProvider time, ReminderService reminders)
 {
     private readonly Lock _gate = new();
 
     public IReadOnlyList<IDisposable> Register() =>
     [
+        _Handle<Reminder, SchedulesResult>(SchedulesChannel.CreateReminder, request =>
+        {
+            var created = reminders.Create(request.Text, request.Schedule, request.TimeZone, request.Delivery, "Created by you");
+            return Task.FromResult(new SchedulesResult(created.Error is null, created.Error, created.Reminder?.Id));
+        }),
+        _Handle<ReminderActionRequest, SchedulesResult>(SchedulesChannel.AnswerReminder, request =>
+        {
+            var answered = reminders.Answer(request.Id, request.Slot, request.FiredAt, request.Choice);
+            return Task.FromResult(new SchedulesResult(answered is not null, answered is null ? "This reminder is no longer due." : null));
+        }),
         _Handle<object, SchedulesSnapshot>(SchedulesChannel.Snapshot, _ => Task.FromResult(_Snapshot())),
         _Handle<ScheduledTask, SchedulesResult>(SchedulesChannel.Save, task => Task.FromResult(_Save(task))),
         _Handle<SchedulesTaskRequest, SchedulesResult>(SchedulesChannel.Delete, request => Task.FromResult(_Change(all => [.. all.Where(task => task.Id != request.Id)]))),
@@ -53,7 +63,8 @@ internal sealed class SchedulesChannelHandlers(
             [.. runs.Load()],
             [.. delivery.Choices()],
             new SchedulesSettingsView(settings.MaxConcurrentRuns, settings.DefaultTimeZone, (int)RunStore.Keep.TotalDays),
-            now);
+            now,
+            [.. reminders.Load()]);
     }
 
     private SchedulesResult _Save(ScheduledTask task)

@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Provisioning;
 
@@ -21,6 +22,10 @@ public static class OrgPolicyCeilings
     ];
 
     public static string? MaxPermissionMode(ProvisionPolicy? policy) => policy?.Permissions?.MaxPermissionMode;
+
+    public static GuardrailMode GuardrailMode(ProvisionPolicy? policy, GuardrailMode mode) =>
+        policy?.Permissions?.MinimumGuardrailMode is { } minimum
+            && Enum.TryParse<GuardrailMode>(minimum, true, out var required) && required < mode ? required : mode;
 
     // The stricter of the two permission ceilings: a delegated task never gets more than a session may start with.
     public static string? DelegationCeiling(ProvisionPolicy? policy) => Lower(policy?.Permissions?.DelegationCeiling, MaxPermissionMode(policy));

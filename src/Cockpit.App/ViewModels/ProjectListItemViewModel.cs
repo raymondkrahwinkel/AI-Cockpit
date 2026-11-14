@@ -171,7 +171,17 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
     // The quiet line when nothing else is said: a bound project is current, a local one has no other copy.
     public bool ShowsQuietStatus => IsOnThisMachine && !HasPublicationError && !HasRemoteChanges && !IsRunning && !HasJobs;
 
-    public string QuietStatus => IsInOrganization ? "✓ Up to date" : "Only on this machine";
+    public string QuietStatus => IsInOrganization ? "✓ Up to date" : $"Only on {Here}";
+
+    // AC-2281: the server this project lives on in the remote window, or null for this machine. Its folder is on that
+    // server and Depot sharing runs there, so neither is offered from here.
+    public string? Server { get; init; }
+
+    public string Here => Server ?? "this machine";
+
+    public bool IsLocalProject => IsOnThisMachine && Server is null;
+
+    public string RemoveLabel => $"Remove from {Here}…";
 
     public string CompactStatus => PublicationError ?? (CanAdd ? "Ready to add"
         : HasRemoteChanges ? "Changed on Depot"

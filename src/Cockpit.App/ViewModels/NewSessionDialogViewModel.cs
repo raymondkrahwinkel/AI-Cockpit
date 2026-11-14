@@ -1461,7 +1461,13 @@ public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
     public bool IsFreeText => Choices.Count == 0;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ValidationError))]
     private string? _value;
+
+    public string? ValidationError => Key == Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key
+        && !Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.IsValid(Value)
+            ? Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.ValidationMessage
+            : null;
 
     // AC-1593: "Managed by …" when the organisation's policy rules out some of the choices; null otherwise.
     public string? ManagedLabel { get; }

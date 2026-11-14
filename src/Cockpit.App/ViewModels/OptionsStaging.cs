@@ -14,6 +14,7 @@ internal static class OptionsStaging
 
     // Bound two-way to a control the operator edits, and persisted on Apply. Paths, because three of them live
     // on the sub-view models the dialog reaches through (`Security`, `AssistantOptions`).
+    // Remote ownership for every entry: docs/remote-options.md (AC-2278).
     public static readonly string[] EditedProperties =
     [
         "AgentsPaletteEnabled",
@@ -81,6 +82,7 @@ internal static class OptionsStaging
         "VoiceCustomModelName",
         "VoiceEnabled",
         "VoiceGlobalPushToTalk",
+        "VoiceKeepModelsLoaded",
         "VoiceOpenMicSilenceTimeoutMs",
         "VoicePushToTalkKeyName",
         "VoiceStopReadAloudLevelThreshold",
@@ -101,6 +103,7 @@ internal static class OptionsStaging
         "AssistantOptions.ConsentBypassAll",
         "AssistantOptions.IsEnabled",
         "AssistantOptions.PushToTalkKeyName",
+        "AssistantOptions.RequireRole",
         "AssistantOptions.SelectedReadingLevel",
         "AssistantOptions.SpeakReplies",
         "AssistantOptions.WakeWordEnabled",
@@ -209,7 +212,7 @@ internal static class OptionsStaging
     }
 
     private static string _ProfileFingerprint(Cockpit.Core.Profiles.SessionProfile profile) =>
-        // ImageInputMode is staged with the complete profile, so Cancel also discards that choice.
+        // Guardrail paths and streamSilenceTimeoutSeconds in OptionDefaults stage with the complete profile, including Cancel.
         JsonSerializer.Serialize(profile) + Separator + JsonSerializer.Serialize(profile.ProviderConfig, profile.ProviderConfig.GetType());
 
     private static object? _Read(object? root, string path)

@@ -67,6 +67,44 @@ public sealed class BackendApiClient : IDisposable
         }
     }
 
+    // AC-2285: a route that answers raw bytes, with the ETag it sent beside them.
+    public async Task<(byte[] Bytes, string? ETag)> GetBytesAsync(string path, CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+
+        return (await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false), response.Headers.ETag?.Tag.Trim('"'));
+    }
+
+    // AC-2288: a route that answers a byte stream, held open; the caller disposes the response to let it go.
+    public async Task<HttpResponseMessage> OpenStreamAsync(string path, CancellationToken cancellationToken)
+    {
+        var response = await _http.GetAsync(path, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (response.IsSuccessStatusCode)
+        {
+            return response;
+        }
+
+        using (response)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task PostBytesAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+    {
+        using var content = new ReadOnlyMemoryContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        using var response = await _http.PostAsync(path, content, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken) =>
         _SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
 

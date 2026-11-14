@@ -102,6 +102,9 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
 
     void IAssistantSession.InjectAndSubmit(string text) => _Assistant.InjectAndSubmit(text);
 
+    Task<bool> IAssistantSession.AnswerQuestionAsync(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers) =>
+        UiThreadCall.RunAsync(() => Task.FromResult(_Assistant.AnswerBrokerQuestion(rowId, inputJson, answers)));
+
     ReadOnlyTurnReceipt IAssistantSession.TryStartReadOnlyTurn(string text, CancellationToken cancellationToken) =>
         Control?.TryStartReadOnlyTurn(text, cancellationToken)
         ?? ReadOnlyTurnReceipt.Refused(ReadOnlyTurnAdmission.Unavailable);
@@ -148,6 +151,7 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
                 or nameof(SessionViewModel.IsBusy)
                 or nameof(SessionViewModel.HasPendingPermission)
                 or nameof(SessionViewModel.PendingConsent)
+                or nameof(SessionViewModel.CanPasteImages)
                 or nameof(SessionViewModel.ContextUsedPercent))
         {
             changed(this, e.PropertyName is null or nameof(SessionViewModel.ContextUsedPercent));

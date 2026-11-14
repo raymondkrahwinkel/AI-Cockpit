@@ -14,6 +14,10 @@ namespace Cockpit.App.Composition;
 // AC-1441: desktop services whose in-proc half is a backend call; it is handed in here, so the services never name it.
 internal static class DesktopComposition
 {
+    public static Cockpit.Core.Abstractions.Remote.IRemoteOptionsStores RemoteOptionsFor(
+        Func<Cockpit.Core.Abstractions.Remote.IRemoteServer?> server) =>
+        new Cockpit.Infrastructure.BackendApi.RemoteOptionsStores(server);
+
     public static IServiceCollection AddBackendSeams(this IServiceCollection services)
     {
         services.AddSingleton(provider => new ResourceMonitor(

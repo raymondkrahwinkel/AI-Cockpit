@@ -330,6 +330,7 @@ sealed class Program
     // the local registry. No `CockpitBackend`: no hosted service, plugin, hotkey or listener, and no port.
     private static void _RunRemoteWindow(string[] args, string server)
     {
+        var category = Composition.RemoteWindowProcess.OptionsCategoryFrom(args);
         using var startup = RemoteStartup.Begin(server, logPath =>
             LoggerFactory.Create(builder => builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath))));
         if (startup is null)
@@ -351,7 +352,7 @@ sealed class Program
             };
             if (!startup.NeedsUnlock || startup.Protection is not { } protection)
             {
-                return _RemoteWindow(startup);
+                return _RemoteWindow(startup, category);
             }
 
             // The desktop's own unlock window, over the registry's read-only unlock: the key stays in this process's memory.
@@ -359,27 +360,68 @@ sealed class Program
             var window = new UnlockWindow { DataContext = unlock };
             unlock.Unlocked += (_, _) =>
             {
-                show(_RemoteWindow(startup));
+                show(_RemoteWindow(startup, category));
                 window.Close();
             };
             return window;
         });
     }
 
-    private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup)
+    private static Avalonia.Controls.Window _RemoteWindow(RemoteStartup startup, string? category)
     {
         var window = new MainWindow(windowBoundsStore: null, startup.Server);
-        var cockpit = startup.Open(admin =>
+        var surfaces = new SurfaceWindows();
+        var ui = new Plugins.RemoteWindowUi(window, surfaces, startup.Loggers);
+        window.Closed += (_, _) => ui.Dispose();
+        var cockpit = startup.Open((viewModel, category) =>
         {
-            OptionsDialog.ForServer(admin).Show(window);
-            return Task.CompletedTask;
-        });
+            if (surfaces.TryActivateAsync(typeof(OptionsDialog)) is { } pending)
+            {
+                if (category is not null)
+                {
+                    window.OwnedWindows.OfType<OptionsDialog>().FirstOrDefault()?.SelectCategory(category);
+                }
+                return pending;
+            }
+
+            var options = new OptionsDialog { DataContext = viewModel };
+            if (category is not null)
+            {
+                options.Opened += (_, _) => options.SelectCategory(category);
+            }
+
+            return surfaces.ShowAsync(typeof(OptionsDialog), options, window);
+        }, async (manager, filter) =>
+        {
+            if (surfaces.TryActivateAsync(typeof(PluginStoreDialog)) is { } pending)
+            {
+                await pending;
+                return;
+            }
+
+            var viewModel = new PluginStoreDialogViewModel(manager, filter);
+            var store = new PluginStoreDialog { DataContext = viewModel, Title = $"Plugin store · {startup.Server}" };
+            await viewModel.LoadAsync();
+            await surfaces.ShowAsync(typeof(PluginStoreDialog), store, window);
+        }, (title, message, confirmLabel) =>
+            new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) }
+                .ShowDialog<bool>(window.OwnedWindows.LastOrDefault() ?? window),
+            project => surfaces.ShowAsync(typeof(ProjectDialog), new ProjectDialog { DataContext = project, Title = project.DialogTitle }, window), ui: ui);
         if (cockpit is null)
         {
+            ui.Dispose();
             return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel("Cannot open the remote window", startup.Refusal ?? "", "Close") };
         }
 
         window.DataContext = cockpit;
+        window.Opened += async (_, _) =>
+        {
+            await startup.InitializeUiAsync(ui, cockpit);
+            if (category is not null)
+            {
+                await cockpit.OpenOptionsCategoryAsync(category);
+            }
+        };
         return window;
     }
 

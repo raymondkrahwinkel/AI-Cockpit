@@ -9,8 +9,8 @@ namespace Cockpit.App.Services;
 public interface IProfileEditStore
 {
     /// <summary>
-    /// Saves <paramref name="profiles"/>, each paired with the label it was read under, or null for one added since.
+    /// Saves <paramref name="profiles"/> with their original labels and optional sources for copied secrets.
     /// A profile read but no longer in the list is removed.
     /// </summary>
-    Task SaveEditsAsync(IReadOnlyList<(string? OriginalLabel, SessionProfile Profile)> profiles, CancellationToken cancellationToken = default);
+    Task SaveEditsAsync(IReadOnlyList<(string? OriginalLabel, SessionProfile Profile, string? CopyFromLabel)> profiles, CancellationToken cancellationToken = default);
 }

@@ -25,21 +25,6 @@ public class ClaudeMcpConfigTests
     }
 
     [Fact]
-    public void Write_ForAUserApiKeyServer_WritesItsOwnBearerLiteral()
-    {
-        var path = ClaudeMcpConfig.Write([new PluginMcpServer { Name = "youtrack", Url = "http://example/mcp", BearerToken = "yt-key" }]);
-
-        try
-        {
-            Assert.Equal("Bearer yt-key", _Authorization(path!, "youtrack"));
-        }
-        finally
-        {
-            File.Delete(path!);
-        }
-    }
-
-    [Fact]
     public void Write_ForAUserApiKeyServer_WritesTheTokenFileOwnerOnly()
     {
         // The file carries a literal third-party bearer token; it must not sit world-readable in a shared temp

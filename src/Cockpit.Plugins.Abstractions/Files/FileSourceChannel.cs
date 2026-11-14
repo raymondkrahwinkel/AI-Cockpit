@@ -85,6 +85,7 @@ public sealed record FileSourceLiveReconnectRequest(string SessionId, bool SignI
 public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase64, long Rev, LiveFileStatus Status)
 {
     public string? SerializedText { get; init; }
+    public string? PersistedVersion { get; init; }
     public IReadOnlyList<LivePeer>? Peers { get; init; }
     public string? OpenUrl { get; init; }
 }

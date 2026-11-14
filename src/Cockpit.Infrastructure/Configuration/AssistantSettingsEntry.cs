@@ -27,6 +27,9 @@ internal sealed class AssistantSettingsEntry
 
     public double? ContextCompactionPercent { get; set; }
 
+    // AC-2357. Absent in an older config, which reads as the default: on.
+    public bool RequireRole { get; set; } = true;
+
     // AC-138: stored as the enum's name, not its ordinal, so a level a newer build wrote and this one
     // does not recognise reads back as "no match" instead of silently landing on ordinal 0.
     public string? ReadingLevel { get; set; }
@@ -55,6 +58,7 @@ internal sealed class AssistantSettingsEntry
         WakeWordListeningSeconds = settings.WakeWordListeningSeconds,
         AlwaysOnTop = settings.AlwaysOnTop,
         ContextCompactionPercent = settings.ContextCompactionPercent,
+        RequireRole = settings.RequireRole,
         ReadingLevel = settings.ReadingLevel.ToString(),
         ConsentBypassSources = [.. settings.ConsentBypassSources],
         ConsentBypassDangerousSources = [.. settings.ConsentBypassDangerousSources],
@@ -75,6 +79,7 @@ internal sealed class AssistantSettingsEntry
         WakeWordListeningSeconds = AssistantSettings.NormalizeWakeWordListeningSeconds(WakeWordListeningSeconds),
         AlwaysOnTop = AlwaysOnTop,
         ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
+        RequireRole = RequireRole,
         // A value written by an older build, or a hand-edited config, that does not name one of the three levels
         // falls back to the app default (Developer) rather than throwing.
         ReadingLevel = Enum.TryParse<Cockpit.Core.Sessions.ReadingLevel>(ReadingLevel, out var readingLevel)

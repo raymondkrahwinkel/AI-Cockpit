@@ -63,13 +63,34 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
     public async Task<Project?> FindProjectAsync(string projectId) =>
         (await ReadAsync(client, CancellationToken.None).ConfigureAwait(false)).FirstOrDefault(project => project.Id == projectId);
 
-    public Task<Project> AddNewProjectAsync(Project project) => throw new NotSupportedException(NoPath);
+    // AC-2281: the ordinary editor's "new project" on a server is a clone of its git URL, then its other fields as a change.
+    // Throws InvalidOperationException with the server's reason when the clone failed; nothing was added then.
+    public async Task<Project> AddNewProjectAsync(Project project)
+    {
+        if (string.IsNullOrWhiteSpace(project.GitUrl))
+        {
+            throw new InvalidOperationException("A project on a server starts as a clone: give its repository (git URL).");
+        }
+
+        var clone = await CloneAsync(project.GitUrl.Trim(), "", project.Name).ConfigureAwait(false);
+        if (clone.Error is { } error)
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        return await UpdateStoredProjectAsync(project with { Id = clone.Id }).ConfigureAwait(false) is not null
+            && await FindProjectAsync(clone.Id).ConfigureAwait(false) is { } stored
+            ? stored
+            : throw new InvalidOperationException("The server cloned the project but no longer lists it.");
+    }
 
     public Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum) => throw new NotSupportedException(NoPath);
 
     public Task<bool> MarkOpenedAsync(string projectId, DateTimeOffset openedAt) =>
         throw new NotSupportedException("A server records its own sessions' starts.");
 
+    // Only the fields the server lists for an admin key; an empty one clears it there. Links, plugin fields and the
+    // other server-only parts are never sent, so the server keeps them as stored.
     public async Task<Project?> UpdateStoredProjectAsync(Project project)
     {
         try
@@ -77,7 +98,15 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
             await client.SendAsync<JsonElement>(
                 HttpMethod.Patch,
                 $"api/v1/projects/{Uri.EscapeDataString(project.Id)}",
-                new { name = project.Name, description = project.Description, defaultProfile = project.DefaultProfileLabel }).ConfigureAwait(false);
+                new
+                {
+                    name = project.Name,
+                    description = project.Description ?? "",
+                    defaultProfile = project.DefaultProfileLabel ?? "",
+                    category = project.Category ?? "",
+                    behaviorPrompt = project.BehaviorPrompt ?? "",
+                    isolateInWorktree = project.IsolateInWorktreeByDefault,
+                }).ConfigureAwait(false);
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
         {
@@ -198,6 +227,10 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
                 Description = row.Description,
                 SourceDirectories = row.Path is { } path ? [new ProjectRepository(path)] : [],
                 DefaultProfileLabel = row.DefaultProfile,
+                Category = row.Category,
+                BehaviorPrompt = row.BehaviorPrompt,
+                IsolateInWorktreeByDefault = row.IsolateInWorktree,
+                GitUrl = row.GitUrl,
             }),
         ];
     }
@@ -218,4 +251,14 @@ internal sealed record RemoteSharedRow(string Id, string Name, string? Descripti
 
 internal sealed record RemoteProjectList(IReadOnlyList<RemoteProjectRow> Projects);
 
-internal sealed record RemoteProjectRow(string Id, string Name, string? Description = null, string? Path = null, string? DefaultProfile = null, bool RemoteChanged = false);
+internal sealed record RemoteProjectRow(
+    string Id,
+    string Name,
+    string? Description = null,
+    string? Path = null,
+    string? DefaultProfile = null,
+    bool RemoteChanged = false,
+    string? Category = null,
+    string? BehaviorPrompt = null,
+    bool IsolateInWorktree = false,
+    string? GitUrl = null);

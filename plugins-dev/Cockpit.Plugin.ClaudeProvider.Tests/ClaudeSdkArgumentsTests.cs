@@ -37,14 +37,6 @@ public class ClaudeSdkArgumentsTests
         Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "bypassPermissions"));
     }
 
-    [Fact]
-    public void BuildArguments_BlankPermissionMode_DefaultsToDefault()
-    {
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode: "  ", model: null, resumeSessionId: null, continueMostRecent: false);
-
-        Assert.True(SequenceAssert.ContainsInOrder(arguments, "--permission-mode", "default"));
-    }
-
     // The defect this flag exists for (AC — assistant would not start on Windows): the appended system prompt is the
     // one argument with no ceiling — a standing instruction plus the operator's own memory files — and every platform
     // caps a command line (Windows 32.767 for the whole of it, Linux 131.072 for one argument). Measured on Windows

@@ -106,11 +106,19 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
     public async Task<IReadOnlyList<ProxmoxNode>> ListNodesAsync(CancellationToken cancellationToken)
     {
         var data = await _GetAsync("nodes", cancellationToken);
-        return data.ValueKind == JsonValueKind.Array
+        var nodes = data.ValueKind == JsonValueKind.Array
             ? data.EnumerateArray().Select(node => new ProxmoxNode(
                 _Str(node, "node"), _Str(node, "status"), _Double(node, "cpu") * 100, (int)_Long(node, "maxcpu"),
                 _Long(node, "mem"), _Long(node, "maxmem"), _Long(node, "uptime"))).ToList()
             : [];
+
+        // A token without Sys.Audit still gets its nodes listed, but with every figure at zero.
+        if (nodes.All(node => node.MemMax == 0))
+        {
+            await _RequirePrivilegeAsync("Sys.Audit", cancellationToken);
+        }
+
+        return nodes;
     }
 
     public async Task<ProxmoxClusterInfo> GetClusterInfoAsync(CancellationToken cancellationToken)
@@ -147,12 +155,20 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
         // `/cluster/resources` has no separate "lxc" filter — `type=vm` returns both kinds, distinguished by each
         // entry's own `type` field ("qemu" or "lxc"). Works the same for a single host or a cluster.
         var data = await _GetAsync("cluster/resources?type=vm", cancellationToken);
-        return data.ValueKind == JsonValueKind.Array
+        var guests = data.ValueKind == JsonValueKind.Array
             ? data.EnumerateArray().Select(resource => new ProxmoxGuest(
                 _Str(resource, "vmid"), _Str(resource, "name"), _Str(resource, "node"), _Str(resource, "type"),
                 _Str(resource, "status"), _Long(resource, "maxmem"), _Long(resource, "maxdisk"),
                 _Double(resource, "maxcpu"), _Long(resource, "uptime"))).ToList()
             : [];
+
+        // Proxmox filters this list by what the token may see: no permission reads as an empty list, not an error.
+        if (guests.Count == 0)
+        {
+            await _RequirePrivilegeAsync("VM.Audit", cancellationToken);
+        }
+
+        return guests;
     }
 
     public Task<ProxmoxTaskOutcome> StartVmAsync(string node, string vmId, CancellationToken cancellationToken) =>
@@ -206,11 +222,18 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
     public async Task<IReadOnlyList<ProxmoxStoragePool>> ListStorageAsync(CancellationToken cancellationToken)
     {
         var data = await _GetAsync("cluster/resources?type=storage", cancellationToken);
-        return data.ValueKind == JsonValueKind.Array
+        var pools = data.ValueKind == JsonValueKind.Array
             ? data.EnumerateArray().Select(resource => new ProxmoxStoragePool(
                 _Str(resource, "storage"), _Str(resource, "node"), _Str(resource, "plugintype"),
                 _Long(resource, "maxdisk"), _Long(resource, "disk"), _Str(resource, "status") == "available")).ToList()
             : [];
+
+        if (pools.Count == 0)
+        {
+            await _RequirePrivilegeAsync("Datastore.Audit", cancellationToken);
+        }
+
+        return pools;
     }
 
     public async Task<IReadOnlyList<ProxmoxTaskSummary>> ListTasksAsync(string node, CancellationToken cancellationToken)
@@ -327,6 +350,36 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
         }
     }
 
+    // Whether an effective-permissions answer (`/access/permissions`: path -> { privilege: 1 }) grants `privilege`
+    // on any path. An empty answer means the token may do nothing at all.
+    internal static bool HasPrivilege(JsonElement permissions, string privilege) =>
+        permissions.ValueKind == JsonValueKind.Object
+        && permissions.EnumerateObject().Any(path => _Bool(path.Value, privilege));
+
+    // Called when a read came back empty or zeroed: tells "the token may not look" from "there is really nothing".
+    // `/access/permissions` answers for the calling token itself and needs no privilege, so it is always askable; if
+    // even that fails the empty answer stands.
+    private async Task _RequirePrivilegeAsync(string privilege, CancellationToken cancellationToken)
+    {
+        JsonElement permissions;
+        try
+        {
+            permissions = await _GetAsync("access/permissions", cancellationToken);
+        }
+        catch (ProxmoxApiException)
+        {
+            return;
+        }
+
+        if (!HasPrivilege(permissions, privilege))
+        {
+            throw new ProxmoxApiException(
+                $"The Proxmox API token \"{_server!.TokenId}\" has no {privilege} permission, so Proxmox answers with empty lists or zeroes instead of an error. " +
+                "In Proxmox, under Datacenter → Permissions, give the token the PVEAuditor role on path / (propagate). " +
+                "A token with privilege separation needs its own permission; its user's permissions do not carry over.");
+        }
+    }
+
     private static string _Upid(JsonElement data) =>
         data.ValueKind == JsonValueKind.String ? data.GetString()! : throw new ProxmoxApiException("Proxmox did not return a task id for this action.");
 
@@ -384,7 +437,7 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                throw _ErrorFor(response.StatusCode, body);
+                throw _ErrorFor(response.StatusCode, response.ReasonPhrase, body);
             }
 
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
@@ -392,9 +445,9 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
         }
     }
 
-    private static ProxmoxApiException _ErrorFor(HttpStatusCode status, string body)
+    private static ProxmoxApiException _ErrorFor(HttpStatusCode status, string? reason, string body)
     {
-        var detail = _TryExtractErrorDetail(body);
+        var detail = _TryExtractErrorDetail(body) ?? _ReasonDetail(status, reason);
         var suffix = detail is null ? string.Empty : $" {detail}";
         return status switch
         {
@@ -406,6 +459,13 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
         };
     }
 
+    // Proxmox reports a request it refuses before starting a task (e.g. "snapshot feature is not available" on a
+    // disk that cannot snapshot) as a 500 whose status line carries the message, and often `{"message": "..."}`.
+    private static string? _ReasonDetail(HttpStatusCode status, string? reason) =>
+        string.IsNullOrWhiteSpace(reason) || string.Equals(reason, status.ToString(), StringComparison.OrdinalIgnoreCase) || string.Equals(reason, "Internal Server Error", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : reason.Trim();
+
     // Proxmox's own validation errors (e.g. a bad snapshot name) come back as `{"errors": {"field": "reason"}}` —
     // safe to surface since it is the trusted API's own text, not agent-supplied.
     private static string? _TryExtractErrorDetail(string body)
@@ -416,6 +476,11 @@ internal sealed class ProxmoxEngine : IProxmoxEngine, IDisposable
             if (document.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Object)
             {
                 return string.Join("; ", errors.EnumerateObject().Select(property => $"{property.Name}: {property.Value}"));
+            }
+
+            if (document.RootElement.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(message.GetString()))
+            {
+                return message.GetString()!.Trim();
             }
         }
         catch (JsonException)

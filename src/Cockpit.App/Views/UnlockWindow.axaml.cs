@@ -80,7 +80,9 @@ public partial class UnlockWindow : Window
             "Start without your credentials",
             "There is no way to decrypt your API keys and tokens without the password — that is what makes the "
             + "encryption worth having. Continuing empties them and turns encryption off. Your profiles, "
-            + "sessions, layout and shortcuts are untouched; you will have to enter your tokens again.",
+            + "sessions, layout and shortcuts are untouched; you will have to enter your tokens again. Vault connections "
+            + "(1Password, Bitwarden) are removed as well and have to be connected again. A dated copy of the encrypted "
+            + "file stays next to cockpit.json, in case the password comes back.",
             "Empty credentials"),
     };
 

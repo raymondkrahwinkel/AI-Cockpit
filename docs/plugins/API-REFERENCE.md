@@ -246,6 +246,11 @@ public interface ICockpitPluginUi
   position in the whole transcript, counting the host's own markers it leaves out (AC-2257, host 0.173.0, SDK 3.84.0). The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
   asks `GetSessionProjectIdAsync(paneId)`, and both find the name in `GetProjectsAsync()`. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
+  `SendToSessionAsync(paneId, text, images)` submits a message with images and answers a `SessionSendResult`: whether a
+  live session took it, and `ImagesRefused` when the images stayed behind. The host decides what an image is, as on the
+  assistant's channel, and a session without image input (`OpenCockpitSession.AcceptsImages` false: TTY, terminal, a
+  model that does not see images) gets the text alone. `IAssistantChannelGateway.AcceptsImages` says the same for the
+  assistant (AC-2265, host 0.175.0, SDK 3.86.0).
   To show an existing pane without touching its input, use `await uiHost.FocusSessionAsync(paneId)`
   (host 0.122.0, SDK 3.31.0, UI SDK 3.9.0). It returns false if the pane is absent or focus is unavailable.
   A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.44.0),

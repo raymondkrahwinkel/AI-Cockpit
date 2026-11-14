@@ -17,12 +17,14 @@ public sealed record RemoteAssistantSettings(
     RemoteConsentBypass ConsentBypass,
     string? AssistantRole = null);
 
-// AC-1475: which sources may skip the consent card, to read only; nothing on the connection writes it.
+// AC-1475: the administration summary; editable consent preferences use the typed Options contract.
 public sealed record RemoteConsentBypass(bool All, IReadOnlyList<string> Sources);
 
 // AC-1475: what one change to the slot names; a field left null stays as the server has it.
 public sealed record RemoteAssistantProfilePatch
 {
+    public string? CopyFromLabel { get; init; }
+
     public string? Label { get; init; }
 
     public string? AssistantRole { get; init; }

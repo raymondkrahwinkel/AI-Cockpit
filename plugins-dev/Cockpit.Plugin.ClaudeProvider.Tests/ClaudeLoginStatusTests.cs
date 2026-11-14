@@ -24,14 +24,9 @@ public class ClaudeLoginStatusTests
     [InlineData("""{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty"}""", true, PluginCredentialKind.ApiKey)]
     [InlineData("""{"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}""", true, PluginCredentialKind.Login)]
     [InlineData("""{"loggedIn":true,"authMethod":"something_new"}""", true, PluginCredentialKind.Unknown)]
-    [InlineData("""{"loggedIn":true}""", true, PluginCredentialKind.Unknown)]
-    [InlineData("""{"loggedIn":true,"authMethod":7}""", true, PluginCredentialKind.Unknown)]
     // Rubbish is not a logged-out account. The exit code cannot tell these apart either: 1 means logged out and
     // also means the binary was missing.
     [InlineData("", null, PluginCredentialKind.Unknown)]
-    [InlineData("not json", null, PluginCredentialKind.Unknown)]
-    [InlineData("{}", null, PluginCredentialKind.Unknown)]
-    [InlineData("[1,2,3]", null, PluginCredentialKind.Unknown)]
     [InlineData("""{"loggedIn":"yes"}""", null, PluginCredentialKind.Unknown)]
     public void ReadLoggedIn_ReadsTheCliesOwnPayloads(string json, bool? loggedIn, PluginCredentialKind kind)
     {

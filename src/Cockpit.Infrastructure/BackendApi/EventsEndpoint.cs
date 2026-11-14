@@ -82,7 +82,7 @@ internal static class EventsEndpoint
                             && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
                                 ? !caller.HoldsAssistant && !swarmAssistant
                                 : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing) || !reachable(evt.ProfileLabel ?? string.Empty)))
-                        || ((evt.Kind is ProjectsEndpoints.EventKind or PluginEventsBridge.EventKind) && caller.Capability != ConnectKeyCapability.Admin))
+                        || ((evt.Kind is ProjectsEndpoints.EventKind or PluginEventsBridge.EventKind or PluginStoreEndpoints.EventKind) && caller.Capability != ConnectKeyCapability.Admin))
                     {
                         next = events.MoveNextAsync().AsTask();
                         continue;

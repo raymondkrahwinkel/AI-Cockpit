@@ -9,6 +9,38 @@ namespace Cockpit.Infrastructure.Images;
 // PNG, because `media_type: image/png` is what the attachment path puts on the wire.
 public static class InboundImage
 {
+    // One message's images (AC-1049; a session's since AC-2265): a file that will not pass is dropped on its own — the
+    // message it came with still goes, which is what a sender who wrote a paragraph and attached the wrong file needs.
+    public static (IReadOnlyList<byte[]> Accepted, string? Refusal) NormalizeAll(IReadOnlyList<byte[]> images)
+    {
+        if (images.Count == 0)
+        {
+            return ([], null);
+        }
+
+        var accepted = new List<byte[]>();
+        var refusals = new List<string>();
+
+        foreach (var image in images.Take(AssistantChannelImageLimits.MaxPerMessage))
+        {
+            if (TryNormalizeToPng(image, out var png, out var refusal))
+            {
+                accepted.Add(png);
+            }
+            else
+            {
+                refusals.Add(refusal);
+            }
+        }
+
+        if (images.Count > AssistantChannelImageLimits.MaxPerMessage)
+        {
+            refusals.Add($"only the first {AssistantChannelImageLimits.MaxPerMessage} images of a message are passed on");
+        }
+
+        return (accepted, refusals.Count == 0 ? null : string.Join("; ", refusals.Distinct()));
+    }
+
     // The PNG these bytes hold, or false with a reason plain enough to show the sender.
     public static bool TryNormalizeToPng(byte[] bytes, [NotNullWhen(true)] out byte[]? png, [NotNullWhen(false)] out string? refusal)
     {

@@ -11,6 +11,7 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.Tests.BackendApi;
 
@@ -21,6 +22,7 @@ public sealed class SessionsEndpointsTests
     [Fact]
     public async Task SecurityDoor_PreservesItsIndependentChecks()
     {
+        await _AssertResumeAndAnswersStayScopedAsync();
         {
             var scenario = new SessionsEndpointsTests();
             await scenario._AssertTheSessionList_ShowsOnlyTheKeysSessionsAsync();
@@ -33,6 +35,68 @@ public sealed class SessionsEndpointsTests
             var scenario = new SessionsEndpointsTests();
             await scenario._AssertTheBridge_PreservesEmissionOrder_AndKeepsRowUpsertSeqInTheDataAsync();
         }
+    }
+
+    private static async Task _AssertResumeAndAnswersStayScopedAsync()
+    {
+        await using var door = new BackendApiDoorTests._Door();
+        var index = Substitute.For<IConversationIndex>();
+        var launcher = Substitute.For<ISessionLauncher>();
+        var record = new ConversationRecord("saved-pane", "Saved", Project, door.ProjectDirectory, Profile, "claude",
+            "saved-conversation", SessionConversationIdState.Known, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            "Done", DateTimeOffset.UnixEpoch, false, false, Path.Combine(door.Directory, "saved.jsonl"));
+        var hidden = record with { PaneId = "hidden-pane", ProjectId = "elsewhere", ConversationId = "hidden-conversation", Title = "Private" };
+        var terminal = record with { PaneId = "tty-pane", ConversationId = "tty-conversation", TranscriptPath = null };
+        index.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<ConversationRecord>>([record, hidden, terminal]));
+        launcher.StartSessionAsync(Arg.Any<SessionLaunchRequest>()).Returns(new LaunchedSession("saved-pane", "Saved", null));
+        var verifier = await door.StartAsync(services =>
+        {
+            services.AddSingleton(index);
+            services.AddSingleton(launcher);
+        });
+        var key = await verifier.IssueAsync("scoped", ConnectKeyCapability.Operate, 30, Operator, scope: OneProject, issuedToOwner: true);
+        string Resume(string project, string conversation, string pane, string profile = Profile) => JsonSerializer.Serialize(new
+        {
+            profile, projectId = project, paneId = pane, resume = new { mode = 2, sessionId = conversation },
+        });
+        var wrongProject = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, Resume("elsewhere", "saved-conversation", "saved-pane"));
+        var wrongConversation = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, Resume(Project, "hidden-conversation", "saved-pane"));
+        var wrongPane = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, Resume(Project, "saved-conversation", "hidden-pane"));
+        var wrongProfile = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, Resume(Project, "saved-conversation", "saved-pane", "unknown"));
+        Assert.Equal(HttpStatusCode.Forbidden, wrongProject.Status);
+        Assert.Equal(HttpStatusCode.NotFound, wrongConversation.Status);
+        Assert.Equal(HttpStatusCode.NotFound, wrongPane.Status);
+        Assert.Equal(HttpStatusCode.Forbidden, wrongProfile.Status);
+        Assert.Empty(launcher.ReceivedCalls());
+        var listed = await door.SendAsync(HttpMethod.Get, "/api/v1/conversations", key.Secret);
+        var visible = Assert.Single(JsonNode.Parse(listed.Body)?.AsArray() ?? []);
+        Assert.Equal("saved-pane", visible?["paneId"]?.GetValue<string>());
+        Assert.Null(visible?["workingDirectory"]);
+        var resumed = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions", key.Secret, Resume(Project, "saved-conversation", "saved-pane"));
+        Assert.Equal(HttpStatusCode.Created, resumed.Status);
+        await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(request => request.PaneId == record.PaneId
+            && request.WorkingDirectory == record.WorkingDirectory && request.Resume == SessionResume.BySessionId("saved-conversation")));
+
+        door.ReadGateway.Sessions.Add(_Row("pane-in", Project));
+        var handle = Substitute.For<ISessionHandle>();
+        handle.PaneId.Returns("pane-in");
+        handle.RespondToPermissionWithAnswersAsync("question", true, "{\"Language\":\"English\"}").Returns(true);
+        door.Sessions.Register(handle);
+        var noGrant = await verifier.IssueAsync("no-grant", ConnectKeyCapability.Operate, 30, Operator,
+            scope: OneProject with { MayAnswerPermissions = false }, issuedToOwner: true);
+        const string answers = """{"allow":true,"answersJson":"{\"Language\":\"English\"}"}""";
+        var refused = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/question", noGrant.Secret, answers);
+        var outside = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-out/permissions/question", key.Secret, answers);
+        var persistent = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/question", key.Secret,
+            """{"allow":true,"scope":"session","answersJson":"{}"}""");
+        Assert.Equal(HttpStatusCode.Forbidden, refused.Status);
+        Assert.Equal(HttpStatusCode.NotFound, outside.Status);
+        Assert.Equal(HttpStatusCode.BadRequest, persistent.Status);
+        Assert.DoesNotContain(handle.ReceivedCalls(), call => call.GetMethodInfo().Name.StartsWith("RespondToPermission", StringComparison.Ordinal));
+        var answered = await door.SendAsync(HttpMethod.Post, "/api/v1/sessions/pane-in/permissions/question", key.Secret, answers);
+        Assert.Contains("\"answered\":true", answered.Body, StringComparison.Ordinal);
+        await handle.Received(1).RespondToPermissionWithAnswersAsync("question", true, "{\"Language\":\"English\"}");
+        Assert.DoesNotContain(door.AgentGateway.Calls, call => call.Contains("permission", StringComparison.OrdinalIgnoreCase));
     }
 
     // The labels `NodeSessionMcpToolsTests.StubProfileStore` and `RecordingReadGateway` know.

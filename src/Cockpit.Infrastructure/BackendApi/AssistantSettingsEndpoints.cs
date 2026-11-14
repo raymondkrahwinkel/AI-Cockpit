@@ -145,7 +145,7 @@ internal static class AssistantSettingsEndpoints
             settings.IsEnabled && profile is not null && host.Activity != AssistantActivity.Unavailable,
             host.UnavailableReason,
             services.GetService<INodeControllerPresence>()?.Current is not null,
-            profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Options(services, profile), ProfileEndpoints.EditorKeys(services, profile)),
+            profile is null ? null : ProfileEndpoints.ToWire(profile, ProfileEndpoints.Health(services), ProfileEndpoints.Options(services, profile), ProfileEndpoints.EditorKeys(services, profile), loginStarter: services.GetService<IProfileLoginStarter>()),
             profile is null ? slot.UnsetReason : null,
             profile?.SystemPrompt,
             slot.ReplacesStandingInstruction,
@@ -156,6 +156,16 @@ internal static class AssistantSettingsEndpoints
     // AC-1473's per-field rule on the slot's record, plus the slot's own label and instructions.
     private static async Task<(SessionProfile? Profile, IResult Refusal)> _ApplyAsync(AssistantProfileSlot slot, RemoteAssistantProfilePatch patch, IServiceProvider services, CancellationToken cancellationToken)
     {
+        if (patch.CopyFromLabel is { } sourceLabel)
+        {
+            var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync(cancellationToken).ConfigureAwait(false);
+            var index = ProfileEndpoints.IndexOf(profiles, sourceLabel);
+            if (index < 0 || McpRequestContext.CurrentNodeCaller?.AllowsProfile(profiles[index].Label, services.GetRequiredService<INodePairingBroker>()) != true)
+            {
+                return (null, ProfileEndpoints.NoProfile());
+            }
+            slot = slot with { Profile = profiles[index] };
+        }
         if (slot.Profile is not { } profile)
         {
             return (null, BackendApiRoutes.Error(StatusCodes.Status409Conflict, "no_assistant_profile", "No Assistant Profile is set. Copy one in from the server's profiles first."));

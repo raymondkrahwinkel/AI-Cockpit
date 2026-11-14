@@ -13,8 +13,8 @@
   <ItemGroup>
     <!-- The view tests' own headless platform, so both run the app on the same one. -->
     <Compile Include="..\Cockpit.App.ViewTests\HeadlessAvalonia.cs" Link="HeadlessAvalonia.cs" />
-    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.6" />
     <PackageReference Include="coverlet.collector" Version="10.1.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -51,6 +51,7 @@
     <AssemblyMetadata Include="EchoProviderDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.Plugin.EchoProvider\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="GitStatusDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="WorkflowsDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Workflows\bin\$(Configuration)\$(TargetFramework)\" />
+    <AssemblyMetadata Include="SchedulesDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Schedules\bin\$(Configuration)\$(TargetFramework)\" />
   </ItemGroup>
 
   <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->

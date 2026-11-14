@@ -1080,6 +1080,8 @@
         <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
         <Setter Property="MinHeight" Value="34"/>
+        <!-- Spinner buttons take 68px, so Width="80" left no room for the number; MinWidth holds for every NumericUpDown. -->
+        <Setter Property="MinWidth" Value="104"/>
     </Style>
     <Style Selector="NumericUpDown /template/ ButtonSpinner">
         <Setter Property="Background" Value="Transparent"/>

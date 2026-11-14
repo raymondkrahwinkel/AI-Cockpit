@@ -18,7 +18,9 @@ public sealed partial class StorePluginRowViewModel(
     Version? hostVersion = null,
     bool disabledByStartupProtection = false) : ObservableObject
 {
-    private Version EffectiveHostVersion => hostVersion ?? HostVersionInfo.Current;
+    private Version EffectiveHostVersion => store.Target?.HostVersion ?? hostVersion ?? HostVersionInfo.Current;
+    private int EffectiveAbstractionsVersion => store.Target?.AbstractionsVersion ?? hostAbstractionsMajor;
+    private string? RuntimeIdentifier => store.Target?.RuntimeIdentifier;
     public PluginStoreEntry Entry => entry;
 
     public IReadOnlyList<PluginStoreRevokedKey>? RevokedKeys { get; init; }
@@ -69,7 +71,7 @@ public sealed partial class StorePluginRowViewModel(
 
     public bool HasSourceRepository => SourceRepository is not null;
 
-    private PluginStorePackage? _LatestPackage => LatestVersionEntry?.PackageFor();
+    private PluginStorePackage? _LatestPackage => LatestVersionEntry?.PackageFor(RuntimeIdentifier);
 
     public bool HasPublisher => !string.IsNullOrEmpty(_LatestPackage?.KeyFingerprint);
 
@@ -257,14 +259,14 @@ public sealed partial class StorePluginRowViewModel(
     // AC-181: only an uninstalled plugin is incompatible when the shared install/load gate rejects its latest entry.
     // A running plugin, or one with no declared constraint, is not mislabeled; CanUpdate/StatusText explain updates.
     public bool IsIncompatible =>
-        !IsInstalled && LatestVersionEntry is { } version && !PluginCompatibility.IsCompatible(version, hostAbstractionsMajor, EffectiveHostVersion);
+        !IsInstalled && LatestVersionEntry is { } version && !PluginCompatibility.IsCompatible(version, EffectiveAbstractionsVersion, EffectiveHostVersion, RuntimeIdentifier);
 
     // Why this host cannot run `LatestVersionEntry`, or null when it can (or there is no version to judge).
     public string? IncompatibilityReason =>
-        LatestVersionEntry is { } version ? PluginCompatibility.IncompatibilityReason(version, hostAbstractionsMajor, EffectiveHostVersion) : null;
+        LatestVersionEntry is { } version ? PluginCompatibility.IncompatibilityReason(version, EffectiveAbstractionsVersion, EffectiveHostVersion, RuntimeIdentifier) : null;
 
     public string? UpdateUnavailableReason => UpdateAvailable && IncompatibilityReason is { } reason
-        ? $"{reason}; this machine runs {EffectiveHostVersion}"
+        ? $"{reason}; {(store.Target is null ? "this machine" : "the server")} runs {EffectiveHostVersion}"
         : null;
 
     public bool HasUpdateUnavailableReason => UpdateUnavailableReason is not null;

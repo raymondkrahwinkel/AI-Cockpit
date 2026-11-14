@@ -31,18 +31,6 @@ public sealed class ProxmoxMcpToolsTests
 
     // ---- Consent boundary --------------------------------------------------------------------------------------
 
-    [Fact]
-    public async Task StartVm_WhenDeclined_ReturnsError_AndNeverTouchesTheEngine()
-    {
-        var h = _Build(ConsentOutcome.Denied);
-        h.Engine.Throw = new InvalidOperationException("the engine must not be called");
-
-        var json = JsonNode.Parse(await h.Tools.StartVm(Session, "pve1", "100"));
-
-        Assert.False(json!["ok"]!.GetValue<bool>());
-        Assert.Contains("did not approve", json["error"]!.GetValue<string>());
-    }
-
     // ---- Off-by-default capabilities ---------------------------------------------------------------------------
 
     [Fact]
@@ -65,6 +53,14 @@ public sealed class ProxmoxMcpToolsTests
         Assert.True(completed!["ok"]!.GetValue<bool>());
         Assert.NotEmpty(enabled.Asked);
         Assert.Equal(ConsentRisk.Dangerous, enabled.Asked[^1].Risk);
+
+        var declined = _Build(ConsentOutcome.Denied, allowDelete: true);
+        declined.Engine.Throw = new InvalidOperationException("the engine must not be called");
+
+        var refused = JsonNode.Parse(await declined.Tools.DeleteVm(Session, "pve1", "100"));
+
+        Assert.False(refused!["ok"]!.GetValue<bool>());
+        Assert.Contains("did not approve", refused["error"]!.GetValue<string>());
     }
 
     [Theory]

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.Plugin.GeminiProvider;
 
@@ -42,9 +43,11 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // host's may ride along without ever giving the model two ways to find the same tool. The driver
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
+                DeclaredOptions = [StreamSilenceTimeout.Descriptor],
             },
             DefaultBaseUrl: provider.BaseUrl)
         {
+            Options = [StreamSilenceTimeout.LaunchOption],
             TermsNotice = provider.Terms,
             ReadModelIntelligenceAsync = (configJson, _) => Task.FromResult(_ReadModelIntelligence(configJson, provider)),
         };

@@ -17,12 +17,14 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.HeavyRuns;
+using Cockpit.Infrastructure.Images;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mentions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Infrastructure.Vault;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.Capabilities;
@@ -41,6 +43,7 @@ using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.Tracking;
+using Cockpit.Plugins.Abstractions.Vault;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -49,7 +52,7 @@ namespace Cockpit.Infrastructure.Plugins;
 // AC-1392: the `ICockpitHost` a plugin's backend part receives, scoped by `pluginId`, with no window behind it.
 // Sessions are reached through ISessionRegistry/ISessionLauncher, which marshal for themselves. The window members
 // are no-ops that say so once per plugin; the desktop's DesktopPluginHost overrides them until F2.14 (AC-1369).
-public class PluginBackendHost(
+internal class PluginBackendHost(
     string pluginId,
     string pluginName,
     IServiceProvider services,
@@ -128,6 +131,20 @@ public class PluginBackendHost(
     }
 
     public ICockpitSessionObserver Sessions => sessions;
+
+    public IOperatorActionService? OperatorActions => services.GetService<OperatorActionService>();
+
+    public IOperatorPhoneNotifications? OperatorPhoneNotifications => services.GetService<OperatorPhoneNotifications>();
+
+    public IOperatorActionTransport? OperatorTransport => pluginId == "depot"
+        ? services.GetService<OperatorActionService>() is { } service ? new _OperatorTransport(service) : null
+        : null;
+
+    private sealed class _OperatorTransport(OperatorActionService service) : IOperatorActionTransport
+    {
+        public IOperatorActionChannel OpenChannel() => service.OpenChannel();
+        public IOperatorActionChannel OpenChannel(string deviceId) => service.OpenChannel(deviceId);
+    }
 
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
     // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a
@@ -558,6 +575,19 @@ public class PluginBackendHost(
 
     public IReadOnlyList<ISessionResourceProvider> SessionResourceProviders =>
         services.GetRequiredService<ISessionResourceProviderRegistry>().Providers;
+
+    public IVaultProviderContext AddVaultProvider(IVaultProvider provider)
+    {
+        var hub = services.GetService<VaultHub>();
+        if (hub?.Register(pluginId, provider) is not { } context)
+        {
+            _Logger()?.LogWarning("Vault provider '{ProviderId}' is already registered or this host has no vault; this registration is ignored", provider.Id);
+            return UnavailableVaultProviderContext.Instance;
+        }
+
+        Runtime.Add(() => hub.Unregister(provider));
+        return context;
+    }
 
     public void AddWorkflowStep(IWorkflowStep step)
     {
@@ -1204,7 +1234,44 @@ public class PluginBackendHost(
     public Task SendToSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
-            : _ActOnSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
+            : _SendToSessionAsync(paneId, session => session.InjectAndSubmitAsync(text));
+
+    // AC-2265: the assistant channel's trust boundary and refusal shape. The images are decoded before the pane is looked
+    // up, off the UI thread; a session that cannot see them still gets the text, and the sender hears why they did not go.
+    public async Task<SessionSendResult> SendToSessionAsync(string paneId, string text, IReadOnlyList<byte[]> images)
+    {
+        var (accepted, refusal) = InboundImage.NormalizeAll(images);
+        var blind = false;
+        var delivered = await _SendToSessionAsync(paneId, session =>
+        {
+            if (accepted.Count > 0 && session.AcceptsImages)
+            {
+                return session.SubmitWithImagesAsync(text, accepted);
+            }
+
+            blind = accepted.Count > 0;
+            return string.IsNullOrEmpty(text) ? Task.FromResult(false) : session.InjectAndSubmitAsync(text);
+        }).ConfigureAwait(false);
+
+        if (blind)
+        {
+            refusal = string.Join("; ", new[] { "this session cannot see images", refusal }.OfType<string>());
+        }
+
+        return new SessionSendResult(delivered, refusal);
+    }
+
+    private Task<bool> _SendToSessionAsync(string paneId, Func<ISessionHandle, Task<bool>> send) =>
+        _ActOnSessionAsync(paneId, async session =>
+        {
+            // A task must never become an answer to an SDK question or a TTY's own permission dialog.
+            if (session.SessionStatus == SessionStatus.NeedsAttention || session.HasPendingConsent
+                || (await session.ReadPendingPermissionsAsync().ConfigureAwait(false)).Count > 0)
+            {
+                return false;
+            }
+            return await send(session).ConfigureAwait(false);
+        });
 
     public Task<bool> InsertIntoSessionAsync(string paneId, string text) =>
         string.IsNullOrEmpty(text)

@@ -19,6 +19,9 @@ public static class SessionScratch
 
     public static string PathFor(string paneId) => Path.Combine(_ResolveBase(null), _Name(paneId));
 
+    // AC-2250: the session's Windows job is named at launch, so a guard can find it before the process exists.
+    public static string JobNameOf(string scratchPath) => "cockpit-session-" + Path.GetFileName(Path.TrimEndingDirectorySeparator(scratchPath));
+
     public static string Create(string paneId, Action<string>? log = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(paneId);
@@ -101,7 +104,7 @@ public static class SessionScratch
     private static extern int chown([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int owner, int group);
 
     public static string Instruction(string path) =>
-        $"Je tijdelijke map is $COCKPIT_SCRATCH ({path}). Zet tijdelijke bestanden, scripts, renders en clones alleen daar of in je worktree, nooit in de home-map of de root van een schijf. Cockpit ruimt die map op als je sessie sluit; wat bewaard moet blijven, hoort in de repo of in Depot.";
+        $"Je tijdelijke map is $COCKPIT_SCRATCH ({path}). Zet tijdelijke bestanden, scripts, renders en clones alleen daar of in je worktree, nooit in de home-map of de root van een schijf. Cockpit ruimt die map op als je sessie sluit; wat bewaard moet blijven, hoort in de repo of in Depot. Start containers met `--label cockpit.pane=$COCKPIT_PANE_ID`, dan mag je ze zelf weer stoppen.";
 
     public static string? OwnerOf(string path)
     {

@@ -25,6 +25,7 @@ using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Vault;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
@@ -265,6 +266,11 @@ internal static partial class Screenshotter
         ["statusbar-hover"] = (_, _) => _StatusBarScene(busy: false),
         ["statusbar-busy"] = (_, _) => _StatusBarScene(busy: true),
         ["statusbar-disk-popup"] = (_, _) => _StatusBarScene(busy: false),
+        // AC-2347: the vault hub's screens.
+        ["vault-options"] = (_, _) => _VaultOptions(VaultAvailability.Available),
+        ["vault-options-encryption-off"] = (_, _) => _VaultOptions(VaultAvailability.EncryptionOff),
+        ["vault-statusbar-panel"] = (_, _) => _VaultStatusBarScene(),
+        ["vault-consent"] = (width, height) => _VaultConsent(width, height),
         ["test-runs"] = (_, _) => _TestRunsScene(),
         ["child-history-sidebar"] = (_, _) => _ChildHistorySidebar(),
         ["child-history-sidebar-open"] = (_, _) => _ChildHistorySidebar(),
@@ -489,30 +495,16 @@ internal static partial class Screenshotter
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-start-refused"] = ServerGroupScene.StartRefused,
         ["remote-window"] = ServerGroupScene.Remote,
+        ["remote-projects"] = ServerGroupScene.RemoteProjects,
+        ["remote-project-new"] = (_, _) => ServerGroupScene.RemoteProjectEditor(existing: false),
+        ["remote-project-edit"] = (_, _) => ServerGroupScene.RemoteProjectEditor(existing: true),
+        ["remote-options-security"] = (_, _) => ServerGroupScene.RemoteOptions("security"),
+        ["remote-options-swarm"] = (_, _) => ServerGroupScene.RemoteOptions("swarm"),
+        ["remote-options-servers"] = (_, _) => ServerGroupScene.RemoteOptions("servers"),
         ["server-pane-permission"] = ServerGroupScene.Permission,
-        // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
-        // and its Audit log.
-        ["server-admin-keys"] = ServerAdminScene.Keys,
-        ["server-admin-audit"] = ServerAdminScene.Audit,
-        // AC-2035: its Storage page.
-        ["server-admin-storage"] = ServerAdminScene.Storage,
-        // AC-1472: its Projects page after a clone.
-        ["server-admin-projects"] = ServerAdminScene.Projects,
-        // AC-1473: its Profiles, the sign-in column reading and the editor open on a profile whose key is a secret.
-        ["server-admin-profiles"] = ServerAdminScene.Profiles,
-        // AC-1475: its Assistant page: stood down with an unsaved change, fresh, sign-in expired, and saved beside another key.
-        ["server-admin-assistant"] = ServerAdminScene.Assistant,
-        ["server-admin-assistant-fresh"] = ServerAdminScene.AssistantFresh,
-        ["server-admin-assistant-signin"] = ServerAdminScene.AssistantSignIn,
-        ["server-admin-assistant-saved"] = ServerAdminScene.AssistantSaved,
         // AC-1457: the Health tab of a connect server, for an admin key (alarm, device code) and for an operate key.
         ["server-health"] = ServerGroupScene.Health,
         ["server-health-operate"] = ServerGroupScene.HealthOperate,
-        ["server-admin-plugins"] = ServerAdminScene.Plugins,
-        ["server-admin-plugins-updates"] = ServerAdminScene.PluginsUpdates,
-        // AC-1590: "Install on this desktop" on a plugin the desktop lacks, and the restart prompt after the install.
-        ["server-admin-plugins-desktop"] = ServerAdminScene.PluginsDesktop,
-        ["server-admin-plugins-desktop-restart"] = ServerAdminScene.PluginsDesktopRestart,
         // Its own scene rather than a state of "profiles": it is a different window with a different, shorter set of
         // blocks, and the one control this ticket moved — the restart, which only shows with a living assistant behind
         // it — renders nowhere else.
@@ -645,7 +637,6 @@ internal static partial class Screenshotter
         ["plugin-store-updated-live"] = (_, _) => _PluginStoreUpdatedLive(mixed: false),
         ["plugin-store-update-all-mixed"] = (_, _) => _PluginStoreUpdatedLive(mixed: true),
         ["plugin-store-restart-advice"] = (_, _) => _PluginStoreRestartAdvice(),
-        ["server-admin-plugins-advice"] = ServerAdminScene.PluginsAdvice,
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -1636,6 +1627,7 @@ internal static partial class Screenshotter
         ["statusbar-hover"] = _HoverStatusMeters,
         ["statusbar-busy"] = window => _UseDisks(window, critical: true, open: false),
         ["statusbar-disk-popup"] = window => _UseDisks(window, critical: true, open: true),
+        ["vault-statusbar-panel"] = window => _OpenVaultPanel(window),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
         ["child-history-sidebar-open"] = _OpenSidebarChild,
         ["agents-child-open"] = _OpenAgentChild,

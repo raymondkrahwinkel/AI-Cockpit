@@ -160,7 +160,7 @@
                             <TextBlock Classes="FieldReadOnlyReason" Text="{Binding NameOrigin.ReadOnlyReason}"
                                        IsVisible="{Binding NameOrigin.IsLockedHere}"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Spacing="2" MinWidth="200">
+                        <StackPanel Grid.Column="1" Spacing="2" MinWidth="200" IsVisible="{Binding IsLocal}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Classes="FieldLabel" Text="Logo"/>
                                 <Border Classes="originBadge" Classes.shared="{Binding LogoOrigin.IsClaimed}"
@@ -240,7 +240,7 @@
                 <!-- AC-491: the work this project offers on its card, so someone who cannot write a prompt still has
                      somewhere to start. Each job says what it touches before it is clicked, which is why both boxes
                      are required: saving refuses a job that fills only one of them. -->
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="14" IsVisible="{Binding IsLocal}">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="SectionHeading" Text="Work this project offers"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
@@ -288,7 +288,7 @@
                      project needs — a repository link, the customer's website, a contact. Kept next to the
                      description rather than after the session settings: it answers the same question, "what is this
                      project", and a field per kind of information was explicitly not what was wanted. -->
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="14" IsVisible="{Binding IsLocal}">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="SectionHeading" Text="Anything else worth keeping"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
@@ -400,7 +400,7 @@
                     </StackPanel>
 
                     <StackPanel Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsLocal}">
                             <TextBlock Classes="FieldLabel" Text="Folder"/>
                             <!-- Not one of the six claimable host fields — a checkout path is always this machine's,
                                  never a plugin's to claim (AC-604 review). Fixed "local", not bound to an Origin
@@ -410,15 +410,16 @@
                                 <TextBlock Text="● This machine"/>
                             </Border>
                         </StackPanel>
-                        <TextBlock Classes="FieldHint" Text="Where its sessions start. Leave empty for a project without files of its own."/>
-                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                        <TextBlock Classes="FieldHint" Text="Where its sessions start. Leave empty for a project without files of its own." IsVisible="{Binding IsLocal}"/>
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" IsVisible="{Binding IsLocal}">
                             <TextBox Grid.Column="0" Text="{Binding SourceDirectory}" PlaceholderText="No folder chosen"/>
                             <Button Grid.Column="1" Content="Choose…" Command="{Binding BrowseCommand}"/>
                             <Button Grid.Column="2" Content="Clone…" Command="{Binding CloneCommand}"/>
                         </Grid>
                         <TextBlock Classes="FieldLabel" Margin="0,8,0,0" Text="Repository (git URL)"/>
-                        <TextBox Text="{Binding GitUrl}" PlaceholderText="https://github.com/owner/repository.git"/>
-                        <TextBlock Classes="FieldHint" Text="Used when this project is shared so another server can clone it. Leave empty to remove it."/>
+                        <TextBox Text="{Binding GitUrl}" IsEnabled="{Binding CanEditGitUrl}" PlaceholderText="https://github.com/owner/repository.git"/>
+                        <TextBlock Classes="FieldHint" Text="Used when this project is shared so another server can clone it. Leave empty to remove it." IsVisible="{Binding IsLocal}"/>
+                        <TextBlock Classes="FieldHint" IsVisible="{Binding IsOnServer}" Text="The server clones it with its own git credentials. A URL with a user name or token in it is refused."/>
                         <TextBlock Classes="FieldHint" Foreground="{DynamicResource CockpitDangerBrush}" IsVisible="{Binding GitUrlError, Converter={x:Static ObjectConverters.IsNotNull}}"
                                    Text="{Binding GitUrlError}"/>
                     </StackPanel>
@@ -428,7 +429,7 @@
                      repo, neither nested in the other) needs more than one. Same ItemsControl + Add-command
                      idiom as the resource rows below, not a new field type — a project with no extra row here
                      looks exactly as it always has. -->
-                <StackPanel Spacing="6">
+                <StackPanel Spacing="6" IsVisible="{Binding IsLocal}">
                     <TextBlock Classes="FieldLabel" Text="Other repositories"/>
                     <TextBlock Classes="FieldHint" Text="This project's sessions start in the folder above. Add another repository here for a project that spans more than one — a session picks which one to run in when it starts."/>
                     <ItemsControl ItemsSource="{Binding RepositoryRows}">
@@ -459,7 +460,7 @@
                      instructions file it follows, or material it only looks up when it needs it — see
                      ProjectResourceRole. The old standalone "Memory" row above is now just one row here with that
                      role; every project that used it opens with exactly one row already in this list. -->
-                <StackPanel Spacing="14">
+                <StackPanel Spacing="14" IsVisible="{Binding IsLocal}">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="SectionHeading" Text="Memory, instructions and reference"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
@@ -675,7 +676,7 @@
                                   HorizontalAlignment="Stretch" PlaceholderText="Leave the dialog's own choice"/>
                     </StackPanel>
 
-                    <StackPanel Spacing="2">
+                    <StackPanel Spacing="2" IsVisible="{Binding IsLocal}">
                         <TextBlock Classes="FieldLabel" Text="Assistant"/>
                         <TextBlock Classes="FieldHint" Text="Optional — which assistant this project's sessions run as, e.g. Zyra. Overrides the profile's own. Stays on this machine: it is never shared and never comes along when someone else binds this project."/>
                         <TextBox Text="{Binding Assistant}" PlaceholderText="whatever the profile says"
@@ -685,6 +686,12 @@
                         <StackPanel IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">
                             <controls:BrainPicker DataContext="{Binding BrainPicker}"/>
                         </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2" IsVisible="{Binding IsLocal}">
+                        <TextBlock Classes="FieldLabel" Text="Default role"/>
+                        <TextBlock Classes="FieldHint" Text="Optional — the role from the brain's role list that a session here gets when the assistant names none, e.g. Programmer. Stays on this machine."/>
+                        <TextBox Text="{Binding DefaultRole}" PlaceholderText="none" HorizontalAlignment="Stretch"/>
                     </StackPanel>
 
                     <StackPanel Spacing="2">
@@ -724,7 +731,7 @@
                                    IsVisible="{Binding WorktreeSwitchOrigin.IsLockedHere}"/>
                     </StackPanel>
 
-                    <StackPanel Spacing="2">
+                    <StackPanel Spacing="2" IsVisible="{Binding IsLocal}">
                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasFieldOwnership}">
                             <TextBlock Classes="FieldLabel" Text="MCP overlay"/>
                             <Border Classes="originBadge" Classes.shared="{Binding McpOverlayOrigin.IsClaimed}"

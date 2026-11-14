@@ -11,6 +11,9 @@ internal static class SchedulesChannel
     // Payload: none. Answers a SchedulesSnapshot.
     public const string Snapshot = "snapshot";
 
+    public const string CreateReminder = "create-reminder";
+    public const string AnswerReminder = "answer-reminder";
+
     // Payload: ScheduledTask. Saves it as the operator wrote it, new or replacing the one with its id; answers a SchedulesResult.
     public const string Save = "save";
 
@@ -49,7 +52,8 @@ internal sealed record SchedulesSnapshot(
     List<RunRecord> Runs,
     List<OperatorMessageChannelInfo> Channels,
     SchedulesSettingsView Settings,
-    DateTimeOffset? Now = null);
+    DateTimeOffset? Now = null,
+    List<Reminder>? Reminders = null);
 
 // A task as the list shows it: the task, its schedule in words, and when it runs next (null when off or unreadable).
 internal sealed record SchedulesTaskView(ScheduledTask Task, string? ReadsAs, DateTimeOffset? NextRun);

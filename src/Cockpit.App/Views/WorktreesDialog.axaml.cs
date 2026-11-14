@@ -33,7 +33,7 @@ public partial class WorktreesDialog : Window
     // stays cross-platform. Read-only and offered for any row; a folder that is gone simply does nothing.
     private void OnOpenFolder(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: ManagedWorktreeRowViewModel row } && Directory.Exists(row.WorktreePath))
+        if (sender is Button { DataContext: ManagedWorktreeRowViewModel { CanOpenFolder: true } row } && Directory.Exists(row.WorktreePath))
         {
             try
             {

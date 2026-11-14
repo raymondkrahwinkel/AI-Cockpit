@@ -9,6 +9,11 @@ namespace Cockpit.Core.Abstractions.Remote;
 /// </summary>
 public interface IAssistantAdministration
 {
+    /// <summary>Saves an edited server profile into the assistant slot, preserving its source's masked secrets.</summary>
+    Task<RemoteAssistantSettings> SaveCopiedProfileAsync(string sourceLabel, SessionProfile profile, bool replacesStandingInstruction,
+        string? assistantRole, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("The server does not support editing a copied assistant profile.");
+
     /// <summary>
     /// Lists roles from the server brain currently selected in the editor.
     /// </summary>

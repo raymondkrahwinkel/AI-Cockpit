@@ -59,7 +59,7 @@ public sealed record RemoteProfilePatch
 public sealed record RemoteMcpSelection(IReadOnlyList<string>? Names);
 
 // AC-1473: a new profile on a server: one of its plugin providers, configured there, plus the settings a change names.
-public sealed record RemoteNewProfile(string Label, string Provider, RemoteProfilePatch? Settings = null);
+public sealed record RemoteNewProfile(string Label, string Provider, RemoteProfilePatch? Settings = null, string? CopyFromLabel = null);
 
 // AC-1585: a provider a profile on the server can name, as the profile editor needs it. `Owner` is the folder of the
 // plugin that registered it there; none for a provider built into the cockpit.

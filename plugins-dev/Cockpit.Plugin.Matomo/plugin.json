@@ -1,0 +1,14 @@
+{
+  "id": "matomo",
+  "name": "Matomo",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.Matomo.dll",
+  "entryType": "Cockpit.Plugin.Matomo.MatomoPlugin",
+  "uiAssembly": "Cockpit.Plugin.Matomo.UI.dll",
+  "uiEntryType": "Cockpit.Plugin.Matomo.UI.MatomoUi",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.151.0",
+  "description": "Give agents read-only access to the reports of your own Matomo server through an mcp__cockpit-matomo__* server. The plugin calls the Matomo Reporting API itself with a token that has view rights only, and keeps that token private: an agent never sees it. You choose which sites agents may read. Nothing is ever written to Matomo.",
+  "author": "Cockpit",
+  "secretKeys": ["authToken"]
+}

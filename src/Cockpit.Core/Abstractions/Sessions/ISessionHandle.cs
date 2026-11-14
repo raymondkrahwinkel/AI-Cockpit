@@ -72,6 +72,8 @@ public interface ISessionHandle
     /// </summary>
     string? ActiveProfileLabel { get; }
 
+    Cockpit.Core.Profiles.SessionProfile? ActiveProfile => null;
+
     /// <summary>
     /// The project the session was started for, or null when it has none.
     /// </summary>
@@ -164,6 +166,18 @@ public interface ISessionHandle
     Task<SessionTranscriptSlice> ReadTranscriptAsync(int count);
 
     /// <summary>
+    /// The tail of the transcript prefix strictly before its global row index; TotalEntries is the prefix length.
+    /// </summary>
+    async Task<SessionTranscriptSlice> ReadTranscriptBeforeAsync(int before, int count)
+    {
+        SessionTranscriptSlice transcript = await ReadTranscriptAsync(int.MaxValue).ConfigureAwait(false);
+        int end = Math.Clamp(before, 0, transcript.TotalEntries);
+        int first = transcript.TotalEntries - transcript.Entries.Count;
+        return new SessionTranscriptSlice(
+            [.. transcript.Entries.Take(Math.Max(0, end - first)).TakeLast(count)], end);
+    }
+
+    /// <summary>
     /// The host-owned transcript rows with the event-log seq <paramref name="lastSeq"/> gives in the same instant, so a reader following the log after it gets each later upsert once (AC-1388).
     /// Null for a handle whose session keeps no host-owned transcript.
     /// </summary>
@@ -183,7 +197,7 @@ public interface ISessionHandle
 
     /// <summary>
     /// Submits <paramref name="prompt"/> now (true) or holds it until the session is ready (false), in the same step
-    /// as checking that no earlier prompt is still held; null, accepting nothing, when one is (AC-1375).
+    /// as checking that no earlier prompt is still held; null accepts nothing when one is held or input is refused.
     /// </summary>
     Task<bool?> SubmitPromptWhenReadyAsync(string prompt);
 
@@ -198,6 +212,15 @@ public interface ISessionHandle
     /// rest of the session, and only means something on an allow.
     /// </summary>
     Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false);
+
+    /// <summary>Answers only this exact pending permission revision, atomically with the desktop answer.</summary>
+    Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow,
+        OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) => Task.FromResult(false);
+
+    /// <summary>
+    /// Answers a pending structured question once; false when this handle cannot answer it.
+    /// </summary>
+    Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson) => Task.FromResult(false);
 
     /// <summary>
     /// Hands a verify render back to the session as its next input; false when the session cannot take it.
@@ -232,6 +255,19 @@ public interface ISessionHandle
     /// took it (AC-1392). Defaults to <see cref="SendPromptAsync"/> for a handle with no input of its own.
     /// </summary>
     Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
+
+    /// <summary>
+    /// Whether this session takes images with a message (AC-2265), as the composer's paste button decides. False by
+    /// default: a TTY session, a plain terminal and a remote handle have no host-owned turn to put an image in.
+    /// </summary>
+    bool AcceptsImages => false;
+
+    /// <summary>
+    /// Submits <paramref name="text"/> with <paramref name="pngImages"/> as one operator message, queued behind a turn in
+    /// flight like a typed one, and apart from whatever the operator has pending in the composer (AC-2265). True when a
+    /// live session took it; false by default, and whenever <see cref="AcceptsImages"/> is false.
+    /// </summary>
+    Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages) => Task.FromResult(false);
 
     /// <summary>
     /// Places <paramref name="text"/> in the session's input without submitting it, for the operator to edit or send

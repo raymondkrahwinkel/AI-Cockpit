@@ -39,27 +39,29 @@ jobs:
 
     outputs:
       plugins: ${{ steps.missing.outputs.plugins }}
+      windows: ${{ steps.missing.outputs.windows }}
 
     steps:
       - name: Check out this repo
         uses: actions/checkout@v7
-
-      - name: Check out the store repo
-        uses: actions/checkout@v7
         with:
-          repository: ${{ env.STORE_REPO }}
-          token: ${{ secrets.STORE_PUBLISH_TOKEN }}
-          path: store
+          ref: ${{ github.sha }}
+
+      - name: Read the store index without cloning its zip history
+        env:
+          GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p store
+          gh api "repos/$STORE_REPO/contents/index.json" -H 'Accept: application/vnd.github.raw+json' > store/index.json
 
       - name: Which plugin versions are missing from the store?
         id: missing
         shell: bash
         run: |
           set -euo pipefail
-          # Newline-separated text, not an array: an empty array has to be special-cased at every expansion,
-          # and getting that wrong here does not fail — it emits [""], which the matrix runs as a plugin named
-          # empty string.
           missing=''
+          windows=''
           for manifest in plugins-dev/Cockpit.Plugin.*/plugin.json; do
             id="$(jq -r '.id' "$manifest")"
             version="$(jq -r '.version' "$manifest")"
@@ -70,35 +72,159 @@ jobs:
             else
               echo "MISSING:    $id $version"
               missing="${missing}${id}"$'\n'
+              metadata="$(dirname "$manifest")/store.json"
+              if [ -f "$metadata" ] && jq -e '.runtimeIdentifiers // [] | any(startswith("win-"))' "$metadata" >/dev/null; then
+                windows="${windows}${id}"$'\n'
+              fi
             fi
           done
 
-          # Compact, so the matrix gets ["a","b"] — and a literal [] when there is nothing to do, which is what
-          # the job below tests to skip itself.
           if [ -z "$missing" ]; then
             json='[]'
           else
             json="$(printf '%s' "$missing" | jq -R . | jq -sc .)"
           fi
+          windows_json="$(printf '%s' "$windows" | jq -R . | jq -sc 'map(select(length > 0))')"
+          printf 'windows=%s\n' "$windows_json" >> "$GITHUB_OUTPUT"
           echo "Publishing: $json"
           printf 'plugins=%s\n' "$json" >> "$GITHUB_OUTPUT"
 
-  publish:
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-store-index
+          path: store/index.json
+          retention-days: 1
+
+  package-windows:
     needs: discover
-    if: needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != ''
+    if: needs.discover.outputs.windows != '[]'
+    runs-on: windows-latest
+    outputs:
+      count: ${{ steps.prepare.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - id: prepare
+        env:
+          PLUGINS: ${{ needs.discover.outputs.windows }}
+        shell: bash
+        run: bash scripts/plugin-publish.sh batch windows
+      - uses: actions/upload-artifact@v7
+        if: steps.prepare.outputs.count != '0'
+        with:
+          name: subprocess-windows-batch
+          path: subprocess/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-results-windows
+          path: results/
+          retention-days: 1
+      - if: steps.prepare.outputs.failed != '0'
+        run: exit 1
 
-    strategy:
-      # One at a time, and this is not tuning. Every publish branches from the store's main and rewrites the
-      # same index.json; two in flight produce two branches that both edit the same lines, and the second
-      # merge conflicts. Serialised, each run checks out a main that already contains the previous merge.
-      max-parallel: 1
-      # A plugin that cannot go yet — a host gate not satisfied, say — must not take the others down with it.
-      fail-fast: false
-      matrix:
-        plugin: ${{ fromJson(needs.discover.outputs.plugins) }}
+  prepare:
+    needs: [discover, package-windows]
+    if: ${{ !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.plugins != '[]' }}
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.prepare.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@v8
+        with:
+          name: publish-store-index
+          path: store
+      - uses: actions/download-artifact@v8
+        if: needs.package-windows.outputs.count != '' && needs.package-windows.outputs.count != '0'
+        with:
+          name: subprocess-windows-batch
+          path: subprocess
+      - id: prepare
+        env:
+          PLUGINS: ${{ needs.discover.outputs.plugins }}
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        shell: bash
+        run: bash scripts/plugin-publish.sh batch linux
+      - uses: actions/upload-artifact@v7
+        if: steps.prepare.outputs.count != '0'
+        with:
+          name: prepared-plugins
+          path: prepared/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-results-linux
+          path: results/
+          retention-days: 1
+      - if: steps.prepare.outputs.failed != '0'
+        run: exit 1
 
-    uses: ./.github/workflows/publish-plugin.yml
-    with:
-      plugin: ${{ matrix.plugin }}
-      auto_merge: true
-    secrets: inherit
+  publish:
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.count != '' && needs.prepare.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: plugin-store-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.STORE_REPO }}
+          token: ${{ secrets.STORE_PUBLISH_TOKEN }}
+          path: store
+      - uses: actions/download-artifact@v8
+        with:
+          name: prepared-plugins
+          path: prepared
+      - id: collect
+        shell: bash
+        run: bash scripts/collect-plugin-packages.sh
+
+      - name: Publish the batch in one store PR
+        if: steps.collect.outputs.count != '' && steps.collect.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="publish/plugins-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          {
+            printf 'Verified plugin batch from https://github.com/%s/actions/runs/%s\n\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            cat "$RUNNER_TEMP/published-plugins.txt"
+          } > "$RUNNER_TEMP/pr-body.md"
+          cd store
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -- '*.zip' index.json
+          git commit -m "Publish verified plugin batch $GITHUB_RUN_ID"
+          git push origin "$branch"
+          gh pr create --repo "$STORE_REPO" --head "$branch" \
+            --title "Publish verified plugin batch $GITHUB_RUN_ID" --body-file "$RUNNER_TEMP/pr-body.md"
+          number="$(gh pr list --repo "$STORE_REPO" --head "$branch" --state open --json number -q '.[0].number')"
+          if [ -z "$number" ]; then
+            echo "::error::No open PR found for $branch."
+            exit 1
+          fi
+          gh pr merge "$number" --repo "$STORE_REPO" --squash --delete-branch
+
+      - name: Report rejected candidates
+        if: steps.collect.outputs.failed != '' && steps.collect.outputs.failed != '0'
+        run: exit 1

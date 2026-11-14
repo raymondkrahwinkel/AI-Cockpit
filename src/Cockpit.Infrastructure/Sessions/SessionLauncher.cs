@@ -5,6 +5,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Core.Worktrees;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -19,7 +20,9 @@ public sealed class SessionLauncher(
     IWorktreeManager? worktrees = null,
     SessionStateRecorder? stateRecorder = null,
     ISessionStartObserver? startObserver = null,
-    ProfileSessionLimit? limit = null) : ISessionLauncher
+    ProfileSessionLimit? limit = null,
+    IConversationIndex? conversations = null,
+    ISessionTranscriptStore? transcripts = null) : ISessionLauncher
 {
     private bool _closed;
 
@@ -39,6 +42,7 @@ public sealed class SessionLauncher(
 
     public async Task<LaunchedSession?> StartSessionAsync(SessionLaunchRequest request)
     {
+        var askedForTty = request.Kind == PaneSessionKind.Tty;
         request = await composer.ComposeAsync(request).ConfigureAwait(false);
         if (request.RoleFailure is { } roleFailure)
         {
@@ -46,7 +50,7 @@ public sealed class SessionLauncher(
         }
         var profile = request.Profile;
         var kind = request.Kind ?? PaneSessionKind.Sdk;
-        if (kind == PaneSessionKind.Tty && !hosting.CanHost(PaneSessionKind.Tty))
+        if (kind == PaneSessionKind.Tty && (!hosting.CanHost(PaneSessionKind.Tty) || (!askedForTty && !hosting.HostsTtyByDefault)))
         {
             // AC-1524: a host without a terminal has no TTY route, so whatever asked for one (the profile's default
             // included) runs as the SDK session the host can make. Decided here so every caller follows it.
@@ -155,7 +159,7 @@ public sealed class SessionLauncher(
 
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
-            : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false);
+            : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false) ?? false;
         return new LaunchedSession(paneId, name, promptDelivered, UnisolatedNotice: admitted.Notice, RoleWarning: request.RoleWarning);
     }
 
@@ -237,21 +241,32 @@ public sealed class SessionLauncher(
         }
 
         // A frontend's pane closes itself, record and worktree included; a backend host is the launcher's to clear.
-        if (hosted is not SessionHostHandle)
+        if (hosted is not (SessionHostHandle or BackendTtySession))
         {
             await hosting.StopAsync(hosted).ConfigureAwait(false);
             return;
         }
 
         registry.Unregister(paneId);
+        await _RecordConversationAsync(hosted, closed: true).ConfigureAwait(false);
         await _TearDownAsync(hosted).ConfigureAwait(false);
         await desks.RemovePaneAsync(hosted.WorkspaceId, paneId).ConfigureAwait(false);
     }
 
-    public async Task<bool> SetSessionNameAsync(string paneId, string name) =>
-        !string.IsNullOrWhiteSpace(name)
-        && registry.Find(paneId) is { IsEmbedded: false } handle
-        && await handle.SetNameAsync(name).ConfigureAwait(false);
+    public async Task<bool> SetSessionNameAsync(string paneId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || registry.Find(paneId) is not { IsEmbedded: false } handle
+            || !await handle.SetNameAsync(name).ConfigureAwait(false))
+        {
+            return false;
+        }
+        if (desks is StoreSessionDesks stored)
+        {
+            await stored.RenamePaneAsync(handle.WorkspaceId, paneId, name.Trim()).ConfigureAwait(false);
+            await _RecordConversationAsync(handle).ConfigureAwait(false);
+        }
+        return true;
+    }
 
     public Task<Workspace> CreateSessionsWorkspaceAsync(string name) => desks.CreateSessionsWorkspaceAsync(name);
 
@@ -300,6 +315,21 @@ public sealed class SessionLauncher(
         }
 
         startObserver?.SessionStarted(hosted.PaneId, request.ProjectId, request.ProjectJobId);
+        await _RecordConversationAsync(hosted).ConfigureAwait(false);
+    }
+
+    private Task _RecordConversationAsync(ISessionHandle handle, bool closed = false)
+    {
+        if (conversations is null || handle is not SessionHostHandle)
+        {
+            return Task.CompletedTask;
+        }
+        var now = DateTimeOffset.UtcNow;
+        return conversations.RecordAsync(new ConversationRecord(handle.PaneId, handle.Title, handle.ProjectId,
+            handle.WorkingDirectory, handle.ActiveProfileLabel, handle.ProviderId, handle.LiveState.CliSessionId,
+            handle.LiveState.CliSessionId is null ? SessionConversationIdState.Unknown : SessionConversationIdState.Known,
+            now, now, handle.SessionStatus.ToString(), closed ? now : null, handle.StartedByTheAssistant, false,
+            (transcripts as SessionTranscriptLog)?.LogPath(handle.PaneId)));
     }
 
     // Keyed on the pane, as the desktop's close is: a clean worktree goes with its branch, one holding work is retained.

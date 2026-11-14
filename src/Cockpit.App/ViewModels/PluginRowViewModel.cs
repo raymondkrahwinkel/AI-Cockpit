@@ -20,6 +20,8 @@ public sealed partial class PluginRowViewModel(InstalledPlugin installed, bool h
 
     public DiscoveredPlugin Discovered => installed.Discovered;
 
+    internal string? InstalledSource => installed.Registration?.Source;
+
     // Whether this plugin's left-menu contributions are hidden (#72). The plugin still runs — its shortcut and command-palette entry keep working — which is what separates this from disabling it.
     public bool HiddenInMenu => installed.Registration?.HiddenInMenu ?? false;
 

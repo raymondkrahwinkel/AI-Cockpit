@@ -95,6 +95,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     public event EventHandler? WorkspaceOpened;
 
+    public event EventHandler? Changed;
+
     // The tab strip's items, rebuilt whenever the workspace set or the selection changes. A floating workspace has none.
     public ObservableCollection<WorkspaceTabViewModel> Tabs { get; } = [];
 
@@ -341,8 +343,21 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     {
         var created = Workspace.Create(name, WorkspaceType.Sessions);
         await _ApplyAsync(Settings.WithWorkspace(created));
+        return _remoteLauncher is null ? created : Settings.Active ?? throw new InvalidOperationException("The server created no workspace.");
+    }
+
+    internal async Task<Workspace> CreateWorkspaceAsync(Workspace workspace)
+    {
+        var created = workspace with { Id = Guid.NewGuid().ToString("n"), Name = workspace.Name.Trim(), Panes = [], IsFloating = false };
+        await _ApplyAsync(Settings.WithWorkspace(created));
         return created;
     }
+
+    internal Task UpdateWorkspaceAsync(Workspace workspace) =>
+        Settings.Workspaces.FirstOrDefault(current => current.Id == workspace.Id) is { } current
+            ? _ApplyAsync(Settings.WithUpdated(current.WithPresentation(workspace))) : Task.CompletedTask;
+
+    internal Task MoveWorkspaceToIndexAsync(string workspaceId, int index) => _ApplyAsync(Settings.WithMoved(workspaceId, index));
 
     // AC-1013: Brings the workspace of type `workspaceTypeId` to the front, creating one when none is open
     public async Task OpenWorkspaceAsync(string workspaceTypeId)
@@ -864,6 +879,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             settings = settings with { ActiveWorkspaceId = Settings.ActiveWorkspaceId };
         }
 
+        if (_remoteLauncher is not null)
+        {
+            await _ApplyRemoteAsync(Settings, settings);
+            return;
+        }
+
         Settings = settings;
         if (_store is null || _loadFailed)
         {
@@ -889,6 +910,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     partial void OnSettingsChanged(WorkspaceSettings value)
     {
+        Changed?.Invoke(this, EventArgs.Empty);
         _RefreshTabs();
         _RefreshWidgetPanes();
         _RefreshPluginBody();

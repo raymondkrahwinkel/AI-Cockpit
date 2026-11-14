@@ -37,6 +37,9 @@ public sealed record AssistantSettings
 
     public double ContextCompactionPercent { get; init; } = DefaultCompactionPercent;
 
+    // AC-2357: whether start_agent refuses a start without a fitting role (not even `none`) when the target brain has roles. On by default.
+    public bool RequireRole { get; init; } = true;
+
     // The reading level (AC-138) the assistant chat window renders replies at — the same `Sessions.ReadingLevel`
     // and the same default as an SDK session's "View" dropdown, so nobody's existing view shifts. Set only
     // here: the chat window is a display, not a control panel, and deliberately carries no picker of its own.

@@ -93,6 +93,18 @@ internal sealed partial class DepotNoteSaver : IDisposable
         }
     }
 
+    // The checksum the room is saved as: the base, while nothing typed is owed and no outside write waits to be merged (AC-2312).
+    public string? Persisted
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _owe || _isHeld ? null : _base;
+            }
+        }
+    }
+
     public bool IsHeld
     {
         get

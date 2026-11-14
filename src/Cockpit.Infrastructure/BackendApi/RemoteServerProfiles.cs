@@ -10,6 +10,11 @@ namespace Cockpit.Infrastructure.BackendApi;
 // back, which holds no secrets and would wipe them on the server.
 internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerProfiles
 {
+    public async Task<RemoteProfile> CopyProfileAsync(string sourceLabel, SessionProfile profile, CancellationToken cancellationToken = default) =>
+        Read(await _CallAsync<RemoteProfile>(HttpMethod.Post, "api/v1/profiles",
+            new RemoteNewProfile(profile.Label, _ProviderId(profile), new RemoteProfilePatch { Profile = RemoteProfileWire.ToJson(profile) }, sourceLabel),
+            cancellationToken).ConfigureAwait(false));
+
     public async Task<IReadOnlyList<RemoteProfile>> ListAsync(CancellationToken cancellationToken = default) =>
         [.. (await _CallAsync<RemoteProfileList>(HttpMethod.Get, "api/v1/profiles", null, cancellationToken).ConfigureAwait(false)).Profiles.Select(Read)];
 
