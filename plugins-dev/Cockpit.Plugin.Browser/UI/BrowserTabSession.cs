@@ -102,5 +102,18 @@ internal sealed class BrowserTabSession : IDisposable
         storage.Set(TabsKey, new BrowserSavedSession(tabs, _model.Active is null ? 0 : _model.Tabs.ToList().IndexOf(_model.Active)));
     }
 
-    public void Dispose() => _saveTimer.Stop();
+    public void Dispose()
+    {
+        try
+        {
+            SaveNow();
+        }
+        finally
+        {
+            if (_model is not null)
+            {
+                _model.Changed -= ScheduleSave;
+            }
+        }
+    }
 }

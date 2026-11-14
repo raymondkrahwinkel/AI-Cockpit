@@ -23,7 +23,9 @@ internal sealed partial class TabShareService : IDisposable
     private readonly ICockpitUiHost _host;
     private readonly BrowserModel _model;
     private readonly List<IDisposable> _subscriptions = [];
-    private readonly HashSet<string> _watched = [];
+    private readonly Dictionary<string, Action> _watched = [];
+    private readonly Dictionary<string, (string? PaneId, CancellationTokenSource Cancel)> _pending = [];
+    private bool _disposed;
 
     public TabShareService(ICockpitUiHost host, BrowserModel model, TabGrantRegistry grants)
     {
@@ -34,19 +36,30 @@ internal sealed partial class TabShareService : IDisposable
         {
             if (channelEvent.Payload.Deserialize<TabShareRequest>(Json) is { } request)
             {
-                Dispatcher.UIThread.Post(() => _ = _AnswerAsync(request));
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (_disposed == false)
+                    {
+                        _ = _AnswerAsync(request);
+                    }
+                });
             }
         }));
         _subscriptions.Add(host.Channel.Subscribe(SessionClosed, channelEvent =>
         {
             if (channelEvent.Payload.Deserialize<string>(Json) is { } paneId)
             {
-                Dispatcher.UIThread.Post(() => Grants.SessionEnded(paneId));
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _CancelPending(paneId);
+                    Grants.SessionEnded(paneId);
+                });
             }
         }));
-        model.TabClosed += tab => Grants.TabClosed(tab.Id);
+        model.TabClosed += _TabClosed;
         model.Changed += _WatchNavigation;
-        Grants.Changed += () => Dispatcher.UIThread.Post(_SyncControlled);
+        Grants.Changed += _GrantsChanged;
+        _WatchNavigation();
     }
 
     public TabGrantRegistry Grants { get; }
@@ -55,7 +68,29 @@ internal sealed partial class TabShareService : IDisposable
     // the timeout and a server without a card all leave the tab unshared.
     public async Task ShareAsync(BrowserTab tab)
     {
-        var sessions = await _OpenSessionsAsync();
+        using var pending = _NewPending();
+        var id = Guid.NewGuid().ToString("N");
+        if (_disposed || tab.View.HostStopped.IsCancellationRequested)
+        {
+            return;
+        }
+        _pending.Add(id, (null, pending));
+        try
+        {
+            await _ShareAsync(tab, pending.Token);
+        }
+        catch (OperationCanceledException) when (pending.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            _pending.Remove(id);
+        }
+    }
+
+    private async Task _ShareAsync(BrowserTab tab, CancellationToken cancellationToken)
+    {
+        var sessions = await _OpenSessionsAsync(cancellationToken);
         if (sessions.Count == 0)
         {
             _host.ShowToast("No session has the browser tools (cockpit-browser). Start one with them, or give a running one a restart with them.", PluginToastSeverity.Information);
@@ -84,8 +119,10 @@ internal sealed partial class TabShareService : IDisposable
             Never = NeverCovered,
         };
 
-        using var timeout = new CancellationTokenSource(CardTimeout);
-        var decision = await _host.RequestConsentAsync(request, timeout.Token);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(CardTimeout);
+        var decision = await _host.RequestConsentAsync(request, timeout.Token).WaitAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (decision.IsApproved == false || decision.Chosen is not { } chosen || chosen.TryGetValue("session", out var picked) == false)
         {
             return;
@@ -94,7 +131,7 @@ internal sealed partial class TabShareService : IDisposable
         var paneId = picked[0];
         var name = sessions.FirstOrDefault(session => session.PaneId == paneId)?.Name ?? paneId;
         var mode = chosen.TryGetValue("mode", out var modes) && modes.Contains(Control) ? Control : Watch;
-        if (_model.Tabs.Contains(tab))
+        if (_model.Tabs.Contains(tab) && tab.View.HostStopped.IsCancellationRequested == false)
         {
             Grants.Share(paneId, name, tab.Id, origin, mode);
         }
@@ -102,17 +139,34 @@ internal sealed partial class TabShareService : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+        _CancelPending();
+        Grants.Clear();
+        _SyncControlled();
+        _model.TabClosed -= _TabClosed;
+        _model.Changed -= _WatchNavigation;
+        Grants.Changed -= _GrantsChanged;
+        foreach (var unsubscribe in _watched.Values)
+        {
+            unsubscribe();
+        }
+        _watched.Clear();
         foreach (var subscription in _subscriptions)
         {
             subscription.Dispose();
         }
     }
 
-    private async Task<IReadOnlyList<OpenCockpitSession>> _OpenSessionsAsync()
+    private async Task<IReadOnlyList<OpenCockpitSession>> _OpenSessionsAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var result = await _host.Channel.InvokeAsync(Sessions, JsonSerializer.SerializeToElement(true, Json));
+            var result = await _host.Channel.InvokeAsync(Sessions, JsonSerializer.SerializeToElement(true, Json), cancellationToken).WaitAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return result.Deserialize<List<OpenCockpitSession>>(Json) ?? [];
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -123,24 +177,39 @@ internal sealed partial class TabShareService : IDisposable
 
     private async Task _AnswerAsync(TabShareRequest request)
     {
+        using var pending = _NewPending();
+        _pending.Add(request.Id, (request.PaneId, pending));
         TabShareAnswer answer;
         try
         {
-            answer = await _HandleAsync(request);
+            answer = await _HandleAsync(request, pending.Token).WaitAsync(pending.Token);
+            pending.Token.ThrowIfCancellationRequested();
+            await _host.Channel.InvokeAsync(Answer, JsonSerializer.SerializeToElement(answer, Json));
+        }
+        catch (OperationCanceledException) when (pending.IsCancellationRequested)
+        {
+            await _NotifyCancelledAsync([request.Id]);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             answer = _Refuse(request, "The tab could not be read.");
+            if (pending.IsCancellationRequested == false)
+            {
+                await _host.Channel.InvokeAsync(Answer, JsonSerializer.SerializeToElement(answer, Json));
+            }
         }
-
-        await _host.Channel.InvokeAsync(Answer, JsonSerializer.SerializeToElement(answer, Json));
+        finally
+        {
+            _pending.Remove(request.Id);
+        }
     }
 
-    private async Task<TabShareAnswer> _HandleAsync(TabShareRequest request)
+    private async Task<TabShareAnswer> _HandleAsync(TabShareRequest request, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (ControlTools.Contains(request.Tool))
         {
-            return await _ControlAsync(request);
+            return await _ControlAsync(request, cancellationToken);
         }
 
         if (request.Tool == "list")
@@ -158,14 +227,17 @@ internal sealed partial class TabShareService : IDisposable
             return await TabLookAlong.AskAsync(
                 request.PaneId,
                 request.Text,
-                [.. _model.Tabs.Select(tab => new LookAlongTab(tab.Id, tab.Title, tab.Address))],
+                [.. _model.Tabs.Where(tab => tab.View.HostStopped.IsCancellationRequested == false).Select(tab => new LookAlongTab(tab.Id, tab.Title, tab.Address))],
                 _model.Active?.Id,
                 async card =>
                 {
-                    using var timeout = new CancellationTokenSource(CardTimeout);
-                    return await _host.RequestConsentAsync(card, timeout.Token);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeout.CancelAfter(CardTimeout);
+                    var decision = await _host.RequestConsentAsync(card, timeout.Token).WaitAsync(cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return decision;
                 },
-                tabId => _ShareAndReadAsync(request, tabId),
+                tabId => _ShareAndReadAsync(request, tabId, cancellationToken),
                 error => _Refuse(request, error));
         }
 
@@ -182,6 +254,8 @@ internal sealed partial class TabShareService : IDisposable
             _ => await _DevToolsAsync(tab, "Runtime.evaluate", TabReader.TextParameters),
         };
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Re-checked after the read: a stop, a close or a move while it ran refuses it, and nothing read goes out.
         if (_Authorized(request.PaneId, tabId) is not { } after || ReferenceEquals(after.Grant, grant) == false)
         {
@@ -195,22 +269,29 @@ internal sealed partial class TabShareService : IDisposable
     }
 
     // After the click: the grant (this session, this tab, watching) and the first read through the same path as any other.
-    private async Task<TabShareAnswer> _ShareAndReadAsync(TabShareRequest request, string tabId)
+    private async Task<TabShareAnswer> _ShareAndReadAsync(TabShareRequest request, string tabId, CancellationToken cancellationToken)
     {
         if (_model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is not { } tab)
         {
             return _Refuse(request, "The tab was closed before it could be shared.");
         }
 
-        var name = (await _OpenSessionsAsync()).FirstOrDefault(session => session.PaneId == request.PaneId)?.Name ?? request.PaneId;
+        var session = (await _OpenSessionsAsync(cancellationToken)).FirstOrDefault(session => session.PaneId == request.PaneId);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (session is null || tab.View.HostStopped.IsCancellationRequested)
+        {
+            return _Refuse(request, "The session or browser stopped before the tab could be shared.");
+        }
+        var name = session.Name;
         Grants.Share(request.PaneId, name, tabId, TabGrantRegistry.OriginOf(tab.Address), Watch);
-        return await _HandleAsync(request with { Tool = "screenshot", TabId = tabId });
+        return await _HandleAsync(request with { Tool = "screenshot", TabId = tabId }, cancellationToken);
     }
 
     // The grant of this session on this tab, and only while the tab is still on the origin it was granted for.
     private (BrowserTab Tab, TabGrant Grant)? _Authorized(string paneId, string tabId) =>
         Grants.Authorize(paneId, tabId) is { } grant
         && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab
+        && tab.View.HostStopped.IsCancellationRequested == false
         && string.Equals(TabGrantRegistry.OriginOf(tab.Address), grant.Origin, StringComparison.OrdinalIgnoreCase)
             ? (tab, grant)
             : null;
@@ -237,17 +318,81 @@ internal sealed partial class TabShareService : IDisposable
     // A move to another origin pauses the tab's grants; checked on every change of a tab that has one.
     private void _WatchNavigation()
     {
-        foreach (var tab in _model.Tabs.Where(tab => _watched.Add(tab.Id)))
+        foreach (var tab in _model.Tabs.Where(tab => _watched.ContainsKey(tab.Id) == false))
         {
-            tab.View.OperatorInput += () => _OperatorInput(tab);
-            tab.View.SubmitHeld += (method, url) => _SubmitHeld(tab, method, url);
-            tab.Changed += () =>
+            Action input = () => _OperatorInput(tab);
+            Action<string, string> submit = (method, url) => _SubmitHeld(tab, method, url);
+            Action changed = () =>
             {
                 if (Grants.ForTab(tab.Id).Count > 0)
                 {
                     Grants.Navigated(tab.Id, TabGrantRegistry.OriginOf(tab.Address));
                 }
             };
+            tab.View.OperatorInput += input;
+            tab.View.SubmitHeld += submit;
+            tab.Changed += changed;
+            var stopped = tab.View.HostStopped.Register(() => Dispatcher.UIThread.Post(() =>
+            {
+                if (_disposed == false)
+                {
+                    _CancelPending();
+                    Grants.Clear();
+                }
+            }));
+            _watched.Add(tab.Id, () =>
+            {
+                stopped.Dispose();
+                tab.View.OperatorInput -= input;
+                tab.View.SubmitHeld -= submit;
+                tab.Changed -= changed;
+            });
+        }
+    }
+
+    private void _GrantsChanged() => Dispatcher.UIThread.Post(() =>
+    {
+        if (_disposed == false)
+        {
+            _SyncControlled();
+        }
+    });
+
+    private void _TabClosed(BrowserTab tab)
+    {
+        _CancelPending();
+        Grants.TabClosed(tab.Id);
+        if (_watched.Remove(tab.Id, out var unsubscribe))
+        {
+            unsubscribe();
+        }
+    }
+
+    private void _CancelPending(string? paneId = null)
+    {
+        var pending = _pending.Where(pair => paneId is null || pair.Value.PaneId is null || pair.Value.PaneId == paneId).ToArray();
+        foreach (var pair in pending)
+        {
+            pair.Value.Cancel.Cancel();
+        }
+    }
+
+    private CancellationTokenSource _NewPending()
+    {
+        CancellationToken[] tokens = [.. _model.Tabs.Select(tab => tab.View.HostStopped)
+            .Where(token => token.CanBeCanceled && token.IsCancellationRequested == false)];
+        return tokens.Length == 0 ? new CancellationTokenSource() : CancellationTokenSource.CreateLinkedTokenSource(tokens);
+    }
+
+    private async Task _NotifyCancelledAsync(string[] ids)
+    {
+        try
+        {
+            await _host.Channel.InvokeAsync(Cancel, JsonSerializer.SerializeToElement(ids, Json));
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or ObjectDisposedException or InvalidOperationException)
+        {
+            // The backend also cancels its pending calls when its bridge is disposed.
         }
     }
 }

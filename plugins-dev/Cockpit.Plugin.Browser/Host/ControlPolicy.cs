@@ -1,10 +1,11 @@
 using System.Text.Json;
+using Xilium.CefGlue;
 
-namespace Cockpit.Plugin.Browser.UI.Share;
+namespace Cockpit.Plugin.Browser.Host;
 
 // AC-1728: the decisions control rests on, with nothing the page's own scripts can set. MayAct runs on CEF's UI thread
 // right before the input goes in; Navigation runs in CEF's resource handler for every frame; ClickTarget reads what
-// DevTools (not the page) says lies under the point.
+// DevTools (not the page) says lies under the point. AC-2149: the engine host runs this very file, not a copy.
 internal static class ControlPolicy
 {
     public enum Verdict
@@ -14,14 +15,20 @@ internal static class ControlPolicy
         Drop,
     }
 
+    public const int MaxTyped = 2_000;
+
     private static readonly HashSet<string> FrameOwners = new(StringComparer.OrdinalIgnoreCase) { "IFRAME", "FRAME", "OBJECT", "EMBED", "PORTAL", "FENCEDFRAME" };
 
     // The very grant that authorized the action still stands, the tab is still on its origin, and for keys the focused
     // frame is on that origin too, so typing never lands in another site's iframe.
-    public static bool MayAct(TabGrantRegistry grants, string paneId, string tabId, TabGrant grant, string? mainUrl, string? focusedUrl, bool needsFocus) =>
-        ReferenceEquals(grants.Authorize(paneId, tabId, control: true), grant)
-        && SameOrigin(mainUrl, grant.Origin)
-        && (needsFocus == false || SameOrigin(focusedUrl, grant.Origin));
+    public static bool MayAct(bool grantStands, string? origin, string? mainUrl, string? focusedUrl, bool needsFocus) =>
+        grantStands
+        && origin is not null
+        && SameOrigin(mainUrl, origin)
+        && (needsFocus == false || SameOrigin(focusedUrl, origin));
+
+    // The browser's frames as one string, so a frame added under a click point between hit test and click refuses it.
+    public static string FrameSignature(CefBrowser browser) => string.Join(",", browser.GetFrameIdentifiers().Order(StringComparer.Ordinal));
 
     // While a tab is controlled, any frame's form submission and any non-GET navigation waits for the operator, one to
     // another origin is dropped, and so is the top frame leaving the origin unless the host itself (the address bar)
@@ -69,5 +76,11 @@ internal static class ControlPolicy
     public static bool SameOrigin(string? address, string origin) =>
         Uri.TryCreate(address, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
-        && string.Equals(TabGrantRegistry.OriginOf(address), origin, StringComparison.OrdinalIgnoreCase);
+        && string.Equals(OriginOf(address), origin, StringComparison.OrdinalIgnoreCase);
+
+    // A tab's origin as a grant compares it: scheme, host and port, so a path change on the same site never pauses.
+    public static string OriginOf(string address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.IsAbsoluteUri && uri.Host.Length > 0
+            ? uri.GetLeftPart(UriPartial.Authority)
+            : address;
 }

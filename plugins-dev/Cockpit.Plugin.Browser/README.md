@@ -3,6 +3,144 @@
 A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README covers the engine delivery
 (AC-1727) and the browser itself (AC-1711).
 
+## Engine IPC foundation (AC-2143)
+
+`Ipc/` is compiled into the UI and Subprocess assemblies; Core does not know this protocol.
+The engine launcher uses it (AC-2144); the browser views move to host tabs in AC-2147. `requiresRestart` remains true.
+The launcher supplies a fresh generation and two inherited anonymous pipe handles, restricts inheritance
+to its own child, then calls `ChildStarted` to close the parent's client copies. Handles are capabilities,
+not credentials to put in logs. Register trusted tab/session pairs on each endpoint before sending requests.
+Registration is routing only: CEF-thread consent, origin and focus checks remain the handler's responsibility.
+
+Version 1 uses a four-byte little-endian JSON byte length, followed by one UTF-8 `BrowserIpcMessage`.
+Every message binds generation, tab, session, request id, operation and deadline. Request ids increase per
+direction. Invalid framing, versions, bindings or replay close the connection and cancel calls.
+There is no reconnect or grant restoration. Limits: 1 MiB/message, 64 calls (including waiting writers),
+64 incoming requests, 64 tab/session pairs and 30 seconds per request or partial frame. Expired or excess
+requests receive a per-call rejection. Recent retired tabs have a bounded 30-second late-answer/cancel window.
+Requests racing with tab retirement are also rejected per call during that window and still consume their
+request id for replay detection; an unknown tab outside the window remains a protocol error.
+Local retired-tab calls and oversized outgoing messages fail only that call. Idle pipes do not poll.
+Handlers must honor cancellation and must not wait for a nested request on the same connection's worker.
+A cancelled handler gets 500 ms to finish; only an unresponsive handler ends the generation. Sending a
+best-effort Cancel has its own 250 ms bound, including waiting for the writer.
+Ordinary handler failures reject only their call without sending exception details. Protocol errors and
+failed writes still close the connection.
+
+At most two reusable BGRA buffers belong to each tab, with at most 128 per connection; each is limited to 128 MiB and 8192 pixels per axis.
+Their backing directories have a protected current-user ACL on Windows and mode 0700 on Unix (files 0600).
+Choose the same trusted private parent directory at both endpoints; peer messages supply only descriptors,
+never paths. Opening derives the path from generation/id and validates exact size; disconnect closes mappings
+and removes owned files. Transmit descriptors only over the inherited pipe.
+Readers map read-only. Disposing a buffer returns its connection slot, including after a cleanup failure.
+Cleanup attempts every resource independently and retains failures in `CleanupErrors`. Producer files use
+DeleteOnClose; creation also sweeps abandoned pixel files with an exclusive open, skipping live mappings.
+On Linux, producers and readers hold shared `flock` leases; cleanup requires an exclusive lease.
+The launcher creates a private storage parent and validates existing ownership and access before using it.
+Both endpoints resolve directory symlinks/junctions first and validate the resulting real ancestor chain.
+Untrusted targets, unresolved reparse points, another buffer owner and non-owner buffer access are rejected.
+Sticky temporary directories are allowed; an ordinary writable ancestor is not.
+Existing buffer files are inspected before opening and their open handles are checked before mapping;
+Linux also rejects hard links. Buffer storage remains strictly private. An existing Windows cache may belong
+to and grant access to the current user, SYSTEM, Administrators or TrustedInstaller; other principals are refused.
+An existing Linux cache owned by the current user is tightened to 0700 automatically; another owner is refused.
+Frame-ready/ack and dirty-region copying are connected in AC-2147: never reuse a published buffer before ack.
+This process boundary is not a sandbox against another process running as the same OS user.
+
+## Engine host launcher (AC-2144)
+
+`BrowserEngine.StartHostAsync` fetches through the existing pinned runtime cache, then starts the existing
+self-contained Subprocess executable with `--cockpit-enginehost`. Each call has a fresh process and generation.
+The runtime, cache and private buffer parent are supplied by the plugin, never by an IPC request or a page.
+The host loads and initializes CEF once on its 8 MiB startup thread and shuts it down there after pipe EOF.
+Linux retains argv[0], and every native CEF child receives `--cockpit-cef-runtime-dir` as before.
+
+Windows uses a CreateProcess handle list containing exactly the two child pipe handles. Linux uses glibc
+`posix_spawn` file actions to duplicate those endpoints to descriptors 3/4 and close all other descriptors;
+standard input/output/error are attached to `/dev/null` so native diagnostics cannot corrupt a reused descriptor.
+this requires glibc's `posix_spawn_file_actions_addclosefrom_np` (2.34 or newer). There is no broad-inheritance
+fallback. The host marks both received handles non-inheritable before it starts CEF children.
+The generation is registered before the IPC reader starts. `engine.ready` returns initialization status and
+the actual host PID; it makes no nested request. Startup is bounded by the existing 30-second call deadline.
+Missing runtime, pipe failure and host crash fail the caller; another start can use a fresh process.
+Host exit also closes IPC directly, independently of EOF, so an accidentally inherited pipe cannot delay failure.
+Disposal closes IPC and waits up to five seconds before forced cleanup.
+On Windows (AC-2145), an unnamed, non-inheritable Job Object has `KILL_ON_JOB_CLOSE` and no breakaway flags.
+`CreateProcess` assigns the suspended host atomically through `PROC_THREAD_ATTRIBUTE_JOB_LIST` before resume;
+failure prevents startup. This also covers an owner crash immediately after process creation. The job handle
+stays only in the client: it closes on host exit or the graceful deadline, killing remaining host/CEF children.
+An owner crash closes it through the OS. No process enumeration or attachment to unrelated PIDs is needed.
+On Linux (AC-2146), Subprocess first runs as a supervisor outside the host's new process group. It becomes a
+child subreaper before spawning the enginehost with `POSIX_SPAWN_SETPGROUP`. Only the supervisor inherits the
+lifetime reader; the client alone holds its writer. EOF, a broken lifetime pipe or host exit kills the own group,
+then the supervisor reaps its adopted descendants. The leader stays waitable until the group is killed to prevent
+PID reuse. A separate pipe reports the host PID within five seconds; startup failure closes the lifetime writer.
+Supervisor exceptions produce one stderr line, captured separately and written to the client's trace log.
+The enginehost and CEF children cannot inherit the supervisor pipes. No `/proc` snapshot, systemd or cgroup is
+needed for containment. The Browser UI owns a new engine/client per plugin instance (AC-2157).
+If the supervisor alone is killed, the client closes IPC and a responsive host can stop normally. A host that
+ignores EOF can survive supervisor SIGKILL or an OOM kill of only the supervisor; covering supervisor loss would
+require a kernel lifetime boundary and is outside this mechanism.
+
+## Development host tabs (AC-2147)
+
+After `StartHostAsync`, `BrowserEngine.ForHost(client)` supplies the existing `BrowserModel`, `BrowserShell`
+and `BrowserHome` with `HostBrowserView`. This is an internal development/harness entry point, not a setting.
+The engine owns the client. `Shutdown` cancels startup and closes the pipe, then closes tabs and disposes the
+client within the existing deadlines without blocking Avalonia. `ShutdownCompletion` lets the local harness
+await cleanup. Profiles and caches survive; live DOM, forms, JavaScript and audio are not restored.
+The plugin retains `requiresRestart: true`; live lifecycle measurements use an explicit local harness.
+Application shutdown requests do not tear down the engine: runtime disposal follows approved shutdown only.
+
+The model holds an opaque tab id and host generation through `BrowserView`; moving the shell between workspace
+and rail keeps that view and id. The host creates CEF browsers and the operator request context; the host route
+never loads native CEF in the UI process. `tab.create`/`tab.close` use the engine control pair, and navigation,
+visibility, viewport changes and operator input use the registered tab's `operator` pair.
+
+`tab.frame` carries the tab-bound buffer descriptor, resize revision, frame id, scale and dirty rectangle.
+CEF copies changed rows directly into a reusable shared buffer; Avalonia copies them directly into its bitmap.
+The first frame after resize fills a new buffer. Each tab has one unacknowledged frame; its buffer stays
+immutable until presentation returns the pipe ack. Paints arriving in between coalesce their dirty region;
+ack requests another paint when needed, including when the page stopped animating. Resize retains an in-flight
+buffer until ack, and the UI discards stale revisions. Close acknowledges pending frames without presenting them.
+Invalid tab/generation/buffer correlation ends the connection visibly rather than displaying another page.
+
+Input is ordered through a bounded queue (64 commands per view); pending move and wheel events each retain only
+their latest value, with discrete commands preserving their order. Overflow of discrete commands fails the tab visibly. Host state
+coalesces in one slot, with at most one outbound call per tab across state and frames. Engine disconnect and
+renderer termination replace the stale page image with a failure; a renderer can recover on navigation/reload.
+Clipboard, IME, popup surfaces and audio are the later epic steps; agent control is below (AC-2149).
+
+### DevTools per tab (AC-2148)
+
+`tab.devtools` runs one DevTools method through `ExecuteDevToolsMethod` on the addressed tab's own browser. There
+is no debugging port and no global listener. The IPC envelope binds each call to its tab, `operator` session,
+host generation and a monotonic request id: a replayed id, an old generation or an unregistered session ends the
+connection. The host accepts only the methods TabShare and its control path use, with bool, int and string
+parameters, so a grant never becomes general DevTools access. These calls run beside the ordered queue, bounded
+by the incoming-call limit, because a page that never answers must not stall input or close for every tab. The
+view waits at most 10 s. Close cancels a pending call through the tab's unregistration, and a renderer crash
+fails it at once; a new tab has its own ids and observer. A result is one IPC message, so a screenshot above
+1 MiB (a 1080p photo-dense page, for example) is refused rather than split.
+
+### Agent control in the host (AC-2149)
+
+The consent card and the grant registry stay in Cockpit; the decision moves to the host. On every registry
+change the view sends `tab.control` (controller origin, the grant id that may act now or none, a revision that
+only goes up) beside the input queue, and the host applies it at once under a lock. An agent action is
+`tab.agent` with the grant id it was authorized by; the host decides it on CEF's UI thread right before the
+input, with the same `ControlPolicy` the in-process route uses (`Host/` is compiled into both): exactly the
+acting grant, the main frame on its origin, for keys the focused frame too, for a click the frame signature of
+the hit test, for navigation the target origin. A watch grant, a paused or taken-over grant, an older grant id
+or none is refused. The operator's own click, wheel or key in the host ends the acting grant there as well.
+
+While a tab has a controller, the host holds every form submission and non-GET navigation as the real
+`CefCallback` (`ContinueAsync`) and reports it in `tab.state`; another origin is cancelled, and no file picker
+opens. `tab.release` continues exactly that held request only while it is still the one held and the controller
+is on its target's origin. Any control change, tab close and renderer crash cancel it. Grants live only in the
+host process: a stop, crash or disconnect destroys them with their callbacks, a failed control call closes the
+connection, and a new host generation starts with none, so control there needs the operator's consent again.
+
 ## The browser
 
 - **One CEF per Cockpit process**, started on the first opening, shut down on the UI thread after every browser
@@ -75,6 +213,11 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   a structured reason and closes that target. Self-tabs close with their session; only a tab explicitly opened for the
   operator is retained after the session ends, and closing the last retained tab stops its browser and removes its
   profile.
+- **Run identity (AC-2151):** the endpoint a session gets carries a random path of its browser's run, and the proxy
+  answers nothing else, so an endpoint of an earlier run or another session cannot reach a browser that reuses its
+  port. Stop, crash and dispose first cancel every pending call and close the proxies, the network proxy included,
+  then end the browser; the run's tab ids and boundary are forgotten. Disabling the plugin also withdraws its
+  `SessionClosed` handler, and a new enable starts with no tabs.
 - **Known edges:** a session's `Runtime.evaluate` can still click while you drive (only `Input.*` is held), and the
   rail count is refreshed on changes and while the panel is open, not by a background poll.
 

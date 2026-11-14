@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+- AC-2147: bring the Browser host integration up to date with main, including the agent redirect boundary fix (Browser 0.12.20).
+
+- AC-2158: wait for the development Browser host and its children before replacing or removing it, roll back incomplete subprocess packages, and remove stopped plugins immediately while keeping browser profiles and caches.
+
+- AC-2157: give each Browser enable its own engine host and stop it during plugin teardown, keeping profiles and caches and leaving a cancelled application shutdown usable.
+
+- AC-2156: mute and unmute each development Browser host tab independently, show its media playback status, and clear the sound indicator when the tab or engine stops.
+
+- AC-2155: show select menus and open new-tab links in development Browser host tabs, keep popup clicks aligned across display scales, and clear menus when the tab or engine closes.
+
+- AC-2154: compose non-Latin text in development Browser host tabs, position IME candidates at the caret across display scales, and cancel composition when the tab loses focus or closes.
+
+- AC-2153: keep Browser host copy, cut, paste and typed text in the focused tab, refuse late keys after focus moves or the host stops, and retain accumulated touchpad scrolling.
+
+- AC-2152: choose operator downloads and upload files in the Browser host through the normal file dialog; cancel pending choices and transfers on control changes or shutdown, and refuse downloads and file choosers while an agent controls the tab.
+
+- AC-2151: tie an agent browser's endpoint to its own run, so a session left with an endpoint from before a restart or disable cannot reach another browser; stopping, a crash or disabling the plugin now cancels pending agent calls and network connections first and forgets that run's tabs.
+
+- AC-2150: cancel pending shared-tab reads and consent when the Browser host stops, crashes or the session closes; a new host requires a fresh grant.
+
+- AC-2149: let an agent act in a development Browser host tab only on the control the operator granted, decided in the engine host right before each action and on each held form submission, and never carried over to a new host.
+
+- AC-2148: let readers of a development Browser host tab query only that tab through DevTools, answering closed or crashed tabs at once and refusing replayed or foreign calls.
+
+- AC-2147: connect the development Browser host to tabs and Avalonia frames, retaining tab identity through moves and rejecting stale or crossed buffers.
+- AC-2147: retain painted updates while a Browser frame is being received, then deliver them after acknowledgement without waiting for another paint.
+
+- AC-2146: clean up the upcoming Linux Browser host and its children when their owner or engine host crashes.
+
+- AC-2145: bind the upcoming Browser engine host and its children to the Windows owner lifetime, including owner and host crashes.
+
+- AC-2144: add an isolated Browser engine launcher for the upcoming host-backed tabs, with private storage checks and restricted pipe inheritance.
+
+- AC-2143: prepare a bounded private connection for the Browser engine host, rejecting stale generations and requests for unregistered tabs.
+
 - AC-2364: A vault connection (1Password, Bitwarden) is no longer removed when Cockpit reads credential encryption as off. A settings save could make that reading happen while encryption was on, which wiped the connection. An unavailable vault now only refuses use; only Disconnect removes a connection, together with its grants. Turning encryption off is refused while a vault is connected. A forgotten-password reset says it removes vault connections and keeps a dated copy of the encrypted cockpit.json.
 
 - Cockpit checks existing managed and PATH copies of the 1Password CLI before installing it, shows the exact version and path in Options, and keeps managed copies updated after signature verification. The masked service-account field stays within the available width, and “Turn on encryption” opens Security even when Options is already open.

@@ -362,7 +362,7 @@ internal sealed class PluginAdministration(
     {
         try
         {
-            return await Task.Run(() => loaded.ActivateOne(plugin)).WaitAsync(_startGrace(plugin)).ConfigureAwait(false);
+            return await Task.Run(() => loaded.ActivateOneAsync(plugin)).WaitAsync(_startGrace(plugin)).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -586,7 +586,14 @@ internal sealed class PluginAdministration(
             await _WaitForInitializationAsync(cancellationToken).ConfigureAwait(false);
             await installer.MarkForRemovalAsync(folderId, cancellationToken).ConfigureAwait(false);
             await registrations.RemoveAsync(folderId, cancellationToken).ConfigureAwait(false);
-            return await _DeactivateAsync(folderId).ConfigureAwait(false);
+            var state = await _DeactivateAsync(folderId).ConfigureAwait(false);
+            if (!state.IsLive)
+            {
+                return state;
+            }
+            return await installer.DeleteMarkedFolderAsync(folderId, CancellationToken.None).ConfigureAwait(false)
+                ? state
+                : PluginLiveState.Restart("The plugin stopped, but its installation files could not be removed. Restart to finish removing it.");
         }
         finally
         {

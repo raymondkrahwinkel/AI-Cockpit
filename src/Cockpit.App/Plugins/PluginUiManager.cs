@@ -233,9 +233,16 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         typeof(ICockpitPluginUi).IsAssignableFrom(type) && type is { IsAbstract: false, IsInterface: false };
 
     // AC-2024: one plugin's UI part, on the UI thread, after its contributions left.
-    public void DeactivateUi(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
+    public async Task DeactivateUiAsync(DiscoveredPlugin discovered, ICockpitPlugin? plugin)
     {
-        _DisposePart(discovered, plugin);
+        if (_ui.GetValueOrDefault(discovered) is IAsyncDisposable ui && !ReferenceEquals(ui, plugin))
+        {
+            await ui.DisposeAsync();
+        }
+        else
+        {
+            _DisposePart(discovered, plugin);
+        }
         _ui.Remove(discovered);
         _hosts.Remove(discovered);
     }

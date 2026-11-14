@@ -1,6 +1,5 @@
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
+using Cockpit.Plugin.Browser.Ipc;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
 using Cockpit.Plugin.Browser.UI.Share;
@@ -13,9 +12,8 @@ using Material.Icons;
 namespace Cockpit.Plugin.Browser.UI;
 
 // The UI half of the browser plugin: the engine's version in the settings (AC-1727) and the user's browser as a tab
-// and in the rail, one browser in either place (AC-1711). Nothing touches CEF until the browser is first opened;
-// disposing shuts the engine down on the UI thread.
-public sealed class BrowserUi : ICockpitPluginUi, IDisposable
+// and in the rail, one browser in either place (AC-1711). The runtime owns its engine host until disposal.
+public sealed class BrowserUi : ICockpitPluginUi, IDisposable, IAsyncDisposable
 {
     public const string WorkspaceTypeId = "browser.tab";
 
@@ -26,6 +24,9 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     private BrowserModel? _model;
     private BrowserTabSession? _tabSession;
     private TabShareService? _share;
+    private BrowserEngine? _engine;
+    private Action? _unsubscribe;
+    private bool _disposed;
 
     // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not part of the plugin contract.
     public static IReadOnlyDictionary<string, Func<Control>> Scenes => BrowserScenes.All;
@@ -34,10 +35,12 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     public void InitializeUi(ICockpitUiHost host)
     {
-        BrowserEngine.Shared.IsHardwareAccelerationEnabled = new BrowserSettings(host.Storage).IsHardwareAccelerationEnabled;
+        _engine = BrowserEngine.Create();
+        _engine.ValidatePackage();
+        _engine.IsHardwareAccelerationEnabled = new BrowserSettings(host.Storage).IsHardwareAccelerationEnabled;
         _agents = new AgentTabsModel(host.Channel);
         // AC-1714: up front, so an agent asking before the browser was ever opened gets a refusal at once, not a timeout.
-        _model = new BrowserModel(BrowserEngine.Shared);
+        _model = new BrowserModel(_engine);
         _tabSession = new BrowserTabSession(host.Storage);
         _tabSession.Attach(_model);
         _share = new TabShareService(host, _model, new TabGrantRegistry());
@@ -61,26 +64,41 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             CanFloat = true,
         });
 
-        // A cancelled shutdown can still be waiting for a file discard decision. Keep the engine usable then;
-        // the host disposes the plugin during its approved teardown, before actually exiting.
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            desktop.ShutdownRequested += (_, request) =>
-            {
-                if (!request.Cancel)
-                {
-                    BrowserEngine.Shared.Shutdown();
-                }
-            };
-        }
+        // Only approved runtime teardown disposes this instance; a shutdown request may still be cancelled.
     }
 
     public void Dispose()
     {
-        _share?.Dispose();
-        _tabSession?.Dispose();
-        _agents?.Dispose();
-        BrowserEngine.Shared.Shutdown();
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+        var errors = new List<Exception>();
+        BrowserIpcCleanup.Try(() => _share?.Dispose(), errors);
+        BrowserIpcCleanup.Try(() => _unsubscribe?.Invoke(), errors);
+        BrowserIpcCleanup.Try(() => _home?.Shell.Dispose(), errors);
+        BrowserIpcCleanup.Try(() => _tabSession?.Dispose(), errors);
+        BrowserIpcCleanup.Try(() => _agents?.Dispose(), errors);
+        BrowserIpcCleanup.Try(() => _engine?.Shutdown(), errors);
+        if (errors.Count != 0)
+        {
+            throw new AggregateException("Browser UI cleanup failed.", errors);
+        }
+    }
+
+    internal Task ShutdownCompletion => _engine?.ShutdownCompletion ?? Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            Dispose();
+        }
+        finally
+        {
+            await ShutdownCompletion;
+        }
     }
 
     // The agent side is the only thing the status bar still says about the browser; where it sits and how many
@@ -132,14 +150,30 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
 
         home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
-        void ShowStatus() => host.SetStatusText(WithShared(
-            StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, _agents!.Showing, _agents.Tabs.Count),
-            share.Grants.All));
+        void ShowStatus()
+        {
+            if (_disposed == false && _agents is { } agents)
+            {
+                host.SetStatusText(WithShared(
+                    StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, agents.Showing, agents.Tabs.Count),
+                    share.Grants.All));
+            }
+        }
+        void PostStatus() => Avalonia.Threading.Dispatcher.UIThread.Post(ShowStatus);
+        void EngineChanged(object? sender, EventArgs args) => PostStatus();
         home.Changed += ShowStatus;
-        share.Grants.Changed += () => Avalonia.Threading.Dispatcher.UIThread.Post(ShowStatus);
+        share.Grants.Changed += PostStatus;
         _agents!.Changed += ShowStatus;
         shell.Model.Changed += ShowStatus;
-        shell.Model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(ShowStatus);
+        shell.Model.Engine.Changed += EngineChanged;
+        _unsubscribe = () =>
+        {
+            home.Changed -= ShowStatus;
+            share.Grants.Changed -= PostStatus;
+            _agents.Changed -= ShowStatus;
+            shell.Model.Changed -= ShowStatus;
+            shell.Model.Engine.Changed -= EngineChanged;
+        };
         _home = home;
         return home;
     }

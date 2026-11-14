@@ -4,6 +4,7 @@
        own app.manifest. A plain build lands in Subprocess/ of the plugin's bin/; the store zip carries a self-contained
        publish per RID in that same folder (AC-1740), so the plugin's load context never sees its runtime DLLs. -->
   <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -16,6 +17,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Ipc\*.cs" Link="Ipc\%(Filename)%(Extension)" />
+    <Compile Include="..\Host\*.cs" Link="Host\%(Filename)%(Extension)" />
     <PackageReference Include="CefGlue.Next.Core" Version="154.8037.98" />
   </ItemGroup>
 

@@ -105,7 +105,7 @@ public sealed class PluginLiveLifecycleTests
         ICockpitPluginUi ActivateUi(DiscoveredPlugin _, ICockpitPlugin? __) => new EveryUiContribution(disposed, () => bodiesClosed++);
 
         manager.StartUiPart = (plugin, backend, _) => UiThreadCall.Uncapped(() => Task.FromResult(uiParts.InitializeUiOne(plugin, backend, ActivateUi, UiHostFor)));
-        manager.Deactivated += uiParts.DeactivateUi;
+        manager.StopUiPart = uiParts.DeactivateUiAsync;
 
         var nothing = _Held(provider, cockpit);
         manager.LoadAndConfigure([discovered], new ServiceCollection(), Activate);
@@ -144,7 +144,7 @@ public sealed class PluginLiveLifecycleTests
         Assert.Equal(PluginActivationStatus.NotActive, (await manager.DeactivateAsync(PluginId)).Status);
         Assert.Equal(2, disposed.Count);
 
-        var reactivated = await Task.Run(() => manager.ActivateOne(discovered));
+        var reactivated = await Task.Run(() => manager.ActivateOneAsync(discovered));
         Assert.True(reactivated.Status == PluginActivationStatus.Activated, $"Reactivation gave {reactivated.Status}: {reactivated.Reason}");
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 

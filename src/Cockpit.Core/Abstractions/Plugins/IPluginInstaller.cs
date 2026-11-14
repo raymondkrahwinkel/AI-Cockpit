@@ -3,9 +3,8 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.Core.Abstractions.Plugins;
 
 /// <summary>
-/// Installs and removes plugins on disk (#14). Installation validates and safely unpacks a <c>.zip</c> into the
-/// plugins root; an update over a loaded plugin and a removal are both deferred to the next startup, since a
-/// loaded assembly's file stays locked (on Windows) until the process exits. Enable/consent state lives in <see cref="IPluginRegistrationStore"/>.
+/// Installs and removes plugin files, using shadow copies for live updates and startup staging when a restart is required.
+/// Enable/consent state lives in <see cref="IPluginRegistrationStore"/>.
 /// </summary>
 public interface IPluginInstaller
 {
@@ -20,9 +19,14 @@ public interface IPluginInstaller
     Task<PluginInstalledState> GetInstalledStateAsync(string folderId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Marks an installed plugin folder for deletion at the next startup, since a currently-loaded assembly cannot be deleted while the app runs.
+    /// Marks an installed plugin for removal; deletion follows runtime teardown or the next startup.
     /// </summary>
     Task MarkForRemovalAsync(string folderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes this marked install after its runtime has stopped; false leaves it marked for the next startup.
+    /// </summary>
+    Task<bool> DeleteMarkedFolderAsync(string folderId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
     /// <summary>
     /// Deletes any folders marked for removal; called once at startup before discovery so a removed plugin never loads again.

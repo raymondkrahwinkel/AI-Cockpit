@@ -1042,10 +1042,9 @@ public partial class App : Application
         });
         pluginManager.UpdateBlocker = folderId => UiThreadCall.Uncapped(() => Task.FromResult<string?>(
             cockpit.Workspaces.HasGuardedPluginWorkspace(folderId) ? "A workspace of this plugin asks before it closes." : null));
+        pluginManager.StopUiPart = uiParts.DeactivateUiAsync;
         pluginManager.Deactivated += (discovered, plugin) =>
         {
-            uiParts.DeactivateUi(discovered, plugin);
-
             // The host holds the runtime that just closed; the next activation has to build its own.
             lock (hosts)
             {
