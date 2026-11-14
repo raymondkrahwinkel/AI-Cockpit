@@ -469,11 +469,14 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
 
     private async Task _PumpStdoutAsync(IClaudeSdkSubprocess subprocess, CancellationToken cancellationToken)
     {
+        var pendingLines = new List<Task>();
         try
         {
             await foreach (var line in subprocess.ReadStdoutLinesAsync(cancellationToken).ConfigureAwait(false))
             {
-                await _HandleLineAsync(line, cancellationToken).ConfigureAwait(false);
+                // AC-2362: drain stdout while control replies wait behind an image on stdin, or both pipes can deadlock.
+                pendingLines.RemoveAll(task => task.IsCompletedSuccessfully);
+                pendingLines.Add(_HandleLineAsync(line, cancellationToken));
             }
         }
         catch (OperationCanceledException)
@@ -486,6 +489,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
         }
         finally
         {
+            await Task.WhenAll(pendingLines).ConfigureAwait(false);
             _readOnlyHookRegistered = false;
             // AC-539: a result line's publish is parked behind the usage poll, and a CLI that exits right after
             // printing one (an unresolvable --resume) ends stdout while that task still waits — completing first
