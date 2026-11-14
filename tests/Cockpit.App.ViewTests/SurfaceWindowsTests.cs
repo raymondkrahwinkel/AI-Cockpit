@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.App.Services;
+using Cockpit.App.Views;
 
 namespace Cockpit.App.ViewTests;
 
@@ -23,13 +24,17 @@ public sealed class SurfaceWindowsTests
         {
             var surfaces = new SurfaceWindows();
             var owner = _ShownOwner();
-            var surface = new Window();
+            var surface = new OptionsDialog();
 
             var pending = surfaces.ShowAsync("key", surface, owner);
 
             Assert.False(surface.IsDialog);
             Assert.False(pending.IsCompleted);
             Assert.Contains(surface, owner.OwnedWindows);
+
+            surface.SelectCategory("vault");
+            Assert.Same(pending, surfaces.TryActivateAsync("key", window => ((OptionsDialog)window).SelectCategory("security")));
+            Assert.Equal("security", (surface.FindControl<ListBox>("CategoryNav")?.SelectedItem as ListBoxItem)?.Tag);
 
             // Synchronous on purpose, in the completion where a real awaiter resumes: an ordinary await here is posted
             // to the dispatcher and cannot tell whether the registry was cleared before the caller was released.

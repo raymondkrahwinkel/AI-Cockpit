@@ -558,6 +558,18 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? category = null)
     {
+        if (_surfaces.TryActivateAsync(typeof(OptionsDialog), window =>
+            {
+                if (category is not null && window is OptionsDialog options)
+                {
+                    options.SelectCategory(category);
+                }
+            }) is { } existing)
+        {
+            await existing;
+            return;
+        }
+
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
             return;

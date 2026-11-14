@@ -31,12 +31,14 @@ public sealed class OnePasswordPlugin : ICockpitPlugin
         provider.Bind(host.AddVaultProvider(provider));
         _provider = provider;
 
+        _registrations.Add(host.Channel.Handle(OnePasswordChannel.CheckCli, async (_, ct) =>
+            _Reply(await cli.FindInstalledAsync(ct).ConfigureAwait(false))));
+
         _registrations.Add(host.Channel.Handle(OnePasswordChannel.PrepareCli, async (_, ct) =>
         {
             try
             {
-                var path = await cli.EnsureInstalledAsync(ct).ConfigureAwait(false);
-                return _Reply(ManagedCliInstallResult.Ok(string.Empty, path));
+                return _Reply(await cli.EnsureInstalledAsync(ct).ConfigureAwait(false));
             }
             catch (OnePasswordException exception)
             {

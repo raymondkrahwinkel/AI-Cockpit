@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Cockpit installs and updates the 1Password CLI automatically, verifies the official signature and Windows Authenticode before use, and shows installation status and retry under Options › 1Password. Its masked service-account field fills the available width and keeps long values inside the field.
+- Cockpit checks existing managed and PATH copies of the 1Password CLI before installing it, shows the exact version and path in Options, and keeps managed copies updated after signature verification. The masked service-account field stays within the available width, and “Turn on encryption” opens Security even when Options is already open.
 
 - Projectless sessions on the headless server can enter their scratch directory before switching to the agent user. Closing a server terminal session now also removes it from the session list and desk.
 

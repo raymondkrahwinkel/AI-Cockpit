@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 
 namespace Cockpit.Plugin.OnePassword;
 
@@ -14,28 +15,65 @@ internal sealed class OnePasswordException(string reason) : Exception(reason)
 // Runs the official `op` CLI. The service-account token goes only into the child's environment, never into an argument.
 internal sealed class OnePasswordCli(ICockpitHost host)
 {
-    internal async Task<string> EnsureInstalledAsync(CancellationToken cancellationToken)
+    internal async Task<ManagedCliInstallResult?> FindInstalledAsync(CancellationToken cancellationToken)
+    {
+        foreach (var candidate in _Candidates())
+        {
+            if (!File.Exists(candidate))
+            {
+                continue;
+            }
+
+            try
+            {
+                var text = await _RunAsync(candidate, string.Empty, ["--version"], cancellationToken).ConfigureAwait(false);
+                if (Version.TryParse(text.Trim(), out var version) && version >= OnePasswordManagedCli.MinimumVersion)
+                {
+                    return ManagedCliInstallResult.Ok(version.ToString(), Path.GetFullPath(candidate));
+                }
+            }
+            catch (OnePasswordException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private IEnumerable<string> _Candidates()
     {
         if (host.ResolveManagedCliPath("op") is { Length: > 0 } installed)
+        {
+            yield return installed;
+        }
+
+        var fileName = OperatingSystem.IsWindows() ? "op.exe" : "op";
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string candidate;
+            try
+            {
+                candidate = Path.GetFullPath(Path.Combine(directory.Trim('"'), fileName));
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            yield return candidate;
+        }
+    }
+
+    internal async Task<ManagedCliInstallResult> EnsureInstalledAsync(CancellationToken cancellationToken)
+    {
+        if (await FindInstalledAsync(cancellationToken).ConfigureAwait(false) is { } installed)
         {
             return installed;
         }
 
-        try
-        {
-            var text = await _RunAsync("op", string.Empty, ["--version"], cancellationToken).ConfigureAwait(false);
-            if (Version.TryParse(text.Trim(), out var version) && version >= OnePasswordManagedCli.MinimumVersion)
-            {
-                return "op";
-            }
-        }
-        catch (OnePasswordException)
-        {
-        }
-
         var result = await host.InstallManagedCliAsync("op", cancellationToken).ConfigureAwait(false);
-        return result.Success && result.ExecutablePath is { Length: > 0 } path
-            ? path
+        return result.Success && result.ExecutablePath is { Length: > 0 }
+            ? result
             : throw new OnePasswordException(result.Error ?? "Could not install the 1Password CLI.");
     }
 
@@ -45,7 +83,8 @@ internal sealed class OnePasswordCli(ICockpitHost host)
 
     public async Task<string> RunAsync(string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        var executable = await EnsureInstalledAsync(cancellationToken).ConfigureAwait(false);
+        var installed = await EnsureInstalledAsync(cancellationToken).ConfigureAwait(false);
+        var executable = installed.ExecutablePath ?? throw new OnePasswordException("op CLI missing");
         return await _RunAsync(executable, token, arguments, cancellationToken).ConfigureAwait(false);
     }
 

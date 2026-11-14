@@ -99,17 +99,23 @@ internal sealed class OnePasswordConnectPage : UserControl
         _test.IsEnabled = false;
         _retryCli.IsVisible = false;
         _installFallback.IsVisible = false;
-        _cliStatus.Text = "Installing 1Password CLI and verifying its signature…";
+        _cliStatus.Text = "Checking for an installed 1Password CLI…";
         try
         {
-            var response = await _channel.InvokeAsync(OnePasswordChannel.PrepareCli, JsonSerializer.SerializeToElement(true));
+            var response = await _channel.InvokeAsync(OnePasswordChannel.CheckCli, JsonSerializer.SerializeToElement(true));
             var result = response.Deserialize<ManagedCliInstallResult>(OnePasswordChannel.Json);
+            if (result is null)
+            {
+                _cliStatus.Text = "Installing 1Password CLI and verifying its signature…";
+                response = await _channel.InvokeAsync(OnePasswordChannel.PrepareCli, JsonSerializer.SerializeToElement(true));
+                result = response.Deserialize<ManagedCliInstallResult>(OnePasswordChannel.Json);
+            }
             if (result is not { Success: true })
             {
                 throw new InvalidOperationException(result?.Error ?? "The plugin returned no CLI installation result.");
             }
 
-            _cliStatus.Text = result.ExecutablePath == "op" ? "Using system 1Password CLI (2.18.0 or later)." : string.Empty;
+            _cliStatus.Text = $"Using installed 1Password CLI {result.Version} at {result.ExecutablePath}";
             _cliPanel.Content ??= new ManagedCliConfigSection(_host, "op", "1Password CLI").View;
             _ApplyAvailability();
             return true;
