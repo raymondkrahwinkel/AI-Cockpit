@@ -139,7 +139,7 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
 
     [Fact]
-    public async Task Interrupt_WhenTheCliAdvertisesCancelQueued_SendsCancelQueuedTrue()
+    public async Task Interrupt_WithABlockedHookWrite_StillConsumesOutputAndTheReceipt()
     {
         var fake = new FakeClaudeSdkSubprocess();
         await using var driver = _CreateDriver(fake);
@@ -150,16 +150,35 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         """);
         await _ReadEventAsync(driver, e => e is PluginSessionInitialized);
 
-        var interruptTask = driver.InterruptAsync(CancellationToken.None);
-        var written = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
-        var request = written.GetProperty("request");
-        Assert.Equal("interrupt", request.GetProperty("subtype").GetString());
-        Assert.True(request.GetProperty("cancel_queued").GetBoolean());
+        var releaseHookWrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fake.ControlResponseWriteDelay = releaseHookWrite.Task;
+        await fake.PushStdoutAsync("""
+        {"type":"control_request","request_id":"hook-agent","request":{"subtype":"hook_callback","callback_id":"cockpit_read_only_turn","input":{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"run_in_background":true}}}}
+        """);
+        await fake.PushStdoutAsync("""
+        {"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"still responsive"}}}
+        """);
+        try
+        {
+            var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
+            Assert.Equal("still responsive", delta.Text);
 
-        var requestId = written.GetProperty("request_id").GetString();
-        await fake.PushStdoutAsync($$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{"still_queued":false} } }""");
+            var interruptTask = driver.InterruptAsync(CancellationToken.None);
+            var written = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement;
+            var request = written.GetProperty("request");
+            Assert.Equal("interrupt", request.GetProperty("subtype").GetString());
+            Assert.True(request.GetProperty("cancel_queued").GetBoolean());
 
-        await interruptTask;
+            var requestId = written.GetProperty("request_id").GetString();
+            await fake.PushStdoutAsync($$$"""{"type":"control_response","response":{"subtype":"success","request_id":"{{{requestId}}}","response":{"still_queued":false} } }""");
+
+            await interruptTask.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            releaseHookWrite.TrySetResult();
+        }
+
     }
 
     [Fact]
