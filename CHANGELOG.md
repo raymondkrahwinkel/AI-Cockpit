@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2147: bring the Browser host integration up to date with main, including the agent redirect boundary fix (Browser 0.12.20).
+
 - AC-2158: wait for the development Browser host and its children before replacing or removing it, roll back incomplete subprocess packages, and remove stopped plugins immediately while keeping browser profiles and caches.
 
 - AC-2157: give each Browser enable its own engine host and stop it during plugin teardown, keeping profiles and caches and leaving a cancelled application shutdown usable.
