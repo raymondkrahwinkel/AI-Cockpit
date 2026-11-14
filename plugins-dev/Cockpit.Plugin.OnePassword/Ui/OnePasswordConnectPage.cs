@@ -23,7 +23,7 @@ internal sealed class OnePasswordConnectPage : UserControl
     private readonly Button _retryCli = new() { Content = "Retry CLI installation", IsVisible = false };
     private readonly Button _installFallback = new() { Content = "Open the 1Password CLI install page", IsVisible = false };
     private readonly ChannelVaultContext _context;
-    private readonly TextBox _token = new() { PasswordChar = '•', PlaceholderText = "ops_…", MinWidth = 320 };
+    private readonly TextBox _token = new() { PasswordChar = '•', PlaceholderText = "ops_…", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Button _test = new() { Content = "Test connection" };
     private readonly Button _connect = new() { IsVisible = false };
     private readonly Button _disconnect = new() { Content = "Disconnect", IsVisible = false };
@@ -37,6 +37,10 @@ internal sealed class OnePasswordConnectPage : UserControl
         var channel = host.Channel;
         _channel = channel;
         _context = new ChannelVaultContext(channel);
+        var tokenRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        tokenRow.Children.Add(_token);
+        Grid.SetColumn(_test, 1);
+        tokenRow.Children.Add(_test);
         _connect.Classes.Add("Accent");
         _test.Click += async (_, _) => await _TestAsync();
         _retryCli.Click += async (_, _) => await _PrepareCliAsync();
@@ -73,7 +77,7 @@ internal sealed class OnePasswordConnectPage : UserControl
                 _Text("Lets your agents use items from one 1Password vault through Cockpit's vault. Agents get names; the value goes only into a process when it starts.", 12.5),
                 _Text("Use a separate vault for agents. Create a vault that holds only what agents may use, for example Agents, and copy those items into it. Then create a service account in 1Password that can read only that vault. Never give it your private or shared vaults: whatever the token can read, an approved agent process can receive.", 11.5),
                 _Heading("1. SERVICE ACCOUNT"),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _token, _test } },
+                tokenRow,
                 _Text("Created in 1Password under Developer › Service accounts. Stored encrypted with your other credentials (Options › Security); agents and the vault MCP can never read it. Needs the 1Password CLI (op) 2.18.0 or later.", 11),
                 _Heading("2. WHICH VAULT IT READS"),
                 _connected,
