@@ -52,8 +52,16 @@ internal sealed class CommandRunner : IStepRunner
             WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.CurrentDirectory : workingDirectory,
         };
 
-        startInfo.ArgumentList.Add(OperatingSystem.IsWindows() ? "/c" : "-c");
-        startInfo.ArgumentList.Add(command);
+        if (OperatingSystem.IsWindows())
+        {
+            // cmd parses shell quotes itself; ArgumentList escapes them for the C runtime instead.
+            startInfo.Arguments = $"/d /s /c \"{command}\"";
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add(command);
+        }
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("The command could not be started.");

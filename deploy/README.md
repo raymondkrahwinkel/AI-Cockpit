@@ -61,7 +61,7 @@ or bind-mounts (below). All of it is unencrypted on disk, logins and keys includ
 | `work` | `/work` | clones and worktrees, writable for the server and the agent sessions | the clones and any unpushed work in them | no, but unpushed work |
 | `cli` | `/cli` | the managed `claude` and `codex` (Install in a server profile's settings), one version each | the image's own copies, until the next Install | no |
 | `agent-home` | `/home/agent` | the agent's own files, Claude's `.claude.json` and the GitHub login in `.config/gh/hosts.yml` | Claude's onboarding and a new GitHub sign-in; the Claude login itself is on `claude` | yes: the GitHub login |
-| `scratch` | `/home/agent/scratch` | the default working directory for a projectless session; writable only by `agent` | a fresh empty default working directory | no, but unpushed work |
+| `scratch` | `/home/agent/scratch` | the default working directory for a projectless session; shared by `app` and `agent` | a fresh empty default working directory | no, but unpushed work |
 | `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts | a new sign-in | yes: the login |
 | `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts | a new sign-in | yes: the login |
 | `ssh` | `/home/app/.ssh` | the server's own SSH keys | new keys to register | yes: private keys |
@@ -100,7 +100,7 @@ on its first use; **a bind-mount keeps the host's**, so create the directories w
 | --- | --- | --- |
 | `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` |
 | `/work` | `1654:1700` (`app:agent`) | `2770` |
-| `/home/agent/scratch` | `agent` (1700:1700) | `0700` |
+| `/home/agent/scratch` | `agent` (1700:1700) | `2770` |
 | `/home/agent` | `agent` (1700:1700) | `0750` |
 | `/cli` | any: the entrypoint makes it `root:agent` `0750`, with `claude` and `codex` (agent's) and `.staging` (app's) in it | |
 | `/home/agent/.claude`, `/home/agent/.codex` | `agent` (uid 1700, gid 1700) | `2770` |

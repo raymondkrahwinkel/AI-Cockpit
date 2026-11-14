@@ -27,6 +27,7 @@
     <!-- 2.0.0 (AC-505): the client's ClientOAuthProvider now requests `offline_access` itself whenever the
          authorization server advertises it (SEP-2207) — the reason McpOAuthAuthorizer no longer has to derive
          a scope list by hand. -->
+    <!-- SDK 2.4.0 #1934 breaks annotated content serialization in its internal context; retain 2.3.0 until fixed. -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <!-- #26 tools/MCP: the MCP client (namespace ModelContextProtocol.Client) that connects the local-LLM
          tool-loop to the user's MCP servers. Kept on the same line as the AspNetCore server package. -->
@@ -38,21 +39,21 @@
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.8" />
     <!-- Extracts the .tar.bz2 SupertonicTTS model archive sherpa-onnx's model releases ship as (the ONNX graphs +
          tts.json + unicode_indexer.bin) — .NET's built-in System.Formats.Tar has no bzip2 decompressor. -->
-    <PackageReference Include="SharpCompress" Version="0.50.7" />
+    <PackageReference Include="SharpCompress" Version="0.50.8" />
     <!-- Rasterises an SVG project logo to a PNG when it is stored (AC-162). The core Svg.Skia, not its Avalonia
          binding: that one still tracks Avalonia 11 while this app is on 12, whereas this needs only SkiaSharp —
          the same 3.119 Avalonia already brings — so the logo path carries no UI-framework version coupling. -->
     <PackageReference Include="Svg.Skia" Version="5.1.1" />
     <!-- Mermaid-text -> SVG for the diagram builder (AC-807). Pure managed .NET, no browser/Node/Chromium
          subprocess — a NuGet reference is the whole install. -->
-    <PackageReference Include="Mermaider" Version="0.12.2" />
+    <PackageReference Include="Mermaider" Version="0.15.1" />
     <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
          (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via
          PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->
-    <PackageReference Include="Porta.Pty" Version="2.2.3" />
+    <PackageReference Include="Porta.Pty" Version="2.2.4" />
     <PackageReference Include="SharpHook" Version="7.1.3" />
     <PackageReference Include="SoundFlow" Version="1.4.2" />
-    <PackageReference Include="Tmds.DBus" Version="0.95.1" />
+    <PackageReference Include="Tmds.DBus" Version="0.95.2" />
     <!-- Voice input (STT+VAD): Whisper.net core plus the CPU runtimes only. WhisperBackendPlanner
          (Cockpit.Core) decides the try-order per VoiceBackendPreference + OS; Whisper.net's own
          NativeLibraryLoader walks that order at model-load time and picks the first one that loads here.
@@ -78,6 +79,8 @@
     <!-- AC-1431: the OpenAI-compatible turn loop (history, continuation net, transport retry) is one source file
          shared with the provider plugins' driver, so the host's Ollama/LM Studio sessions run the same loop. -->
     <Compile Include="..\..\plugins-dev\_shared\ChatTurnLoop.cs" Link="Sessions\ChatTurnLoop.cs" />
+    <Compile Include="..\..\plugins-dev\_shared\CommandGuard.cs" Link="Sessions\CommandGuard.cs" />
+    <Compile Include="..\..\plugins-dev\_shared\GuardJournal.cs" Link="Sessions\GuardJournal.cs" />
     <!-- AC-1441: one source file each, shared with App: the SVG rasterizer and a turn's image attachment names. -->
     <Compile Include="..\_shared\SvgRasterizer.cs" Link="Svg\SvgRasterizer.cs" />
     <Compile Include="..\_shared\SessionImageAttachments.cs" Link="Plugins\SessionImageAttachments.cs" />
@@ -93,6 +96,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.App" />
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
     <InternalsVisibleTo Include="Cockpit.Infrastructure.Tests" />
     <InternalsVisibleTo Include="Cockpit.Backend.Tests" />

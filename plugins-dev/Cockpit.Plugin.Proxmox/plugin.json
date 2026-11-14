@@ -1,7 +1,7 @@
 {
   "id": "proxmox",
   "name": "Proxmox VE & Backup Server",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "entryAssembly": "Cockpit.Plugin.Proxmox.dll",
   "entryType": "Cockpit.Plugin.Proxmox.ProxmoxPlugin",
   "uiAssembly": "Cockpit.Plugin.Proxmox.UI.dll",

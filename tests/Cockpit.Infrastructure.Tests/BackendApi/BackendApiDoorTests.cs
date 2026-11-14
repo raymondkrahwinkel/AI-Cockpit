@@ -87,6 +87,77 @@ public sealed class BackendApiDoorTests
             var scenario = new BackendApiDoorTests();
             await scenario._AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync("unknown key over HTTPS", HttpStatusCode.Unauthorized, InvalidTokenBody);
         }
+
+        await using var door = new _Door();
+        var verifier = await door.StartAsync();
+        var operate = await verifier.IssueAsync("options-reader", ConnectKeyCapability.Operate, 30, Operator);
+        foreach (var group in new[] { "runs", "sessions", "clones", "worktrees", "notifications", "diagnostics", "shell", "terminal-access", "shell-access", "swarm" })
+        {
+            var read = await door.SendAsync(HttpMethod.Get, $"/api/v1/options/{group}", operate.Secret);
+            var write = await door.SendAsync(HttpMethod.Put, $"/api/v1/options/{group}", operate.Secret, "{}");
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), read);
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), write);
+        }
+
+        var notifications = new Cockpit.Infrastructure.Notifications.NotificationSettingsStore(door.ConfigPath);
+        var held = new Cockpit.Core.Notifications.NotificationSettings { WebhookUrl = "https://example.test/private-webhook", LocalEnabled = false };
+        await notifications.SaveAsync(held);
+        var settings = await door.SendAsync(HttpMethod.Get, "/api/v1/options/notifications", Bootstrap);
+        Assert.Equal(HttpStatusCode.OK, settings.Status);
+        Assert.DoesNotContain(held.WebhookUrl, settings.Body, StringComparison.Ordinal);
+        var kept = await door.SendAsync(HttpMethod.Put, "/api/v1/options/notifications", Bootstrap, settings.Body);
+        Assert.Equal(HttpStatusCode.OK, kept.Status);
+        var retained = await notifications.LoadAsync();
+        Assert.Equal(held.WebhookUrl, retained.WebhookUrl);
+        Assert.Equal(held.LocalEnabled, retained.LocalEnabled);
+        var incomplete = await door.SendAsync(HttpMethod.Put, "/api/v1/options/notifications", Bootstrap, "{}");
+        Assert.Equal(HttpStatusCode.BadRequest, incomplete.Status);
+        Assert.Equal(held.WebhookUrl, (await notifications.LoadAsync()).WebhookUrl);
+
+        // AC-2279: Operate changes no server trust, and an admin widens the internal network only within private space.
+        foreach (var action in new[] { "reset", "leadership", "retry", $"members/{new string('A', 64)}/remove" })
+        {
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), await door.SendAsync(HttpMethod.Post, $"/api/v1/options/swarm/{action}", operate.Secret));
+        }
+
+        door.Swarm.LoadSettingsAsync(Arg.Any<CancellationToken>()).Returns(new Cockpit.Core.Swarm.SwarmSettings { ExtraInternalCidrs = ["100.64.0.0/10"] });
+        var widened = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":["100.64.0.0/10","0.0.0.0/1"],"joinAtBack":false}""");
+        Assert.Equal(HttpStatusCode.BadRequest, widened.Status);
+        await door.Swarm.DidNotReceiveWithAnyArgs().SaveSettingsAsync(default!, default);
+        var privateRange = await door.SendAsync(HttpMethod.Put, "/api/v1/options/swarm", Bootstrap, """{"extraInternalCidrs":["10.20.0.0/16"],"joinAtBack":true}""");
+        Assert.Equal(HttpStatusCode.OK, privateRange.Status);
+        await door.Swarm.Received(1).SaveSettingsAsync(Arg.Is<Cockpit.Core.Swarm.SwarmSettings>(saved => saved.ExtraInternalCidrs.SequenceEqual(new[] { "10.20.0.0/16" })), Arg.Any<CancellationToken>());
+
+        // AC-2282: Operate cannot touch the MCP registry. An admin reads no secret, writes it back kept, and never the node row.
+        foreach (var (method, path) in new[] { (HttpMethod.Get, ""), (HttpMethod.Put, ""), (HttpMethod.Post, "/docs/sign-in"), (HttpMethod.Post, "/docs/sign-out") })
+        {
+            Assert.Equal(new _Answer(HttpStatusCode.Forbidden, ForbiddenBody), await door.SendAsync(method, "/api/v1/mcp/servers" + path, operate.Secret, "{}"));
+        }
+
+        var registry = new McpServerStore(door.ConfigPath);
+        McpServerConfig[] stored =
+        [
+            new() { Id = "docs", Name = "docs", Transport = McpTransport.Http, Url = "https://mcp.example.test/mcp", Auth = McpServerAuth.ApiKey, ApiKey = _Door.ProfileSecret, Headers = [new("X-Api-Key", _Door.ProfileSecret)] },
+            new() { Id = "node", Name = "server-a", IsNodeConnection = true, Transport = McpTransport.Http, Url = "https://10.0.0.5:7443/mcp", ApiKey = _Door.ProfileSecret },
+        ];
+        await registry.SaveAsync(stored);
+        var listed = await door.SendAsync(HttpMethod.Get, "/api/v1/mcp/servers", Bootstrap);
+        Assert.Equal(HttpStatusCode.OK, listed.Status);
+        Assert.DoesNotContain(_Door.ProfileSecret, listed.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("server-a", listed.Body, StringComparison.Ordinal);
+        var docs = JsonNode.Parse(listed.Body)![0]!;
+        const string Stdio = """{"id":"echo","name":"echo","transport":"stdio","scope":"all","command":"node","args":["echo.js"],"auth":"none","enabled":true}""";
+        var saved = await door.SendAsync(HttpMethod.Put, "/api/v1/mcp/servers", Bootstrap, $"{{\"servers\":[{docs.ToJsonString()},{Stdio}]}}");
+        Assert.Equal(HttpStatusCode.OK, saved.Status);
+        Assert.DoesNotContain(_Door.ProfileSecret, saved.Body, StringComparison.Ordinal);
+        docs["url"] = "https://elsewhere.example.test/mcp";
+        var moved = await door.SendAsync(HttpMethod.Put, "/api/v1/mcp/servers", Bootstrap, $"{{\"servers\":[{docs.ToJsonString()}]}}");
+        Assert.Equal(HttpStatusCode.BadRequest, moved.Status);
+        var after = await registry.LoadAsync();
+        Assert.Equal(["docs", "echo", "server-a"], after.Select(server => server.Name).Order());
+        Assert.Equal((_Door.ProfileSecret, _Door.ProfileSecret, "https://mcp.example.test/mcp"), (after[0].ApiKey, after[0].Headers.Single().Value, after[0].Url));
+        var node = after.Single(server => server.IsNodeConnection);
+        Assert.Equal((stored[1].Url, _Door.ProfileSecret), (node.Url, node.ApiKey));
     }
 
     private async Task _AssertWhoami_RefusesEveryCallerButAConnectKeyOverHttpsAsync(string caller, HttpStatusCode expected, string expectedBody)
@@ -252,17 +323,40 @@ public sealed class BackendApiDoorTests
 
 
     // AC-1473 criterion 1: model, MCP set and the plain variables change on the server, and its secret variable and
-    // API key, which the client never sees, are still there afterwards.
+    // API key, which the client never sees, are still there afterwards. AC-2281: the same for a project: the admin list
+    // shows none of its password, plugin token, Depot link, secret row or credentialed URL, and a change keeps them all.
     [Fact]
-    public async Task AProfileChangedOverTheApi_KeepsTheSecretVariableAndTheApiKeyTheClientNeverSaw()
+    public async Task AProfileOrProjectChangedOverTheApi_KeepsTheSecretsTheClientNeverSaw()
     {
         await using var door = new _Door();
         await door.StartAsync();
+        var held = new Project("project-a", "Project A")
+        {
+            GitUrl = $"https://laptop:{_Door.ProfileSecret}@example.invalid/o/r.git",
+            ProjectPassword = _Door.ProfileSecret,
+            PluginFields = new Dictionary<string, string> { ["youtrack.token"] = _Door.ProfileSecret },
+            Resources = [new ProjectResource($"depot:acme/{_Door.ProfileSecret}", ProjectResourceRole.Memory)],
+            AdditionalInfo = [new ProjectInfoField("Token", _Door.ProfileSecret)],
+        };
+        door.ProjectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty with { Projects = [held] });
+        door.ProjectEditor.FindProjectAsync("project-a").Returns(held);
+        door.ProjectEditor.UpdateStoredProjectAsync(Arg.Any<Project>()).Returns(call => call.Arg<Project>());
 
         var answer = await door.SendAsync(HttpMethod.Patch, "/api/v1/profiles/Keyed", Bootstrap,
             """{"model":"qwen-large","mcpServers":{"names":["youtrack"]},"environment":[{"key":"REGION","value":"us"}]}""");
         var keyed = (await door.Profiles.LoadAsync()).Single(profile => profile.Label == _Door.KeyedProfile);
+        var list = await door.GetAsync(door.NodeBase, "/api/v1/projects", Bootstrap);
+        var change = await door.SendAsync(HttpMethod.Patch, "/api/v1/projects/project-a", Bootstrap,
+            """{"category":"Work","behaviorPrompt":"Be brief.","isolateInWorktree":true,"projectPassword":"","resources":[]}""");
+        var stored = door.ProjectEditor.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IProjectEditor.UpdateStoredProjectAsync))
+            .Select(call => call.GetArguments()[0]).OfType<Project>().Single();
 
+        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.OK), (list.Status, change.Status));
+        Assert.Contains("project-a", list.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(_Door.ProfileSecret, list.Body, StringComparison.Ordinal);
+        Assert.Equal(("Work", "Be brief.", true), (stored.Category, stored.BehaviorPrompt, stored.IsolateInWorktreeByDefault));
+        Assert.Equal((held.GitUrl, held.ProjectPassword, held.PluginFields, held.Resources, held.AdditionalInfo), (stored.GitUrl, stored.ProjectPassword, stored.PluginFields, stored.Resources, stored.AdditionalInfo));
         Assert.Equal(HttpStatusCode.OK, answer.Status);
         Assert.Equal("qwen-large", ProfileModel.Of(keyed));
         Assert.Equal(["youtrack"], keyed.EnabledMcpServerNames ?? []);
@@ -392,23 +486,40 @@ public sealed class BackendApiDoorTests
 
 
     // Criterion 5: after a revoke the key's next API call is the door's 401.
+    // AC-2288: a server shell is an admin key's own; once that key is revoked it types nothing more and the shell closes.
     [Fact]
     public async Task RevokingAKey_FailsItsNextApiCall()
     {
         await using var door = new _Door();
         var verifier = await door.StartAsync();
         var operate = await verifier.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, Operator);
+        var admin = await verifier.IssueAsync("desk", ConnectKeyCapability.Admin, 30, Operator);
 
         var before = await door.GetAsync(door.NodeBase, "/api/v1/whoami", operate.Secret);
+        var refusedShell = await door.SendAsync(HttpMethod.Post, "/api/v1/terminals", operate.Secret, "{}");
+        var opened = await door.SendAsync(HttpMethod.Post, "/api/v1/terminals", admin.Secret, "{}");
+        var terminal = $"/api/v1/terminals/{JsonNode.Parse(opened.Body)!["id"]}";
+        var typed = await door.SendAsync(HttpMethod.Post, terminal + "/input", admin.Secret, "whoami");
+        var othersShell = await door.SendAsync(HttpMethod.Post, terminal + "/input", operate.Secret, "id");
         await verifier.RevokeAsync(operate.Key.Prefix, Operator);
+        await verifier.RevokeAsync(admin.Key.Prefix, Operator);
         var after = await door.GetAsync(door.NodeBase, "/api/v1/whoami", operate.Secret);
+        var typedAfter = await door.SendAsync(HttpMethod.Post, terminal + "/input", admin.Secret, "id");
 
         Assert.Equal(HttpStatusCode.OK, before.Status);
         Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), after);
+        Assert.Equal(HttpStatusCode.Forbidden, refusedShell.Status);
+        Assert.Equal(HttpStatusCode.Created, opened.Status);
+        Assert.Equal(HttpStatusCode.NoContent, typed.Status);
+        Assert.Equal(HttpStatusCode.NotFound, othersShell.Status);
+        Assert.Equal(new _Answer(HttpStatusCode.Unauthorized, InvalidTokenBody), typedAfter);
+        Assert.Equal("whoami", Encoding.UTF8.GetString(door.Pty.Typed.ToArray()));
+        Assert.True(await door.Pty.Closed.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
+    // AC-2285: the write routes keep to the key's project and root, and a stale revision writes nothing.
     [Fact]
-    public async Task ProjectFile_IsReadOnlyInsideTheKeyScope()
+    public async Task ProjectFile_StaysInsideTheKeyScope()
     {
         {
             var scenario = new BackendApiDoorTests();
@@ -433,6 +544,40 @@ public sealed class BackendApiDoorTests
         {
             var scenario = new BackendApiDoorTests();
             await scenario._AssertProjectFile_IsReadOnlyInsideTheKeyScopeAsync("binary.bin", "project-a", HttpStatusCode.OK, "application/octet-stream", "");
+        }
+        {
+            await using var door = new _Door();
+            var verifier = await door.StartAsync();
+            var inside = await verifier.IssueAsync("writer", ConnectKeyCapability.Operate, 30, Operator,
+                scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-a"] });
+            var outside = await verifier.IssueAsync("other", ConnectKeyCapability.Operate, 30, Operator,
+                scope: new ConnectKeyScope { AllowAllProjects = false, AllowedProjectIds = ["project-b"] });
+            var file = Path.Combine(door.ProjectDirectory, "file.txt");
+            var read = Convert.ToHexStringLower(SHA256.HashData("hello"u8));
+            string Body(string text, string? revision) => JsonSerializer.Serialize(revision is null
+                ? new { content = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), mustNotExist = true }
+                : (object)new { content = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), revision });
+
+            var outOfScope = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", outside.Secret, Body("theirs", read));
+            var removedOutOfScope = await door.SendAsync(HttpMethod.Delete, $"/api/v1/projects/project-a/file?path=file.txt&revision={read}", outside.Secret);
+            var traversal = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=..%2Fescape.txt", inside.Secret, Body("out", null));
+            var movedOut = await door.SendAsync(HttpMethod.Post, "/api/v1/projects/project-a/file/move", inside.Secret,
+                JsonSerializer.Serialize(new { from = "file.txt", to = "../escape.txt", revision = read }));
+            var stale = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", inside.Secret, Body("stale", new string('0', 64)));
+            var unchanged = await File.ReadAllTextAsync(file);
+            var saved = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", inside.Secret, Body("mine", read));
+            var lostRace = await door.SendAsync(HttpMethod.Put, "/api/v1/projects/project-a/file?path=file.txt", inside.Secret, Body("second client", read));
+
+            Assert.Equal(HttpStatusCode.NotFound, outOfScope.Status);
+            Assert.Equal(HttpStatusCode.NotFound, removedOutOfScope.Status);
+            Assert.Equal(HttpStatusCode.BadRequest, traversal.Status);
+            Assert.Equal(HttpStatusCode.BadRequest, movedOut.Status);
+            Assert.False(File.Exists(Path.Combine(door.Directory, "escape.txt")));
+            Assert.Equal(HttpStatusCode.Conflict, stale.Status);
+            Assert.Equal("hello", unchanged);
+            Assert.Equal(HttpStatusCode.OK, saved.Status);
+            Assert.Equal(HttpStatusCode.Conflict, lostRace.Status);
+            Assert.Equal("mine", await File.ReadAllTextAsync(file));
         }
     }
 
@@ -728,6 +873,8 @@ public sealed class BackendApiDoorTests
     // endpoint host with cockpit-node on loopback and on an HTTPS port of its own.
     internal sealed class _Door : IAsyncDisposable
     {
+        public Cockpit.Core.Swarm.ISwarmOptions Swarm { get; } = Substitute.For<Cockpit.Core.Swarm.ISwarmOptions>();
+
         private readonly NodeSelfSignedCertificate _certificate;
         private readonly HttpClient _http;
         private readonly NodeAccessAuditLog _audit;
@@ -835,6 +982,8 @@ public sealed class BackendApiDoorTests
 
         public IProjectEditor ProjectEditor { get; } = Substitute.For<IProjectEditor>();
 
+        public IProjectStore ProjectStore { get; } = Substitute.For<IProjectStore>();
+
         public IRepositoryCloneManager Clones { get; } = Substitute.For<IRepositoryCloneManager>();
 
         public SessionRegistry Sessions { get; } = new();
@@ -847,13 +996,15 @@ public sealed class BackendApiDoorTests
 
         public ServerRestartSignal Restart { get; } = new();
 
+        public _FakePty Pty { get; } = new();
+
         public string NodeBase { get; private set; } = "";
 
         public string LoopbackBase { get; private set; } = "";
 
         public string Fingerprint => _certificate.Fingerprint;
 
-        public async Task<ConnectKeyVerifier> StartAsync()
+        public async Task<ConnectKeyVerifier> StartAsync(Action<IServiceCollection>? configure = null)
         {
             System.IO.Directory.CreateDirectory(ProjectDirectory);
             System.IO.Directory.CreateDirectory(Path.Combine(ProjectDirectory, "folder"));
@@ -873,6 +1024,9 @@ public sealed class BackendApiDoorTests
             mounts.Grant(SessionPane, ["cockpit-node"]);
 
             var services = new ServiceCollection();
+            services.AddSingleton<INotificationSettingsStore>(new Cockpit.Infrastructure.Notifications.NotificationSettingsStore(ConfigPath));
+            services.AddSingleton(Swarm);
+            services.AddSingleton(Substitute.For<Cockpit.Core.Swarm.ISwarmLeadership>());
             services.AddSingleton<IAssistantReadGateway>(ReadGateway);
             services.AddSingleton<IAssistantAgentGateway>(AgentGateway);
             services.AddSingleton<ISessionRegistry>(Sessions);
@@ -905,11 +1059,17 @@ public sealed class BackendApiDoorTests
             manager.Initialize((_, _) => host);
             services.AddSingleton(manager);
             services.AddSingleton<McpServerSignIns>();
+            services.AddSingleton<IMcpServerStore>(new McpServerStore(ConfigPath));
             Registrations.LoadDataAsync("idle", Arg.Any<CancellationToken>())
                 .Returns(new Dictionary<string, string> { ["pin"] = JsonSerializer.Serialize(ProfileSecret), ["label"] = "\"old\"" });
             services.AddSingleton(Registrations);
             services.AddSingleton(Substitute.For<IPluginSecretFieldStore>());
             services.AddSingleton(Restart);
+            var ttyLauncher = Substitute.For<ITtyLauncher>();
+            ttyLauncher.Launch(default!, default, default!, default, default, default, default, default, default, default, default, default, default)
+                .ReturnsForAnyArgs(Pty);
+            services.AddSingleton(ttyLauncher);
+            services.AddSingleton(new Cockpit.Infrastructure.Sessions.Tty.ServerTerminals(NullLogger<Cockpit.Infrastructure.Sessions.Tty.ServerTerminals>.Instance));
             services.AddSingleton<IBackendEventLog>(new BackendEventLog());
             services.AddSingleton(broker);
             var editor = ProjectEditor;
@@ -940,7 +1100,7 @@ public sealed class BackendApiDoorTests
             var sharedSources = new SharedProjectSourceRegistry();
             sharedSources.Register(source);
             services.AddSingleton<ISharedProjectSourceRegistry>(sharedSources);
-            var projectStore = Substitute.For<IProjectStore>();
+            var projectStore = ProjectStore;
             projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
             services.AddSingleton(projectStore);
             await Profiles.SaveAsync(
@@ -981,6 +1141,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(Health);
             services.AddSingleton(LoginHealth);
             services.AddSingleton<GitHubGitSignIns>();
+            configure?.Invoke(services);
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],
@@ -1060,5 +1221,32 @@ public sealed class BackendApiDoorTests
         }
 
         private static string _BaseOf(string mcpUrl) => mcpUrl[..^"/mcp".Length];
+    }
+
+    // AC-2288: a pty that keeps what was typed and reports being closed; its output ends when it is.
+    internal sealed class _FakePty : IConPtyProcess
+    {
+        private readonly System.IO.Pipelines.Pipe _output = new();
+        private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public MemoryStream Typed { get; } = new();
+
+        public Stream InputStream => Typed;
+
+        public Stream OutputStream => _output.Reader.AsStream();
+
+        public int ProcessId => 0;
+
+        public Task<bool> Closed => _closed.Task.ContinueWith(_ => true, TaskScheduler.Default);
+
+        public void Resize(short columns, short rows)
+        {
+        }
+
+        public void Dispose()
+        {
+            _output.Writer.Complete();
+            _closed.TrySetResult();
+        }
     }
 }

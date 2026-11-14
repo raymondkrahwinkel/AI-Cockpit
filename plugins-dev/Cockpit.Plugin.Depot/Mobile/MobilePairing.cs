@@ -36,6 +36,39 @@ internal sealed class MobilePairing(
     private readonly Dictionary<(string Connection, string Device), _Stream> _streams = [];
     private readonly Dictionary<(string Connection, string Device), MobileAssistantChannel> _channels = [];
 
+    public int NotifyOperatorPhone(Cockpit.Plugins.Abstractions.Notifications.OperatorPhoneNotification notification)
+    {
+        (string Connection, string Device)[] phones;
+        lock (_gate)
+        {
+            phones = _channels.Keys.ToArray();
+        }
+        int accepted = 0;
+        foreach (var phone in phones)
+        {
+            byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                type = "notify",
+                id = Guid.NewGuid().ToString("n"),
+                body = new
+                {
+                    kind = "targeted",
+                    senderId = notification.SenderId,
+                    sender = notification.Sender,
+                    title = notification.Title,
+                    text = notification.Text,
+                    urgency = notification.Urgency,
+                    target = notification.Target,
+                },
+            });
+            if (_SendToPhone(phone.Connection, phone.Device, plaintext))
+            {
+                accepted++;
+            }
+        }
+        return accepted;
+    }
+
     // Connects the relay of every connection that has a paired phone, so those phones can reach this Cockpit.
     public void Start()
     {
@@ -108,6 +141,7 @@ internal sealed class MobilePairing(
         }
 
         await _EnsureAsync(connection, cancellationToken).ConfigureAwait(false);
+        logger?.LogInformation("Mobile pairing code issued for connection {ConnectionId}.", connectionId);
         return new(DepotPairingState.Open, Qr: payload.Encode(), ExpiresAt: payload.ExpiresAt);
     }
 
@@ -142,12 +176,12 @@ internal sealed class MobilePairing(
 
     public void Cancel(string connectionId)
     {
+        logger?.LogInformation("Mobile pairing dialog closed for connection {ConnectionId}.", connectionId);
         _Discard(connectionId);
         _ = PruneAsync();
     }
 
-    // The phones this Cockpit holds a key for. Depot's list, when it has one, supplies the names and drops a phone Depot
-    // unpaired while this Cockpit was not listening.
+    // Depot's device list is grant-scoped and has no registration identity; absence cannot revoke a saved key.
     public async Task<DepotPairedPhones> PhonesAsync(string connectionId, bool refresh, CancellationToken cancellationToken)
     {
         var connection = _Connection(connectionId);
@@ -160,7 +194,7 @@ internal sealed class MobilePairing(
                 {
                     if (!known.TryGetValue(phone.DeviceId, out var device))
                     {
-                        _Forget(connectionId, phone.DeviceId);
+                        logger?.LogWarning("Depot's device list omitted a saved phone for connection {ConnectionId}; keeping its key. Pair again if the sign-in changed.", connectionId);
                     }
                     else if (!string.IsNullOrWhiteSpace(device.Name) && device.Name != phone.Name)
                     {
@@ -175,7 +209,21 @@ internal sealed class MobilePairing(
             _ = PruneAsync();
         }
 
-        return new([.. _Phones(connectionId).Select(phone => new DepotPairedPhone(phone.DeviceId, phone.Name, phone.PairedAt))], _AccountLink(connection));
+        List<MobilePairedPhone> phones = _Phones(connectionId);
+        byte[]? cockpitPub = null;
+        if (phones.Count > 0 && _keys.TryGetCockpitKey(connectionId, out var key))
+        {
+            using (key)
+            {
+                if (key is not null)
+                {
+                    cockpitPub = MobileKeyStore.PublicKey(key);
+                }
+            }
+        }
+
+        return new([.. phones.Select(phone => new DepotPairedPhone(phone.DeviceId, phone.Name, phone.PairedAt,
+            cockpitPub is null ? null : MobileKeyFingerprint.Format(cockpitPub, Base64Url.DecodeFromChars(phone.PhonePub))))], _AccountLink(connection));
     }
 
     public void Forget(string connectionId, string deviceId)
@@ -235,6 +283,8 @@ internal sealed class MobilePairing(
     {
         foreach (var connection in connections().Where(connection => connection.McpServerName == serverName))
         {
+            logger?.LogInformation("Resetting the mobile connection after an account change; {PhoneCount} saved phone(s) retained for {ConnectionId}.",
+                _Phones(connection.Id).Count, connection.Id);
             _Discard(connection.Id);
             MobileRelay? relay;
             lock (_gate)
@@ -247,6 +297,11 @@ internal sealed class MobilePairing(
             if (relay is not null)
             {
                 await relay.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (_Phones(connection.Id).Count > 0)
+            {
+                await _EnsureAsync(connection, CancellationToken.None).ConfigureAwait(false);
             }
         }
     }
@@ -296,6 +351,7 @@ internal sealed class MobilePairing(
             }
         }
 
+        MobileRelay? relay = null;
         try
         {
             if (subscribe)
@@ -322,7 +378,7 @@ internal sealed class MobilePairing(
                 return;
             }
 
-            var relay = new MobileRelay(connection, userId, () => hostHandler(connection),
+            relay = new MobileRelay(connection, userId, () => hostHandler(connection),
                 (streamId, deviceId) => Opened(connection.Id, streamId, deviceId),
                 (streamId, deviceId, frame) => Frame(connection.Id, streamId, deviceId, frame),
                 (streamId, deviceId) => Closed(connection.Id, streamId, deviceId));
@@ -337,6 +393,7 @@ internal sealed class MobilePairing(
 
             relay.Closed += closed => _OnRelayClosed(connection.Id, closed);
             await relay.StartAsync(cancellationToken).ConfigureAwait(false);
+            logger?.LogInformation("Mobile relay connected for connection {ConnectionId}.", connection.Id);
         }
         catch (Exception exception)
         {
@@ -348,7 +405,11 @@ internal sealed class MobilePairing(
                 }
             }
 
-            await _DropRelayAsync(connection.Id).ConfigureAwait(false);
+            if (relay is not null)
+            {
+                _OnRelayClosed(connection.Id, relay);
+                await relay.DisposeAsync().ConfigureAwait(false);
+            }
             logger?.LogWarning(exception, "Connecting the mobile relay for {Connection} failed.", connection.Name);
         }
     }
@@ -359,6 +420,7 @@ internal sealed class MobilePairing(
         {
             if (_relays.TryGetValue(connectionId, out var current) && ReferenceEquals(current, closed))
             {
+                logger?.LogInformation("Mobile relay disconnected for connection {ConnectionId}.", connectionId);
                 _relays.Remove(connectionId);
                 _DropStreams(connectionId);
             }
@@ -390,11 +452,13 @@ internal sealed class MobilePairing(
         {
             if (cockpitEvent.Kind == "deviceUnpaired")
             {
+                logger?.LogInformation("Depot reported a phone unpaired for connection {ConnectionId}.", connectionId);
                 _Forget(connectionId, deviceId);
                 _ = PruneAsync();
             }
             else if (cockpitEvent.Kind == "devicePaired" && _pending.TryGetValue(connectionId, out var pending) && pending.Payload.IsOpen())
             {
+                logger?.LogInformation("Depot reported a phone pairing for the open code on connection {ConnectionId}.", connectionId);
                 pending.DeviceId = deviceId;
                 pending.DeviceName = string.IsNullOrWhiteSpace(cockpitEvent.Name) ? null : cockpitEvent.Name;
             }
@@ -404,6 +468,7 @@ internal sealed class MobilePairing(
     // A new stream from a phone: its first frame will be the handshake, keyed to this stream id (PROTOCOL.md § 4).
     internal void Opened(string connectionId, string streamId, string deviceId)
     {
+        logger?.LogInformation("Mobile relay stream opened for connection {ConnectionId}.", connectionId);
         lock (_gate)
         {
             _DropStream(connectionId, deviceId);
@@ -414,6 +479,7 @@ internal sealed class MobilePairing(
     // A close names its stream, so a late close of a replaced stream leaves the current one alone.
     internal void Closed(string connectionId, string streamId, string deviceId)
     {
+        logger?.LogInformation("Mobile relay stream closed for connection {ConnectionId}.", connectionId);
         lock (_gate)
         {
             _DropStream(connectionId, deviceId, streamId);
@@ -450,6 +516,7 @@ internal sealed class MobilePairing(
                         if (!stream.ReadySent || stream.ConfirmationStartedAt is not { } started
                             || _time.GetElapsedTime(started) >= _ConfirmationTimeout || !_IsReady(plaintext))
                         {
+                            logger?.LogWarning("Mobile key confirmation refused for connection {ConnectionId}.", connectionId);
                             _DropStream(connectionId, deviceId);
                             return;
                         }
@@ -462,6 +529,7 @@ internal sealed class MobilePairing(
                             _Save(connectionId, [.. _Phones(connectionId), new MobilePairedPhone(deviceId, name, Base64Url.EncodeToString(phonePub), _time.GetUtcNow())]);
                             pending.DeviceName = name;
                             pending.Paired = true;
+                            logger?.LogInformation("Mobile pairing confirmed and phone saved for connection {ConnectionId}.", connectionId);
                         }
 
                         stream.Confirmed = true;
@@ -469,7 +537,7 @@ internal sealed class MobilePairing(
                         stream.PhonePub = null;
                         stream.ConfirmationTimer?.Dispose();
                         stream.ConfirmationTimer = null;
-                        _Channel(connectionId, deviceId);
+                        _Channel(connectionId, deviceId)?.StreamStarted(streamId);
                         return;
                     }
                     finally
@@ -499,7 +567,7 @@ internal sealed class MobilePairing(
 
         try
         {
-            channel?.Receive(plaintext);
+            channel?.Receive(plaintext, streamId);
         }
         finally
         {
@@ -542,12 +610,14 @@ internal sealed class MobilePairing(
             }
 
             current.ConfirmationStartedAt = _time.GetTimestamp();
+            logger?.LogInformation("Mobile handshake reply sent for connection {ConnectionId}.", connectionId);
             current.ConfirmationTimer = _time.CreateTimer(_ =>
             {
                 lock (_gate)
                 {
                     if (!current.Confirmed && ReferenceEquals(_streams.GetValueOrDefault((connectionId, deviceId)), current))
                     {
+                        logger?.LogWarning("Mobile key confirmation timed out for connection {ConnectionId}.", connectionId);
                         _DropStream(connectionId, deviceId, streamId);
                     }
                 }
@@ -564,6 +634,7 @@ internal sealed class MobilePairing(
                 }
 
                 current.ReadySent = true;
+                logger?.LogInformation("Sending mobile ready for connection {ConnectionId}.", connectionId);
                 return cipher.Seal("{\"type\":\"ready\",\"id\":\"ready\",\"body\":{}}"u8);
             }
         }).ConfigureAwait(false);
@@ -572,8 +643,10 @@ internal sealed class MobilePairing(
     // Under _gate. The reply for the phone once the handshake holds, or null for every refusal alike.
     private byte[]? _Handshake(string connectionId, string deviceId, _Stream stream, byte[] frame)
     {
+        logger?.LogInformation("Mobile handshake received for connection {ConnectionId}.", connectionId);
         if (!_keys.TryGetCockpitKey(connectionId, out var key))
         {
+            logger?.LogWarning("Mobile handshake cannot read the Cockpit key for connection {ConnectionId}.", connectionId);
             return null;
         }
 
@@ -585,6 +658,7 @@ internal sealed class MobilePairing(
                     phonePub => phones.Any(phone => phone.DeviceId == deviceId && phone.PhonePub == Base64Url.EncodeToString(phonePub)) && _keys.IsPaired(connectionId, phonePub),
                     out var result))
             {
+                logger?.LogWarning("Mobile handshake refused for connection {ConnectionId}.", connectionId);
                 return null;
             }
 
@@ -601,6 +675,7 @@ internal sealed class MobilePairing(
             }
 
             stream.Cipher = result.Cipher;
+            logger?.LogInformation("Mobile handshake accepted for connection {ConnectionId}; awaiting key confirmation.", connectionId);
             return result.Reply;
         }
     }
@@ -627,7 +702,7 @@ internal sealed class MobilePairing(
             Verbosity = AssistantChannelVerbosity.Everything,
         });
         channel = new MobileAssistantChannel(deviceId, gateway, plaintext => _SendToPhone(connectionId, deviceId, plaintext),
-            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger, host);
+            Environment.MachineName, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3), logger, host, _time);
         _channels[(connectionId, deviceId)] = channel;
         return channel;
     }
@@ -722,7 +797,7 @@ internal sealed class MobilePairing(
                 _DropStream(connectionId, deviceId, streamId);
             }
 
-            logger?.LogDebug("Sending to a phone over the relay failed: {Reason}", exception.GetType().Name);
+            logger?.LogWarning("Sending to a phone over the relay failed for connection {ConnectionId}: {Reason}", connectionId, exception.GetType().Name);
         }
     }
 

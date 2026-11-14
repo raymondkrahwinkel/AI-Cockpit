@@ -209,4 +209,19 @@ internal sealed class CockpitConfigFile
     // AC-1507: the provisioning applier's own record; absent on a machine nothing was provisioned onto.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProvisioningStateEntry? Provisioning { get; set; }
+
+    // AC-2336: the vault hub's data, owned by `VaultHub`; its two fields carry "secret" so the encryption layer covers them.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VaultSectionEntry? Vault { get; set; }
+}
+
+internal sealed class VaultSectionEntry
+{
+    [JsonPropertyName("stateSecret")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? StateSecret { get; set; }
+
+    [JsonPropertyName("auditSecret")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AuditSecret { get; set; }
 }

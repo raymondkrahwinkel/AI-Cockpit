@@ -116,6 +116,11 @@ public interface IAssistantSession : IAsyncDisposable
     void InjectAndSubmit(string text);
 
     /// <summary>
+    /// Atomically answers a still-open broker card and submits its answer through the ordinary message route.
+    /// </summary>
+    Task<bool> AnswerQuestionAsync(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers) => Task.FromResult(false);
+
+    /// <summary>
     /// Asks the provider to compact the conversation; false when it could not be asked.
     /// </summary>
     Task<bool> CompactContextAsync();

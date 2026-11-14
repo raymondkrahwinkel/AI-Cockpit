@@ -196,7 +196,8 @@ internal class DepotPanelScene : DispatchProxy
             DepotMobileChannel.PairStart or DepotMobileChannel.PairStatus => Pairing,
             DepotMobileChannel.Phones => new DepotPairedPhones(
             [
-                new("d1", "Pixel 9 Pro", new DateTimeOffset(2026, 11, 9, 10, 4, 0, TimeSpan.Zero)),
+                new("d1", "Pixel 9 Pro", new DateTimeOffset(2026, 11, 9, 10, 4, 0, TimeSpan.Zero),
+                    "3259 1568 F790 4C01 FFF1 CFD0 2DA7 197D 7D9C 0D73 2BC3 959C 3A1C 3FFA A541 CCB3"),
                 new("d2", "Galaxy Tab S10", new DateTimeOffset(2026, 10, 30, 18, 40, 0, TimeSpan.Zero)),
             ], "https://depot.krahwinkel-it.nl/account/mobile"),
             DepotChannel.Registration => new DepotRegistrationStatus("Raymond's desktop", true),

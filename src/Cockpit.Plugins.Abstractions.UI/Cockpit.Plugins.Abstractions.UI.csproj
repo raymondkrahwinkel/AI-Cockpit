@@ -62,7 +62,8 @@
     <!-- 3.26.0: ICockpitUiHost.CreateLiveMarkdownEditor, ILiveMarkdownEditor and CompanionToolRegistration.Attached; a plugin that calls it requires host 0.167.0. Additive; still v3. -->
     <!-- 3.27.0 (AC-2236): ICockpitUiHost.AddFileBrowser and FileBrowserRegistration, the host's file browser; a plugin that calls
          it requires host 0.168.0. Additive; still v3. -->
-    <Version>3.27.0</Version>
+    <!-- 3.29.0 (AC-2347): VaultEncryptionRequiredPanel, the block a vault provider's connect page shows while encryption is off. Additive; still v3. -->
+    <Version>3.29.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>
@@ -79,7 +80,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
-    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia" Version="12.1.6" />
   </ItemGroup>
 
 </Project>

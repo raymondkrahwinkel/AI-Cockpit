@@ -1,4 +1,6 @@
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Profiles;
+using Cockpit.Plugins.OpenAiCompat;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -8,6 +10,11 @@ namespace Cockpit.Infrastructure.Sessions;
 // declare may be a leftover from another provider or an older build, and reporting it would invent meaning.
 public static class ProfileOptionReport
 {
+    public static PluginSessionCapabilities? CapabilitiesFor(SessionProfile profile, PluginSessionCapabilities? capabilities) =>
+        profile.ProviderConfig is OllamaConfig or LmStudioConfig
+            ? new PluginSessionCapabilities(false, false) { DeclaredOptions = [StreamSilenceTimeout.Descriptor] }
+            : capabilities;
+
     // The declared options, each carrying what the profile sets it to or, failing that, the provider's own default.
     public static IReadOnlyList<AssistantProfileOptionRow> For(
         PluginSessionCapabilities? capabilities,

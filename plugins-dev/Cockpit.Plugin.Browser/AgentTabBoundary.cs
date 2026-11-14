@@ -304,12 +304,13 @@ internal sealed class AgentTabBoundary(Func<string, bool> register, Action<strin
                     }
                 }
                 var allowed = blocked is null;
-                await SendAsync(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
-                    allowed ? new { requestId = data.GetProperty("requestId").GetString() } : (object)new { requestId = data.GetProperty("requestId").GetString(), errorReason = "BlockedByClient" }, session).ConfigureAwait(false);
+                // Record the reason before failing the request: Chromium may report the net error before it would be stored.
                 if (blocked is not null && target is not null)
                 {
                     SetBlocked(target, blocked);
                 }
+                await SendAsync(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
+                    allowed ? new { requestId = data.GetProperty("requestId").GetString() } : (object)new { requestId = data.GetProperty("requestId").GetString(), errorReason = "BlockedByClient" }, session).ConfigureAwait(false);
             }
             else if (name == "Page.fileChooserOpened" && target is not null)
             {

@@ -136,7 +136,7 @@ internal sealed class PluginTtySessionProviderAdapter(
         catch (Exception exception)
         {
             logger?.LogError(exception, "Preparing the session MCP gateway failed; session launch was stopped.");
-            throw new InvalidOperationException("Session could not start because its MCP gateway is unavailable. See the Cockpit log for the cause.");
+            throw Mcp.GatewayLaunchFailure.Stopped(exception);
         }
     }
 

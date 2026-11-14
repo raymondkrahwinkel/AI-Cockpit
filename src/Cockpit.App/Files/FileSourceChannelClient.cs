@@ -7,7 +7,7 @@ using Cockpit.Core.Abstractions.Remote;
 
 namespace Cockpit.App.Files;
 
-// A client is tied to the plugin/backend channel it was opened on, including a server-admin relay.
+// A client is tied to the plugin/backend channel it was opened on, including a remote server relay.
 internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
     public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel.Subscribe(name, handler);
@@ -110,7 +110,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         string.IsNullOrWhiteSpace(live.SessionId) || live.ContentBase64 is null || live.Status is null
             ? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source returned an invalid live file.")
             : (live.SessionId, new LiveFileSnapshot(new UTF8Encoding(false, true).GetString(FileSourceChannel.DecodeContent(live.ContentBase64)),
-                live.Rev, live.Status) { SerializedText = live.SerializedText });
+                live.Rev, live.Status) { SerializedText = live.SerializedText, PersistedVersion = live.PersistedVersion });
 
     public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,
         bool mustNotExist, CancellationToken cancellationToken) => _RunAsync(async () =>
@@ -135,6 +135,12 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         }
         catch (FileSourceException) { throw; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is IRemoteCallFailure)
+        {
+            var failure = (IRemoteCallFailure)error;
+            throw new FileSourceException(FileSourceErrorKind.Unavailable,
+                $"The server rejected the file source request (HTTP {(int)failure.Status}: {failure.Status}).");
+        }
         catch (Exception error) when (error is IOException or HttpRequestException or JsonException
             or FormatException or InvalidOperationException or ArgumentException or OperationCanceledException or TimeoutException or IRemoteCallFailure)
         {

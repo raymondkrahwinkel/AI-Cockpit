@@ -21,7 +21,9 @@ public class CodingToolsTests
         File.WriteAllText(outside, "secret");
 
         var session = Substitute.For<ISessionHandle>();
+        session.PaneId.Returns("pane-1");
         session.WorkingDirectory.Returns(root);
+        session.ActiveProfile.Returns(new Cockpit.Core.Profiles.SessionProfile("strict", new Cockpit.Core.Profiles.PluginProviderConfig("local", "{}")) { GuardrailMode = Cockpit.Core.Profiles.GuardrailMode.Strict });
         var sessions = Substitute.For<ISessionRegistry>();
         sessions.Find("pane-1").Returns(session);
         var tools = new CodingTools(sessions, Substitute.For<IShellCommandRunner>());

@@ -12,6 +12,7 @@ internal static class SettingsCarrierWhitelist
     [
         "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
         "Profiles[].ImageInputMode",
+        "Profiles[].GuardrailMode",
         "AssistantProfile.AssistantRole",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
@@ -20,6 +21,7 @@ internal static class SettingsCarrierWhitelist
         "Profiles[].Provider.SystemPrompt", "Profiles[].Provider.TurnLimits", "Profiles[].Provider.ContextTokens",
         "Profiles[].Provider.LoadModelWithContext", "Profiles[].Provider.LoadOptions", "Profiles[].Provider.EnableThinking", "Profiles[].Provider.PluginProviderId",
         "Profiles[].Provider.ReasoningEffort",
+        // Stream silence timeout travels in the existing Profiles[].Defaults.OptionDefaults carrier.
         "Profiles[].Delegation.AllowedAsTarget", "Profiles[].Delegation.MaxConcurrent", "Profiles[].Delegation.PermissionCeiling",
         "Profiles[].Delegation.MayDelegateFurther", "Profiles[].Delegation.TimeoutMinutes", "Profiles[].Delegation.AllowedTaskTypes",
         "Profiles[].Delegation.Purpose", "Profiles[].Delegation.Tags", "Profiles[].Delegation.AllowedTools",
@@ -57,6 +59,7 @@ internal static class SettingsCarrierWhitelist
         "CategoryOrder",
         "Projects[].SourceDirectory", "Projects[].SourceDirectories", "Projects[].Resources", "Projects[].MemoryRef",
         "Profiles[].Delegation.AllowedWorkingDirs", "Profiles[].Provider.PluginConfigJson", "Plugins.*.Data", "WorkingPaths",
+        "Profiles[].GuardrailAllowedPaths",
     ];
 
     private static readonly HashSet<string> _Leaves = new(Carried, StringComparer.Ordinal);

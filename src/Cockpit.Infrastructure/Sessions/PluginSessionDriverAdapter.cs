@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 // Wraps a plugin's narrow `IPluginSessionDriver` to satisfy the app's real `ISessionDriver`
 // contract (#45), the seam `SessionDriverFactory` uses. Claude-CLI-only live-control members
 // (permission mode/model/thinking-budget switch, always-allow persistence) are deliberate no-ops here.
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, ISessionConversationSink? conversationSink = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null, ISessionResourceResolver? sessionResources = null, ISessionConversationSink? conversationSink = null, IWorktreeManager? worktreeManager = null, SessionMcpMounts? mcpMounts = null, IMcpToolProvider? mcpToolProvider = null, SessionMcpGatewayHost? gateway = null, SessionStdioProcesses? stdioProcesses = null, IOrgPolicy? orgPolicy = null, GuardNotifications? guardNotifications = null) : ISessionDriver
 {
     // #45 review finding 3: plan mode/thinking budget have no equivalent on the narrow surface, so always
     // unsupported here. SupportsVision maps straight through (every built-in plugin reports it false today, #64 fase 2).
@@ -149,6 +149,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             stdioEnvironment[key] = _scratch;
         }
 
+        var guardEnvironment = SessionGuardrailEnvironment.Build(profile, workingDirectory, _scratch,
+            stdioEnvironment.GetValueOrDefault("CLAUDE_CONFIG_DIR"),
+            orgPolicy?.Current, message => logger?.LogWarning("{Message}", message));
+        foreach (var (key, value) in guardEnvironment)
+        {
+            stdioEnvironment[key] = value;
+        }
+
         if (gateway?.UrlFor(paneId) is not null)
         {
             try
@@ -161,7 +169,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 logger?.LogError(exception, "Binding the session MCP context failed; session launch was stopped.");
-                throw new InvalidOperationException("Session could not start because its MCP gateway could not be prepared. See the Cockpit log for the cause.");
+                throw Mcp.GatewayLaunchFailure.Stopped(exception);
             }
         }
 
@@ -213,12 +221,21 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             scratchEnvironment[key] = _scratch;
         }
         environment = scratchEnvironment;
+        foreach (var (key, value) in guardEnvironment)
+        {
+            scratchEnvironment[key] = value;
+        }
         var scratchOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
         scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
             options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
         if (_gatewayToolNames is { } names)
         {
             scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = names.InBrief(scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt], localTools: _hostToolset is not null);
+        }
+        if (!scratchOptions.ContainsKey(Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key)
+            && profile?.Defaults?.OptionDefaults?.GetValueOrDefault(Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key) is { } silenceTimeout)
+        {
+            scratchOptions[Cockpit.Plugins.OpenAiCompat.StreamSilenceTimeout.Key] = silenceTimeout;
         }
         await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
         if (paneId is not null && inner.ProcessId is { } processId) { stdioProcesses?.Bind(paneId, processId); }
@@ -469,7 +486,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 _minted = null;
             }
             logger?.LogError(exception, "Preparing the session MCP gateway failed; session launch was stopped.");
-            throw new InvalidOperationException("Session could not start because its MCP gateway is unavailable. See the Cockpit log for the cause.");
+            throw Mcp.GatewayLaunchFailure.Stopped(exception);
         }
     }
 
@@ -708,6 +725,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 PluginToolUseRequested tool => tool with { ToolName = names?.ToCanonical(tool.ToolName) ?? tool.ToolName },
                 _ => incoming,
             };
+            if (pluginEvent is PluginGuardViolation violation)
+            {
+                if (_paneId is not null)
+                {
+                    guardNotifications?.Report(_paneId, new(violation.Mode, violation.Tool, violation.Target, violation.Denied, violation.Kind));
+                }
+                continue;
+            }
             _ReportConversationIfChanged();
 
             if (pluginEvent is PluginSessionError error)

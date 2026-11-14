@@ -11,7 +11,7 @@ public static class McpOAuthSignInGuidance
             $"the cockpit has never signed in to '{serverName}'. Open Settings ▸ MCP servers and press Sign in on that row.",
 
         McpOAuthAttentionReason.SignInExpired =>
-            $"the cockpit's sign-in for '{serverName}' can no longer be renewed — it was revoked or has run out. "
+            $"the cockpit needs a new sign-in for '{serverName}'. "
             + "Open Settings ▸ MCP servers and press Sign in on that row to authorize it again.",
 
         McpOAuthAttentionReason.ServerUnreachable =>

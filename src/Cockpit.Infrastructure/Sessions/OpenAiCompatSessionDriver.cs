@@ -11,6 +11,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.OpenAiCompat;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -28,6 +29,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private readonly SessionMcpMounts? _mcpMounts;
     private readonly ILocalModelContextManager _localModelContext;
     private readonly SessionMcpGatewayHost? _gateway;
+    private readonly IOrgPolicy? _orgPolicy;
     private string? _scratch;
     private string? _scratchPane;
 
@@ -66,13 +68,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         IMcpToolProvider mcpToolProvider,
         ILogger<OpenAiCompatSessionDriver> logger,
         ILocalModelContextManager localModelContext,
-        SessionMcpMounts? mcpMounts = null, SessionMcpGatewayHost? gateway = null)
+        SessionMcpMounts? mcpMounts = null, SessionMcpGatewayHost? gateway = null, IOrgPolicy? orgPolicy = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
         _gateway = gateway;
+        _orgPolicy = orgPolicy;
         _localModelContext = localModelContext;
         _gate = new SessionToolApprovalGate(
             (toolUseId, toolName, inputJson) =>
@@ -94,6 +97,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         SupportsThinking: false,
         SupportsVision: true);
 
+    private TimeSpan _streamIdleTimeout;
+
     public string? SessionId => _sessionId;
 
     public SessionProfile? Profile { get; private set; }
@@ -110,6 +115,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             ?? throw new InvalidOperationException($"{nameof(OpenAiCompatSessionDriver)} requires a profile with an OpenAI-compatible provider config.");
 
         Profile = profile;
+        _streamIdleTimeout = StreamSilenceTimeout.Resolve(
+            launchOptions?.GetValueOrDefault(StreamSilenceTimeout.Key) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key),
+            StreamSilenceTimeout.DefaultFor(config switch
+            {
+                OllamaConfig ollama => ollama.BaseUrl,
+                LmStudioConfig studio => studio.BaseUrl,
+                _ => string.Empty,
+            }));
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         if (config is LmStudioConfig lmStudio && _model is { } selectedModel)
         {
@@ -151,6 +164,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 _scratch = SessionScratch.Create(paneId, message => _logger.LogWarning("{Message}", message));
                 var environment = new Dictionary<string, string?>(ProfileEnvironmentVariable.ToOverlay(profile?.EnvironmentVariables ?? []), StringComparer.OrdinalIgnoreCase);
                 foreach (var key in SessionScratch.EnvironmentKeys) { environment[key] = _scratch; }
+                foreach (var (key, guardValue) in SessionGuardrailEnvironment.Build(profile, workingDirectory, _scratch,
+                    environment.GetValueOrDefault("CLAUDE_CONFIG_DIR"),
+                    _orgPolicy?.Current, message => _logger.LogWarning("{Message}", message)))
+                {
+                    environment[key] = guardValue;
+                }
                 await _gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, profile?.Label,
                     selection is ExactMcpServerSelection { AssistantManaged: true }, cancellationToken, environment,
                     launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Brain)).ConfigureAwait(false);
@@ -437,7 +456,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             options,
             delta => _events.Writer.TryWrite(new AssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta }),
             _logger,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            _streamIdleTimeout).ConfigureAwait(false);
 
         var reply = outcome.Text;
         var hasText = !string.IsNullOrWhiteSpace(reply);

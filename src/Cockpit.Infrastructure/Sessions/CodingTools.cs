@@ -5,14 +5,17 @@ using Microsoft.Extensions.FileSystemGlobbing;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Configuration;
+using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// The `cockpit-coding` MCP tools (AC-1489): a small coding toolset with opencode's names and shapes, for a model on
-// an HTTP provider that would otherwise read whole files through the filesystem server. Every path stays inside the
-// calling pane's working directory, and every answer is bounded, so a read cannot flood the context.
-internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner runner)
+// AC-2247: bounded coding tools share the calling session's guardrail policy.
+internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner runner, IOrgPolicy? orgPolicy = null, GuardNotifications? guardNotifications = null)
 {
     internal const string EndpointName = "cockpit-coding";
     internal const string ShellEndpointName = "cockpit-coding-shell";
@@ -33,17 +36,22 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(2);
 
     [McpServerTool(Name = "read", ReadOnly = true)]
-    [Description("Reads a text file in your working directory as numbered lines (`N: text`). Reads at most 2000 lines or 50 KiB per call and says where to continue with `offset`. Find the right file and line first with grep or glob, then read only the part you need instead of whole files.")]
+    [Description("Reads a text file in your session-allowed paths as numbered lines (`N: text`). Reads at most 2000 lines or 50 KiB per call and says where to continue with `offset`. Find the right file and line first with grep or glob, then read only the part you need instead of whole files.")]
     public string Read(
-        [Description("The file, relative to your working directory or absolute inside it.")] string filePath,
+        [Description("The file, relative to your working directory or absolute in a session-allowed path.")] string filePath,
         [Description("The line to start at, 1-based. Default 1.")] int? offset = null,
         [Description("How many lines to read. Default and maximum 2000.")] int? limit = null)
     {
-        if (!_TryResolve(filePath, out var path, out var error))
+        if (!_TryResolve(filePath, out var path, out var error, out var warning))
         {
             return error;
         }
 
+        return WithWarning(warning, _Read(path, filePath, offset, limit));
+    }
+
+    private static string _Read(string path, string filePath, int? offset, int? limit)
+    {
         if (!File.Exists(path))
         {
             return Directory.Exists(path) ? $"Error: {filePath} is a directory; use glob to list it." : $"Error: no such file: {filePath}";
@@ -92,21 +100,27 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     }
 
     [McpServerTool(Name = "glob", ReadOnly = true)]
-    [Description("Finds files in your working directory by glob pattern, e.g. `**/*.cs` or `src/**/Session*.cs`. Respects .gitignore in a git repository. Returns at most 100 paths.")]
+    [Description("Finds files in your session-allowed paths by glob pattern, e.g. `**/*.cs` or `src/**/Session*.cs`. Respects .gitignore in a git repository. Returns at most 100 paths.")]
     public async Task<string> Glob(
         [Description("The glob pattern, relative to `path`.")] string pattern,
-        [Description("The directory to search in, relative to your working directory. Default: the working directory itself.")] string? path = null)
+        [Description("The directory to search in, relative to your working directory or absolute in a session-allowed path. Default: the working directory itself.")] string? path = null)
     {
-        if (!_TryResolve(path ?? ".", out var directory, out var error))
+        if (!_TryResolve(path ?? ".", out var directory, out var error, out var warning))
         {
             return error;
         }
 
-        var root = _Root() ?? directory;
+        return WithWarning(warning, await _GlobAsync(directory, pattern).ConfigureAwait(false));
+    }
+
+    private async Task<string> _GlobAsync(string directory, string pattern)
+    {
+        var workingRoot = Path.GetFullPath(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty)?.WorkingDirectory ?? directory);
+        var root = PathBoundary.Evaluate(directory, [workingRoot]).IsInside ? workingRoot : directory;
         var matcher = new Matcher(_PathComparison).AddInclude(pattern);
         var files = (await _ListFilesAsync(root).ConfigureAwait(false))
             .Select(file => Path.GetFullPath(Path.Combine(root, file)))
-            .Where(file => _IsUnder(file, directory) && File.Exists(file))
+            .Where(file => PathBoundary.Evaluate(file, [directory]).IsInside && File.Exists(file))
             .Select(file => Path.GetRelativePath(directory, file).Replace('\\', '/'))
             .Where(file => matcher.Match(file).HasMatches)
             .ToList();
@@ -114,17 +128,22 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     }
 
     [McpServerTool(Name = "grep", ReadOnly = true)]
-    [Description("Searches file contents in your working directory with a regular expression (.NET syntax). Returns at most 100 matches as `path:line: text`. Use `include` to narrow by file name, e.g. `*.cs`. Respects .gitignore in a git repository.")]
+    [Description("Searches file contents in your session-allowed paths with a regular expression (.NET syntax). Returns at most 100 matches as `path:line: text`. Use `include` to narrow by file name, e.g. `*.cs`. Respects .gitignore in a git repository.")]
     public async Task<string> Grep(
         [Description("The regular expression to search for.")] string pattern,
-        [Description("The directory to search in, relative to your working directory. Default: the working directory itself.")] string? path = null,
+        [Description("The directory to search in, relative to your working directory or absolute in a session-allowed path. Default: the working directory itself.")] string? path = null,
         [Description("A glob the file path must match, e.g. `*.cs` or `src/**/*.ts`.")] string? include = null)
     {
-        if (!_TryResolve(path ?? ".", out var directory, out var error))
+        if (!_TryResolve(path ?? ".", out var directory, out var error, out var warning))
         {
             return error;
         }
 
+        return WithWarning(warning, await _GrepAsync(directory, pattern, include).ConfigureAwait(false));
+    }
+
+    private async Task<string> _GrepAsync(string directory, string pattern, string? include)
+    {
         Regex regex;
         try
         {
@@ -135,7 +154,8 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
             return $"Error: invalid regular expression: {ex.Message}";
         }
 
-        var root = _Root() ?? directory;
+        var workingRoot = Path.GetFullPath(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty)?.WorkingDirectory ?? directory);
+        var root = PathBoundary.Evaluate(directory, [workingRoot]).IsInside ? workingRoot : directory;
         var matcher = include is null ? null : new Matcher(_PathComparison).AddInclude(include.Contains('/') ? include : $"**/{include}");
         var matches = new List<string>();
         var total = 0;
@@ -143,7 +163,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         {
             var full = Path.GetFullPath(Path.Combine(root, file));
             var relative = file.Replace('\\', '/');
-            if (!_IsUnder(full, directory) || matcher?.Match(relative).HasMatches == false || _LinksOutside(full, root) || !_IsSearchable(full))
+            if (!PathBoundary.Evaluate(full, [directory]).IsInside || matcher?.Match(relative).HasMatches == false || !PathBoundary.Evaluate(full, [root]).IsInside || !_IsSearchable(full))
             {
                 continue;
             }
@@ -176,18 +196,23 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     }
 
     [McpServerTool(Name = "edit", ReadOnly = false, Destructive = false)]
-    [Description("Replaces an exact piece of text in a file in your working directory. `oldString` must match exactly once, unless `replaceAll` is true; read the file first so it does. An empty `oldString` creates a new file with `newString` as its content. Line endings follow the file.")]
+    [Description("Replaces an exact piece of text in a file in your session-allowed paths. `oldString` must match exactly once, unless `replaceAll` is true; read the file first so it does. An empty `oldString` creates a new file with `newString` as its content. Line endings follow the file.")]
     public string Edit(
-        [Description("The file, relative to your working directory or absolute inside it.")] string filePath,
+        [Description("The file, relative to your working directory or absolute in a session-allowed path.")] string filePath,
         [Description("The exact text to replace, including its indentation.")] string oldString,
         [Description("The text to put in its place.")] string newString,
         [Description("Replace every occurrence instead of exactly one. Default false.")] bool replaceAll = false)
     {
-        if (!_TryResolve(filePath, out var path, out var error))
+        if (!_TryResolve(filePath, out var path, out var error, out var warning, "write"))
         {
             return error;
         }
 
+        return WithWarning(warning, _Edit(path, filePath, oldString, newString, replaceAll));
+    }
+
+    private static string _Edit(string path, string filePath, string oldString, string newString, bool replaceAll)
+    {
         if (oldString.Length == 0)
         {
             if (File.Exists(path))
@@ -195,7 +220,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
                 return $"Error: {filePath} already exists; an empty oldString only creates a new file.";
             }
 
-            return Write(filePath, newString);
+            return _Write(path, filePath, newString);
         }
 
         if (!File.Exists(path))
@@ -228,30 +253,27 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
     }
 
     [McpServerTool(Name = "write", ReadOnly = false, Destructive = false)]
-    [Description("Writes a file in your working directory, creating its directories, and replaces it if it exists. Prefer edit for a change to an existing file.")]
+    [Description("Writes a file in your session-allowed paths, creating its directories, and replaces it if it exists. Prefer edit for a change to an existing file.")]
     public string Write(
-        [Description("The file, relative to your working directory or absolute inside it.")] string filePath,
+        [Description("The file, relative to your working directory or absolute in a session-allowed path.")] string filePath,
         [Description("The complete content of the file.")] string content)
     {
-        if (!_TryResolve(filePath, out var path, out var error))
+        if (!_TryResolve(filePath, out var path, out var error, out var warning, "write"))
         {
             return error;
         }
 
+        return WithWarning(warning, _Write(path, filePath, content));
+    }
+
+    private static string _Write(string path, string filePath, string content)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? path);
         File.WriteAllText(path, content);
         return $"Wrote {filePath}: {content.Length} chars.";
     }
 
-    // The calling pane's working directory. The pane is the transport-verified one only: for file access the caller
-    // may not name its own pane, so a call without one is refused rather than given a default.
-    internal static string? RootFor(ISessionRegistry sessions) =>
-        McpRequestContext.CurrentPaneId is { } pane && sessions.Find(pane)?.WorkingDirectory is { Length: > 0 } directory
-            ? Path.GetFullPath(directory)
-            : null;
-
-    // Resolves `relative` against `root` and refuses anything that lands outside it, through `..`, an absolute path,
-    // or a symlink or junction on the way whose target lies elsewhere.
+    // Off retains the original working-directory boundary.
     internal static bool TryResolve(string? root, string relative, out string path, out string error)
     {
         path = string.Empty;
@@ -262,7 +284,7 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
         }
 
         var full = Path.GetFullPath(Path.Combine(root, relative));
-        if (!_IsUnder(full, root) || _LinksOutside(full, root))
+        if (!PathBoundary.Evaluate(full, [root]).IsInside)
         {
             error = $"Error: {relative} is outside your working directory ({root}).";
             return false;
@@ -275,40 +297,58 @@ internal sealed class CodingTools(ISessionRegistry sessions, IShellCommandRunner
 
     private static StringComparison _PathComparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    private string? _Root() => RootFor(sessions);
+    private bool _TryResolve(string relative, out string path, out string error, out string warning, string tool = "access") =>
+        TryResolveFor(sessions.Find(McpRequestContext.CurrentPaneId ?? string.Empty), relative, orgPolicy?.Current, out path, out error, out warning,
+            violation => guardNotifications?.Report(McpRequestContext.CurrentPaneId ?? string.Empty, violation), tool);
 
-    private bool _TryResolve(string relative, out string path, out string error) => TryResolve(_Root(), relative, out path, out error);
-
-    private static bool _IsUnder(string path, string root)
+    internal static bool TryResolveFor(ISessionHandle? session, string relative, ProvisionPolicy? policy, out string path, out string error, out string warning, Action<GuardViolation>? report = null, string tool = "access")
     {
-        var trimmed = Path.TrimEndingDirectorySeparator(root);
-        return path.Equals(trimmed, _PathComparison)
-            || path.StartsWith(trimmed + Path.DirectorySeparatorChar, _PathComparison);
-    }
-
-    // Walks from the path up to (not including) the root; a dangling link counts too, since writing through one
-    // would create its target wherever it points.
-    private static bool _LinksOutside(string path, string root)
-    {
-        var rootLength = Path.TrimEndingDirectorySeparator(root).Length;
-        for (var current = path; current is not null && current.Length > rootLength; current = Path.GetDirectoryName(current))
+        warning = string.Empty;
+        var root = session?.WorkingDirectory;
+        if (string.IsNullOrWhiteSpace(root))
         {
-            FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
-            if (info.LinkTarget is not { } link)
-            {
-                continue;
-            }
-
-            var target = info.ResolveLinkTarget(returnFinalTarget: true)?.FullName
-                ?? Path.GetFullPath(link, Path.GetDirectoryName(current) ?? root);
-            if (!_IsUnder(target, root))
-            {
-                return true;
-            }
+            return TryResolve(null, relative, out path, out error);
         }
 
+        var environment = SessionGuardrailEnvironment.Build(session?.ActiveProfile, root,
+            SessionScratch.PathFor(session?.PaneId ?? McpRequestContext.CurrentPaneId ?? string.Empty), null, policy, _ => { });
+        if (environment["COCKPIT_GUARD_MODE"] == GuardrailMode.Off.ToString())
+        {
+            return TryResolve(root, relative, out path, out error);
+        }
+
+        path = Path.GetFullPath(Path.Combine(root, relative));
+        error = string.Empty;
+        if (PathBoundary.Evaluate(path, environment["COCKPIT_GUARD_ROOTS"].Split(Path.PathSeparator)).IsInside)
+        {
+            return true;
+        }
+        report?.Invoke(new(environment["COCKPIT_GUARD_MODE"], tool, path, environment["COCKPIT_GUARD_MODE"] == GuardrailMode.Strict.ToString(), "path"));
+        if (environment["COCKPIT_GUARD_MODE"] == GuardrailMode.Warn.ToString())
+        {
+            warning = $"guardrail: {path} is outside the session boundary";
+            return true;
+        }
+
+        error = $"Error: {relative} is outside the session boundary (worktree, session scratch and allowed paths).";
         return false;
     }
+
+    // AC-2250: these tools run as children of the cockpit, so only the calling session's own job counts as owned.
+    internal static GuardDecision KillDecision(ISessionHandle? session, string paneId, string command, string directory, ProvisionPolicy? policy, Action<GuardViolation>? report = null)
+    {
+        var decision = CommandGuard.EvaluateKill(command, CommandGuard.SessionScope(null, paneId, directory,
+                string.IsNullOrEmpty(paneId) ? null : SessionScratch.JobNameOf(SessionScratch.PathFor(paneId))),
+            OrgPolicyCeilings.GuardrailMode(policy, session?.ActiveProfile?.GuardrailMode ?? SessionProfileEntry.ExistingProfileGuardrailMode));
+        foreach (var violation in decision.Violations)
+        {
+            report?.Invoke(violation);
+        }
+        return decision;
+    }
+
+    internal static string WithWarning(string warning, string result) =>
+        warning.Length == 0 ? result : $"{warning}\n{result}";
 
     private static int _Count(string text, string value)
     {

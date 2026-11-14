@@ -12,6 +12,7 @@ public sealed class SessionProcessMembership
     private readonly Dictionary<int, HashSet<int>> _membersByRoot = [];
     private readonly Dictionary<int, HashSet<int>> _launcherShellsByRoot = [];
     private readonly Dictionary<int, int> _samplesByRoot = [];
+    private readonly Dictionary<int, DateTimeOffset> _sampledAtByRoot = [];
 
     // Everything still alive that this session has ever spawned, plus whatever those have spawned since. One
     // sample can only miss a process that both started and exited between two reads, which held nothing for long.
@@ -19,6 +20,16 @@ public sealed class SessionProcessMembership
     {
         var snapshot = ProcessTree.Snapshot(rows);
         var seeds = _membersByRoot.GetValueOrDefault(rootProcessId) ?? [];
+        var now = DateTimeOffset.UtcNow;
+
+        // AC-2353: a remembered pid that now belongs to a process younger than the last sample was reused by a
+        // stranger; keeping it would count that stranger's whole subtree (explorer, a service host) as this session's.
+        if (_sampledAtByRoot.TryGetValue(rootProcessId, out var previous))
+        {
+            seeds.RemoveWhere(pid => pid != rootProcessId && snapshot.StartedAfter(pid, previous));
+        }
+
+        _sampledAtByRoot[rootProcessId] = now;
         seeds.Add(rootProcessId);
 
         var members = snapshot.LiveReachableFrom(seeds);
@@ -61,6 +72,7 @@ public sealed class SessionProcessMembership
             _membersByRoot.Remove(gone);
             _launcherShellsByRoot.Remove(gone);
             _samplesByRoot.Remove(gone);
+            _sampledAtByRoot.Remove(gone);
         }
     }
 }

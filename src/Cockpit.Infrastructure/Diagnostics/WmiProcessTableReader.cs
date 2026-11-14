@@ -16,7 +16,7 @@ internal sealed class WmiProcessTableReader : IProcessTableReader
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT ProcessId, ParentProcessId, KernelModeTime, UserModeTime, WorkingSetSize, Name FROM Win32_Process");
+                "SELECT ProcessId, ParentProcessId, KernelModeTime, UserModeTime, WorkingSetSize, Name, CreationDate FROM Win32_Process");
 
             var rows = new List<ProcessRow>();
             foreach (var item in searcher.Get())
@@ -37,7 +37,8 @@ internal sealed class WmiProcessTableReader : IProcessTableReader
                     _ToInt(process["ParentProcessId"]),
                     TimeSpan.FromTicks(kernel + user),
                     _ToLong(process["WorkingSetSize"]),
-                    process["Name"] as string ?? string.Empty));
+                    process["Name"] as string ?? string.Empty,
+                    _ToStart(process["CreationDate"])));
             }
 
             return rows;
@@ -48,6 +49,10 @@ internal sealed class WmiProcessTableReader : IProcessTableReader
             return [];
         }
     }
+
+    // AC-2353: lets the table tell a reused pid from the process that held it before.
+    private static DateTimeOffset? _ToStart(object? value) =>
+        value is string text && text.Length > 0 ? new DateTimeOffset(ManagementDateTimeConverter.ToDateTime(text)) : null;
 
     private static int _ToInt(object? value) => value is null ? 0 : Convert.ToInt32(value);
 

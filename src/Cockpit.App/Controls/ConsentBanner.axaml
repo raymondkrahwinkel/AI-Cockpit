@@ -97,6 +97,8 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+                            <TextBlock Text="{Binding SelectedOption.Detail}" IsVisible="{Binding SelectedOption.HasDetail}" FontSize="11.5"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             <ItemsControl ItemsSource="{Binding Options}" IsVisible="{Binding AllowMultiple}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ConsentOptionViewModel">

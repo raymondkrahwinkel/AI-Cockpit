@@ -12,7 +12,7 @@ namespace Cockpit.App.Plugins;
 // #14: shows a plugin's content in a window beside the cockpit, wrapped in `CockpitWindowChrome`. AC-367:
 // these are surfaces, not questions, so unlike a modal they never take every running session down.
 // Reduced to one window per plugin-supplied key, never per caption — a caption is not an identity.
-internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogHost, ISingletonService
+internal sealed class PluginDialogHost(SurfaceWindows surfaces, Window? windowOwner = null) : IPluginDialogHost, ISingletonService
 {
     public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null, string? singleInstanceKey = null)
     {
@@ -162,19 +162,21 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
     private static object _Key(string? singleInstanceKey) =>
         singleInstanceKey is null ? new object() : ("plugin", singleInstanceKey);
 
-    private static bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner, out Size maximum)
+    private bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner, out Size maximum)
     {
         window = null!;
         owner = null!;
         maximum = default;
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } lifetime)
+        var lifetime = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+        var main = windowOwner ?? lifetime?.MainWindow;
+        if (main is null)
         {
             return false;
         }
 
         // Owner is whichever window is actually active, not always the main one: a settings dialog opened
         // from a plugin dialog's gear must sit on top of that dialog, not open behind it via the main window.
-        owner = lifetime.Windows.LastOrDefault(candidate => candidate.IsActive) ?? main;
+        owner = windowOwner ?? lifetime?.Windows.LastOrDefault(candidate => candidate.IsActive) ?? main;
 
         // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit
         // opens with its content cut off, which is how a canvas ends up cropped. Fit it to the cockpit window —
@@ -183,6 +185,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
 
         window = new Window
         {
+            DataContext = windowOwner?.DataContext,
             Title = title,
             Width = Math.Min(width, maximum.Width),
             Height = Math.Min(height, maximum.Height),

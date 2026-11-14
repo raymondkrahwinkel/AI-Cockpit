@@ -216,6 +216,8 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IRemote
 
     public string Name { get; }
 
+    internal BackendApiClient OptionsClient => _client;
+
     public IRemoteServerHealth Health => _health;
 
     public ILoginFlow StartSignIn(string profile, CancellationToken cancellationToken) =>
@@ -242,6 +244,11 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IRemote
     }
 
     public ISessionLauncher? Launcher => (ISessionLauncher?)Sessions;
+
+    public ITtyLauncher? TerminalLauncher(string? sessionPaneId) =>
+        sessionPaneId is null || Sessions?.Find(sessionPaneId) is RemoteSessionHandle { RunsInATerminal: true }
+            ? new RemoteTtyLauncher(_client, sessionPaneId)
+            : null;
 
     public IConnectKeyAdministration Administration { get; }
 

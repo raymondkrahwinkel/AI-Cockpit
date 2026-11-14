@@ -17,13 +17,14 @@ public sealed class SurfaceWindows : ISingletonService
     // Brings an already-open surface forward and hands back the task its first caller is waiting on, or
     // null when there is none. Callers ask before building a view model: most surfaces read a store to
     // populate themselves, and doing that for a window that will not be shown is work for nothing.
-    public Task? TryActivateAsync(object key)
+    public Task? TryActivateAsync(object key, Action<Window>? onActivate = null)
     {
         if (!_open.TryGetValue(key, out var surface))
         {
             return null;
         }
 
+        onActivate?.Invoke(surface.Window);
         surface.Window.Activate();
 
         return surface.Pending;

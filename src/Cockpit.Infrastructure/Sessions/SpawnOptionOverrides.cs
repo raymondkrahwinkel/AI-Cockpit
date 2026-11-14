@@ -1,4 +1,5 @@
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -73,6 +74,11 @@ public static class SpawnOptionOverrides
             {
                 return (null, $"'{value}' is not a value {providerName}'s '{key}' takes — it takes: " +
                     $"{string.Join(", ", known.Select(candidate => $"'{candidate.Value}'"))}.");
+            }
+
+            if (key == StreamSilenceTimeout.Key && !StreamSilenceTimeout.IsValid(value))
+            {
+                return (null, StreamSilenceTimeout.ValidationMessage);
             }
 
             merged[key] = value;

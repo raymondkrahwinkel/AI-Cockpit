@@ -24,6 +24,8 @@
                         Command="{Binding AddProfileCommand}"/>
 
                 <StackPanel Spacing="6" IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Button Content="Duplicate" Classes="Subtle" HorizontalAlignment="Left"
+                            Command="{Binding DuplicateProfileCommand}"/>
                     <Button Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
                             Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                             Command="{Binding RemoveProfileCommand}"
@@ -164,6 +166,15 @@
                                  PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
                     </StackPanel>
 
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Guardrail mode" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding GuardrailModes}" SelectedItem="{Binding GuardrailMode}"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Allowed write paths" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding GuardrailAllowedPathsText}" AcceptsReturn="True" TextWrapping="Wrap" Height="70"
+                                 PlaceholderText="One absolute path or ~/path per line"/>
+                    </StackPanel>
                     <StackPanel Spacing="4">
                         <TextBlock Text="Memory cap (MB)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
@@ -429,7 +440,7 @@
                         <ItemsControl ItemsSource="{Binding PluginOptionDefaults}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
-                                    <Grid ColumnDefinitions="120,*" Margin="0,0,0,6">
+                                    <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" Margin="0,0,0,6">
                                         <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <StackPanel Grid.Column="1" Spacing="2" IsVisible="{Binding !IsFreeText}">
@@ -442,6 +453,9 @@
                                         </StackPanel>
                                         <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
                                                  PlaceholderText="Not set — provider default"/>
+                                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ValidationError}"
+                                                   IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                   TextWrapping="Wrap" Classes="optionsHint"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

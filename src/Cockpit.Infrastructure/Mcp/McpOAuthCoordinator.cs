@@ -37,6 +37,7 @@ internal sealed class McpOAuthCoordinator(
 
     // Per server name, the granted scope it refused with 403 insufficient_scope; a refresh cannot widen it (RFC 6749 §6).
     private readonly Dictionary<string, string> _scopeRefusals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, McpOAuthToken> _signInRefusals = new(StringComparer.Ordinal);
     private readonly Lock _reportedLock = new();
 
     // AC-403: renewal in flight per server id — everyone who arrives while it runs waits for that one. Not
@@ -115,12 +116,17 @@ internal sealed class McpOAuthCoordinator(
             return _Unauthorized(server, McpOAuthAttentionReason.NeverSignedIn, McpSignInStage.NoBrowserLaunched);
         }
 
+        if (_RefusedForSignIn(server, stored))
+        {
+            return _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
+        }
+
         // Somebody already replaced it. This is the ordinary shape of a hundred calls in flight against a credential
         // the server has just started refusing: the first renews, and every other one arrives here to find a token it
         // has not tried yet. Handing that one back is what keeps the burst to a single round trip.
         if (!string.Equals(stored.AccessToken, rejectedAccessToken, StringComparison.Ordinal) && _IsServable(server, stored))
         {
-            return _Authorized(server, stored.AccessToken);
+            return _Authorized(server, stored);
         }
 
         if (string.IsNullOrWhiteSpace(stored.RefreshToken))
@@ -161,7 +167,7 @@ internal sealed class McpOAuthCoordinator(
             stored = null;
         }
 
-        if (stored is not null && _RefusedForScope(server, stored))
+        if (stored is not null && (_RefusedForScope(server, stored) || _RefusedForSignIn(server, stored)))
         {
             return _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
         }
@@ -169,7 +175,7 @@ internal sealed class McpOAuthCoordinator(
         var renewAt = _RenewAtFor(server, policy);
         if (stored is not null && stored.IsUsableAt(DateTimeOffset.UtcNow, renewAt) && _IsServable(server, stored))
         {
-            return _Authorized(server, stored.AccessToken);
+            return _Authorized(server, stored);
         }
 
         // Nothing to renew from and nobody to ask: say so rather than spend a round trip on a handshake that cannot
@@ -235,7 +241,7 @@ internal sealed class McpOAuthCoordinator(
                 server.Name,
                 fresh.ExpiresAt);
 
-            return _Authorized(server, fresh.AccessToken) with { SignInStage = stage };
+            return _Authorized(server, fresh) with { SignInStage = stage };
         }
 
         // AC-771: the renewal produced nothing, but what is held still covers this call — so it is used, and every
@@ -249,7 +255,7 @@ internal sealed class McpOAuthCoordinator(
                 server.Name,
                 token.ExpiresAt);
 
-            return _Authorized(server, token.AccessToken) with { SignInStage = stage };
+            return _Authorized(server, token) with { SignInStage = stage };
         }
 
         // The dialog tells the operator the reason is in the log, so an interactive failure has to leave one there
@@ -264,6 +270,11 @@ internal sealed class McpOAuthCoordinator(
         }
 
         var reason = _ReasonFor(renewed, unreachable, grantRejected, interactive);
+
+        if (!interactive && grantRejected && token is not null)
+        {
+            await ReportSignInRequiredAsync(server, token.AccessToken, cancellationToken).ConfigureAwait(false);
+        }
 
         if (fresh is not null)
         {
@@ -354,14 +365,18 @@ internal sealed class McpOAuthCoordinator(
 
     // A credential works, so whatever was last reported about this server is no longer true: forgetting it is what
     // lets the next failure be announced instead of swallowed as "already said that".
-    private McpOAuthAccess _Authorized(McpServerConfig server, string accessToken)
+    private McpOAuthAccess _Authorized(McpServerConfig server, McpOAuthToken token)
     {
         lock (_reportedLock)
         {
-            _reported.Remove(server.Name);
+            // AC-2304: a concurrent acquire must not reopen an episode the transport just reported.
+            if (!_signInRefusals.TryGetValue(server.Name, out var refused) || refused != token)
+            {
+                _reported.Remove(server.Name);
+                return McpOAuthAccess.Authorized(token.AccessToken);
+            }
         }
-
-        return McpOAuthAccess.Authorized(accessToken);
+        return _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
     }
 
     // Says it once — written on the way into a state, not on every repeat of the same failure — under one lock so
@@ -444,7 +459,7 @@ internal sealed class McpOAuthCoordinator(
         }
 
         var stored = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
-        if (stored is null || !stored.IsForResource(server.Url) || _RefusedForScope(server, stored))
+        if (stored is null || !stored.IsForResource(server.Url) || _RefusedForScope(server, stored) || _RefusedForSignIn(server, stored))
         {
             return McpAuthState.AuthorizationRequired;
         }
@@ -470,6 +485,28 @@ internal sealed class McpOAuthCoordinator(
         }
 
         _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
+    }
+
+    public async Task ReportSignInRequiredAsync(McpServerConfig server, string accessToken, CancellationToken cancellationToken = default)
+    {
+        var stored = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
+        if (stored is null || stored.AccessToken != accessToken)
+        {
+            return;
+        }
+        lock (_reportedLock)
+        {
+            _signInRefusals[server.Name] = stored;
+        }
+        _Unauthorized(server, McpOAuthAttentionReason.SignInExpired, McpSignInStage.NoBrowserLaunched);
+    }
+
+    private bool _RefusedForSignIn(McpServerConfig server, McpOAuthToken stored)
+    {
+        lock (_reportedLock)
+        {
+            return _signInRefusals.TryGetValue(server.Name, out var refused) && refused == stored;
+        }
     }
 
     private bool _RefusedForScope(McpServerConfig server, McpOAuthToken stored)

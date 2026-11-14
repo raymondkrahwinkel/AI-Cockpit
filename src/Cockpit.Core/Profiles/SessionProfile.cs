@@ -50,6 +50,10 @@ public sealed record SessionProfile(
     // `null` takes `SessionMemoryCap.DefaultMegabytes`.
     public int? MemoryCapMegabytes { get; init; }
 
+    public GuardrailMode GuardrailMode { get; init; } = GuardrailMode.Strict;
+
+    public IReadOnlyList<string> GuardrailAllowedPaths { get; init; } = [];
+
     // AC-2026: how many sessions may run under this profile at once, open panes and delegated tasks together; 0 is unlimited.
     public int MaxParallelSessions { get; init; }
 

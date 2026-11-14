@@ -30,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.2">
+    <PackageReference Include="Avalonia" Version="12.1.6">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->

@@ -101,6 +101,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         }
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
         Assistant = project.Assistant ?? string.Empty;
+        DefaultRole = project.DefaultRole ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
         _originalLogoSource = LogoSource;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
@@ -355,9 +356,72 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // Whether this is an existing project rather than a new one — drives the title and the confirm button.
     public bool IsEditing { get; }
 
-    public string DialogTitle => IsEditing ? "Edit project" : "New project";
+    public string DialogTitle => (IsEditing ? "Edit project" : "New project") + (ServerName is { } server ? $" · {server}" : "");
 
-    public string ConfirmLabel => IsEditing ? "Save" : "Create project";
+    public string ConfirmLabel => IsEditing ? "Save" : ServerName is { } server ? $"Clone on {server}" : "Create project";
+
+    // AC-2281: the server this editor writes to, or null on the desktop. A server project shows only what the server
+    // lets an admin key change; its folder, links, plugin fields and MCP choice stay on the server.
+    public string? ServerName { get; private init; }
+
+    public bool IsOnServer => ServerName is not null;
+
+    public bool IsLocal => ServerName is null;
+
+    // A server clones a new project from its URL; an existing one keeps the URL it was cloned from.
+    public bool CanEditGitUrl => IsLocal || !IsEditing;
+
+    private Func<Project, Task<Project>>? _saveOnServer;
+
+    // AC-2281: the editor over a server's project. Saving writes there through `save` while the dialog waits, so a clone
+    // that takes minutes shows as saving and a refusal stays on screen as SaveError; it closes with the stored project.
+    public static ProjectDialogViewModel ForServer(
+        Project? project, string server, IReadOnlyList<string> profiles, IReadOnlyList<string> knownCategories, Func<Project, Task<Project>> save)
+    {
+        // AC-2285: a server path never reaches this machine's folder pickers; the server never takes it from a save either.
+        var viewModel = new ProjectDialogViewModel(project, worktreeManager: null) { ServerName = server, _saveOnServer = save, SourceDirectory = "" };
+        viewModel.RepositoryRows.Clear();
+        foreach (var category in knownCategories)
+        {
+            viewModel.CategoryChips.Add(new ProjectCategoryChipViewModel(
+                category, string.Equals(category, viewModel.Category, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        // The project's own profile stays choosable even when the list could not be read, so Save never clears it.
+        foreach (var profile in profiles.Append(project?.DefaultProfileLabel).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            viewModel.Profiles.Add(profile);
+        }
+
+        viewModel.SelectedProfileLabel = viewModel.Profiles.FirstOrDefault(label =>
+            string.Equals(label, project?.DefaultProfileLabel, StringComparison.OrdinalIgnoreCase));
+
+        // The constructor checked the URL before the server was known, the local way.
+        viewModel.OnGitUrlChanged(viewModel.GitUrl);
+        return viewModel;
+    }
+
+    private async Task _SaveOnServerAsync(Func<Project, Task<Project>> save)
+    {
+        if (IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            CloseRequested?.Invoke(await save(ToProject()).ConfigureAwait(true));
+        }
+        catch (Exception exception)
+        {
+            SaveError = exception.Message;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
 
     // Whether anything ever claimed this project's ownership (AC-604) — gates every origin badge below. False
     // (the default, and the only possibility for a new project) means the dialog draws exactly as it always has:
@@ -391,6 +455,10 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // origin badge and no `_Carry{T}` — a colleague binding this project keeps their own assistant.
     [ObservableProperty]
     private string _assistant = string.Empty;
+
+    // AC-2357: the role a session here gets when the assistant names none. Local, like `Assistant`.
+    [ObservableProperty]
+    private string _defaultRole = string.Empty;
 
     // AC-1993: the shared brain picker over `Assistant`, shown instead of the text field once a source has brains.
     // A pick writes the reference there; None writes empty, which saves as null and leaves the profile's brain in force.
@@ -566,6 +634,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
     {
         normalized = null;
         if (string.IsNullOrWhiteSpace(value)) return true;
+        // AC-2281: a server checks the URL it clones itself, and says why it refuses one.
+        if (ServerName is not null)
+        {
+            normalized = value.Trim();
+            return true;
+        }
+
         normalized = _worktreeManager?.NormalizeGitUrl(value);
         return normalized is not null;
     }
@@ -607,6 +682,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         {
             Category = _NullIfBlank(Category),
             Assistant = _NullIfBlank(Assistant),
+            DefaultRole = _NullIfBlank(DefaultRole),
             Description = _Carry(DescriptionOrigin, _NullIfBlank(Description), p => p.Description),
             // Item 0 is this dialog's own SourceDirectory box, exactly as it always was — a project with no folder
             // and no repository rows saves an empty list, same as an empty SourceDirectory used to save null.
@@ -782,6 +858,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
         if (await _ValidateRepositoryRowsAsync().ConfigureAwait(true) is { } repositoryError)
         {
             SaveError = repositoryError;
+            return;
+        }
+
+        if (_saveOnServer is { } saveOnServer)
+        {
+            await _SaveOnServerAsync(saveOnServer).ConfigureAwait(true);
             return;
         }
 

@@ -20,6 +20,9 @@ namespace Cockpit.Plugins.Abstractions.UI;
 // backend part through Channel only, so what works in-process keeps working when the backend is remote.
 public interface ICockpitUiHost
 {
+    /// <summary>Names the fixed server context of this window, or null for a local window.</summary>
+    string? RemoteServer => null;
+
     /// <summary>
     /// This plugin's own channel to its backend part: invoke the actions it handles, subscribe to what it publishes.
     /// </summary>

@@ -28,7 +28,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private IReadOnlyList<ProjectJobRun> _jobRuns = [];
 
     // Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.
-    private readonly ISessionDialogService? _dialogs;
+    private readonly IProjectDialogs? _dialogs;
 
     // The Projects page's density and folded sections (AC-1599). Null under the previewer, which keeps the default and persists nothing.
     private readonly IProjectsDisplaySettingsStore? _displaySettings;
@@ -38,6 +38,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // commands — before the first load, so every card carries them. Left null under the previewer and in tests,
     // where a card is data to inspect rather than a thing to start.
     internal ProjectCardActions? CardActions { get; set; }
+
+    // AC-2281: the server whose projects these are, in the remote window; null for this machine's own.
+    public string? ServerName { get; init; }
 
     // The background shared-project read `LoadAsync` most recently started
     // (never awaited by it — see that method's own remarks). Internal test seam only: it lets a test await the
@@ -55,7 +58,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
     }
 
-    private ProjectsViewModel(DesignTimeProjects projects, ISessionDialogService? dialogs)
+    private ProjectsViewModel(DesignTimeProjects projects, IProjectDialogs? dialogs)
         : this(projects, projects, dialogs)
     {
     }
@@ -63,7 +66,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     public ProjectsViewModel(
         IProjectCatalog catalog,
         IProjectEditor editor,
-        ISessionDialogService? dialogs,
+        IProjectDialogs? dialogs,
         IProjectsDisplaySettingsStore? displaySettings = null,
         IProjectJobHistory? jobHistory = null)
     {
@@ -538,10 +541,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             var sourceName = location?.SourceName ?? string.Empty;
             var created = new ProjectSectionViewModel(
                 key, sourceKey, organizationSlug,
-                location is null ? "This machine" : location.Organization?.Name ?? sourceName,
+                location is null ? ServerName ?? "This machine" : location.Organization?.Name ?? sourceName,
                 location?.SourceHost ?? string.Empty,
                 isMachine)
             {
+                Here = ServerName ?? "this machine",
                 IsCollapsed = _collapsedSectionKeys.Contains(key),
                 OrganizationRole = location?.Organization?.Role,
             };
@@ -590,6 +594,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                     project, _sessionsRunning(project.Id), location?.Organization?.Role, location is not null,
                     _snapshot.RemoteChangedProjectIds.Contains(project.Id), CardActions)
                 {
+                    Server = ServerName,
                     Origin = _Origin(location),
                     WhereItLives = _WhereItLives(location),
                     RunningSessions = [.. RunningSessionsOf(project.Id).Select(session => ProjectRunningSession.From(session, DateTimeOffset.Now))],
@@ -657,13 +662,13 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(CountSummary));
     }
 
-    private static string _Origin(SharedProjectLocation? location) => location is null
-        ? "● This machine"
+    private string _Origin(SharedProjectLocation? location) => location is null
+        ? $"● {ServerName ?? "This machine"}"
         : $"◆ {location.Organization?.Name ?? location.SourceName}";
 
-    private static string _WhereItLives(SharedProjectLocation? location) => location switch
+    private string _WhereItLives(SharedProjectLocation? location) => location switch
     {
-        null => "● This machine only",
+        null => $"● {ServerName ?? "This machine"} only",
         { SourceHost: { Length: > 0 } host, Organization: { } organization } => $"◆ {host} / {organization.Slug}",
         { SourceHost: { Length: > 0 } host } => $"◆ {host}",
         _ => $"◆ {location.SourceName}",
@@ -911,7 +916,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             ? $"◆ {claim}"
             : project.SharedSourceName is { Length: > 0 } lastKnown
                 ? $"◆ {lastKnown}"
-                : "● This machine";
+                : $"● {ServerName ?? "This machine"}";
 
     partial void OnSelectedProjectChanged(Project? value)
     {

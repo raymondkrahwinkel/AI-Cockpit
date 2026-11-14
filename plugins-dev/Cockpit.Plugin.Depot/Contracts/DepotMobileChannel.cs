@@ -19,7 +19,7 @@ internal static class DepotMobileChannel
     public const string Forget = "mobile-phone-forget";
 }
 
-// `Refresh` asks Depot for the phones' current names and drops a phone Depot no longer has.
+// `Refresh` asks Depot for the phones' current names; only an explicit unpair removes a saved phone.
 internal sealed record DepotMobileRequest(string ConnectionId, string? DeviceId = null, bool Refresh = false);
 
 // `State` is a DepotPairingState value. `Qr` is the QR code's text, only in PairStart's answer. `Link` is Depot's
@@ -49,6 +49,6 @@ internal static class DepotPairingState
     public const string None = "none";
 }
 
-internal sealed record DepotPairedPhone(string DeviceId, string Name, DateTimeOffset PairedAt);
+internal sealed record DepotPairedPhone(string DeviceId, string Name, DateTimeOffset PairedAt, string? KeyFingerprint = null);
 
 internal sealed record DepotPairedPhones(IReadOnlyList<DepotPairedPhone> Phones, string? UnpairLink);

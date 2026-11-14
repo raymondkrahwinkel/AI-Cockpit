@@ -30,7 +30,10 @@ internal static class BackendApiRoutes
         api.AddEndpointFilter(_DoorAsync);
         EventsEndpoint.Map(api, services);
         FilesEndpoint.Map(api, services);
+        WorktreesEndpoints.Map(api, services);
         SessionsEndpoints.Map(api, services);
+        TerminalEndpoints.Map(api, services);
+        WorkspacesEndpoints.Map(api, services);
         SignInEndpoints.Map(api, services);
         GitCredentialEndpoints.Map(api, services);
         HealthEndpoints.Map(api, services);
@@ -40,6 +43,9 @@ internal static class BackendApiRoutes
         ProfileEndpoints.Map(api, services);
         AssistantSettingsEndpoints.Map(api, services);
         StorageSettingsEndpoints.Map(api, services);
+        OptionsSettingsEndpoints.Map(api, services);
+        SwarmOptionsEndpoints.Map(api, services);
+        McpRegistryEndpoints.Map(api, services);
 
         api.MapGet("/whoami", async (CancellationToken cancellationToken) =>
         {

@@ -519,8 +519,9 @@
                              Classes.simpleReply="{Binding IsShownInSimpleStand}"
                              AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
                     <controls:MentionTokenOverlay Input="{Binding #InputBox}" Picker="{Binding MentionPicker}"/>
+                    <!-- Inside the Grid: as the last DockPanel child it took the fill and shrank the text box. -->
+                    <controls:MentionPopup DataContext="{Binding MentionPicker}" Input="{Binding #InputBox}" Frame="{Binding #ComposerBorder}"/>
                 </Grid>
-                <controls:MentionPopup DataContext="{Binding MentionPicker}" Input="{Binding #InputBox}" Frame="{Binding #ComposerBorder}"/>
             </DockPanel>
         </Border>
 

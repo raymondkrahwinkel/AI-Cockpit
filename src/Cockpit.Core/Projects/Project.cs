@@ -42,6 +42,9 @@ public sealed record Project(string Id, string Name)
     // their own assistant. Null/blank falls back to the profile's.
     public string? Assistant { get; init; }
 
+    // AC-2357: the role a session here gets when the assistant leaves the role empty. Local like `Assistant`.
+    public string? DefaultRole { get; init; }
+
     // Whether new sessions here isolate in their own git worktree (AC-85) when `SourceDirectory` is
     // a repository. A default only: worktree stays a per-session choice, still overridable in the dialog.
     public bool IsolateInWorktreeByDefault { get; init; }

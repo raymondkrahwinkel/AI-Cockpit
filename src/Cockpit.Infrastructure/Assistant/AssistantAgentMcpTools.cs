@@ -225,7 +225,7 @@ internal sealed class AssistantAgentMcpTools(
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
         [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt, name and role.")] string? node = null,
         [Description("Exact MCP server names for this session, overriding project and profile selection. Any registered server may be named, also one that belongs to another project. Omitted preserves defaults; [] keeps only the always-mounted servers. The session's brain server (from the project or profile) is always added and cannot be removed. Internal, unknown, globally disabled or not-yet-authorized names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null,
-        [Description("A role from list_roles for the target session, or explicit none for general work. Required when that brain has roles. On a node, the node checks its own roles and returns them on refusal.")] string? role = null)
+        [Description("A role from list_roles for the target session. Required when that brain has roles: an empty role takes the project's default role if it has one, otherwise the start is refused with the available roles, and none is refused too while the option 'The assistant always picks a fitting agent (role)' is on (the default). Use none only for a brain without roles, or when that option is off. On a node, the node checks its own roles and returns them on refusal.")] string? role = null)
     {
         try
         {
@@ -292,6 +292,7 @@ internal sealed class AssistantAgentMcpTools(
                     mcpServersConfirmed = result.McpServersConfirmed,
                     role = result.Role,
                     roleList = result.RoleList,
+                    roleHint = result.RoleHint,
                 })
                 : _Serialize(new { ok = false, error = result.Error });
         }
@@ -740,10 +741,10 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "watch_session", ReadOnly = false, Destructive = false)]
-    [Description("Watches a local pane and sends inbox notifications with recent transcript lines. events accepts busy-to-idle, needs-attention, gone, stuck and pattern. afterMinutes sets the stuck threshold; pattern uses a .NET regular expression on new lines. Re-arming replaces the existing watch; gone removes it. Refuses missing panes, unknown events, invalid regexes, stuck/pattern on terminal sessions and all node addresses. Use read_transcript or an agent notify for nodes. No approval is required.")]
+    [Description("Watches a local pane and sends inbox notifications with recent transcript lines. events accepts busy-to-idle, needs-attention, gone, stuck, pattern and waiting (idle 8, 16 and 30 minutes without a finished turn or with a wait/blocker named; arm it on every spawn). afterMinutes sets the stuck threshold; pattern uses a .NET regular expression on new lines. Re-arming replaces the existing watch; gone removes it. Refuses missing panes, unknown events, invalid regexes, stuck/pattern on terminal sessions and all node addresses. Use read_transcript or an agent notify for nodes. No approval is required.")]
     public async Task<string> WatchSessionAsync(
         [Description("The pane id of the session to watch, exactly as list_sessions or start_agent reports it. Never a name — two sessions can be called the same thing.")] string paneId,
-        [Description("Which of the five to watch for, one or more of: busy-to-idle, needs-attention, gone, stuck, pattern. Arming what you actually want to hear about is the whole point — a watch on all five for a session you only want the end of is noise you will have to read.")] string[] events,
+        [Description("Which to watch for, one or more of: busy-to-idle, needs-attention, gone, stuck, pattern, waiting. Arming what you actually want to hear about is the whole point — a watch on all of them for a session you only want the end of is noise you will have to read.")] string[] events,
         [Description("For `stuck` only: how many minutes without a new transcript row counts as stuck. Left out, a sensible default applies. Pick it from the work — a long build writes nothing for minutes at a time and is not stuck.")] int? afterMinutes = null,
         [Description("For `pattern` only: the regular expression matched against each NEW transcript line, .NET syntax. An error signature, a ticket number, a phrase an agent uses when it is blocked. Refused here and now if it does not compile.")] string? pattern = null)
     {

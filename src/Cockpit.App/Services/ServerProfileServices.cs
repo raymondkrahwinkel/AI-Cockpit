@@ -23,7 +23,8 @@ public sealed class ServerProfileServices(
     IServerProfiles profiles,
     IServerSignIns? signIns = null,
     IPluginAdministration? plugins = null,
-    Func<string, (Type UiType, ICockpitUiHost Host, string Version)?>? localUiPart = null)
+    Func<string, (Type UiType, ICockpitUiHost Host, string Version)?>? localUiPart = null,
+    IPluginProviderConfigViews? configViews = null)
     : ISessionProfileStore, IProfileEditStore, IProfileLoginChecker, ISessionLoginFlows, IMcpServerCatalog, IMcpToolTokenEstimator,
         IModelCatalog, IPluginProviderConfigViews, IPluginRegistrations
 {
@@ -77,14 +78,21 @@ public sealed class ServerProfileServices(
     }
 
     public Task SaveAsync(IReadOnlyList<SessionProfile> list, CancellationToken cancellationToken = default) =>
-        SaveEditsAsync([.. list.Select(profile => ((string?)(_Row(profile.Label)?.Label), profile))], cancellationToken);
+        SaveEditsAsync([.. list.Select(profile => ((string?)(_Row(profile.Label)?.Label), profile, (string?)null))], cancellationToken);
 
     // Made and changed first, then removed: the server keeps at least one profile.
-    public async Task SaveEditsAsync(IReadOnlyList<(string? OriginalLabel, SessionProfile Profile)> list, CancellationToken cancellationToken = default)
+    public async Task SaveEditsAsync(IReadOnlyList<(string? OriginalLabel, SessionProfile Profile, string? CopyFromLabel)> list, CancellationToken cancellationToken = default)
     {
-        foreach (var (original, profile) in list)
+        foreach (var (original, profile, source) in list.OrderBy(entry => entry.CopyFromLabel is null))
         {
-            await profiles.SaveProfileAsync(original, profile, cancellationToken);
+            if (source is not null)
+            {
+                await profiles.CopyProfileAsync(source, profile, cancellationToken);
+            }
+            else
+            {
+                await profiles.SaveProfileAsync(original, profile, cancellationToken);
+            }
         }
 
         var kept = list.Select(entry => entry.OriginalLabel).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -92,6 +100,7 @@ public sealed class ServerProfileServices(
         {
             await profiles.DeleteAsync(removed.Label, cancellationToken);
         }
+        _rows = await profiles.ListAsync(cancellationToken);
     }
 
     public bool IsLoggedIn(SessionProfile profile) => _Row(profile.Label)?.SignIn == ProfileSignInKind.SignedIn;
@@ -123,7 +132,7 @@ public sealed class ServerProfileServices(
 
     public bool Unregister(string providerId, Func<string?, IPluginProviderConfigView> createView) => false;
 
-    public Func<string?, IPluginProviderConfigView>? Find(string providerId) => _views.GetValueOrDefault(providerId);
+    public Func<string?, IPluginProviderConfigView>? Find(string providerId) => configViews?.Find(providerId) ?? _views.GetValueOrDefault(providerId);
 
     public IReadOnlyList<SessionProviderRegistration> SessionProviders => _registrations;
 

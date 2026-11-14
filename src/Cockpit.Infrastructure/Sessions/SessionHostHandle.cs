@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
@@ -6,6 +7,8 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.HeavyRuns;
+using System.Text.Json.Nodes;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -25,6 +28,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private readonly List<TranscriptSnapshotEntry> _rows = [];
     private readonly NestedTranscriptRows _nested = new();
     private string _title;
+    private string _workspaceId;
     private string _statusline = string.Empty;
     private string? _worktreeBranch;
     private readonly List<ImageAttachment> _pendingImages = [];
@@ -32,6 +36,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private string _failureReason = "Not started.";
     private bool _wasWaitingOnOperator;
     private bool _stateChangePending;
+    private bool _couldPasteImages;
 
     // AC-1437: the host's signals, held while the lock is and raised once it is let go, in the order they came.
     private readonly List<Action> _heldRaises = [];
@@ -73,11 +78,12 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         PaneId = paneId;
         _title = title;
         _nameIsChosen = nameIsChosen;
-        WorkspaceId = workspaceId;
+        _workspaceId = workspaceId;
         WorkingDirectory = workingDirectory;
         ActiveProfileLabel = profileLabel;
         ProjectId = projectId;
         _host = host;
+        _couldPasteImages = CanPasteImages;
         _heavyRuns = heavyRuns;
         if (_heavyRuns is not null)
         {
@@ -90,7 +96,16 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         host.TurnStarting += _OnTurnStarting;
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
-        host.LiveStateChanged += _ => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(LiveState));
+        host.LiveStateChanged += _ =>
+        {
+            _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(LiveState));
+            bool canPasteImages = CanPasteImages;
+            if (_couldPasteImages != canPasteImages)
+            {
+                _couldPasteImages = canPasteImages;
+                _NoteStateChanged();
+            }
+        };
         host.OperatorActed += action => _RaiseOutsideTheLock(() => OperatorActed?.Invoke(action));
         host.TurnEnded += end =>
         {
@@ -117,7 +132,9 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
-    public string WorkspaceId { get; }
+    public string WorkspaceId => Volatile.Read(ref _workspaceId);
+
+    internal void MoveToWorkspace(string workspaceId) => Volatile.Write(ref _workspaceId, workspaceId);
 
     // Only ever started onto a Sessions desk it names, so the desk it counts as sitting on is its own.
     public string? PlacedWorkspaceId => WorkspaceId;
@@ -136,6 +153,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     public string? ActiveProfileLabel { get; }
+
+    public Core.Profiles.SessionProfile? ActiveProfile => _host.Runtime?.Profile;
 
     public string? ProjectId { get; }
 
@@ -182,7 +201,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             lock (_gate)
             {
-                return _host.Runtime is { IsRunning: true } && _host.TurnsHeldBecause is null;
+                return _host.Runtime is { IsRunning: true } && _host.TurnsHeldBecause is null
+                    && _host.LiveState.Status != SessionStatus.NeedsAttention && !_rows.Exists(row => row.IsPendingPermission);
             }
         }
     }
@@ -213,8 +233,19 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         {
             var skip = Math.Max(0, _rows.Count - count);
             return Task.FromResult(new SessionTranscriptSlice(
-                [.. _rows.Skip(skip).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText))],
+                [.. _rows.Skip(skip).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText) { Timestamp = row.Timestamp })],
                 _rows.Count));
+        }
+    }
+
+    public Task<SessionTranscriptSlice> ReadTranscriptBeforeAsync(int before, int count)
+    {
+        lock (_gate)
+        {
+            int end = Math.Clamp(before, 0, _rows.Count);
+            int first = Math.Max(0, end - count);
+            return Task.FromResult(new SessionTranscriptSlice(
+                [.. _rows.Skip(first).Take(end - first).Select(row => new SessionTranscriptEntry(row.Kind, row.Text, row.ResultText) { Timestamp = row.Timestamp })], end));
         }
     }
 
@@ -231,7 +262,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
             Task sending;
             lock (_gate)
             {
-                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null)
+                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null
+                    || _host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
                 {
                     return false;
                 }
@@ -249,8 +281,9 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         }
     }
 
-    // Nothing is ever held here: false says the prompt was not taken, and nothing will deliver it later.
-    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) => await SendPromptAsync(prompt).ConfigureAwait(false);
+    // This handle holds no startup brief: null reports a refusal, never a held or delivered task.
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
+        await SendPromptAsync(prompt).ConfigureAwait(false) ? true : null;
 
     public Task SetWorktreeBranchAsync(string? branch)
     {
@@ -262,8 +295,17 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         return Task.CompletedTask;
     }
 
-    // ponytail: top-level rows only; a sub-agent's permission row needs its parent re-recorded, add that with a caller.
-    public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
+    // shortcut: top-level permission rows only; add parent-row updates when nested approvals are supported.
+    public Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false) =>
+        _RespondToPermissionAsync(toolUseId, allow, forSession, null, OperatorDecisionOrigin.Desktop);
+
+    public Task<bool> RespondToPermissionWithAnswersAsync(string toolUseId, bool allow, string answersJson) =>
+        _RespondToPermissionAsync(toolUseId, allow, false, null, OperatorDecisionOrigin.Desktop, answersJson);
+
+    public Task<bool> RespondToPermissionRevisionAsync(SessionPendingPermission expected, bool allow, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop) =>
+        _RespondToPermissionAsync(expected.ToolUseId, allow, false, expected, origin);
+
+    private async Task<bool> _RespondToPermissionAsync(string toolUseId, bool allow, bool forSession, SessionPendingPermission? expected, OperatorDecisionOrigin origin, string? answersJson = null)
     {
         List<Task> answering = [];
         lock (_gate)
@@ -274,14 +316,20 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                 return false;
             }
 
+            if (expected is not null && ((row.ToolName ?? "") != expected.ToolName || (row.InputJson ?? "{}") != expected.InputJson || row.Timestamp != expected.SinceUtc))
+            {
+                return false;
+            }
+
             _host.RecordRow(row with
             {
                 IsPendingPermission = false,
-                PermissionDecision = !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed",
+                PermissionDecision = (answersJson is not null ? "Answered" : !allow ? "Denied" : forSession ? "Allowed for this session" : "Allowed")
+                    + (origin == OperatorDecisionOrigin.PhoneOperator ? " (phone operator)" : ""),
             });
             answering.Add(allow && forSession
                 ? runtime.AllowPermissionAlwaysAsync(toolUseId, row.ToolName ?? "", row.InputJson ?? "{}", PermissionRuleScope.Exact)
-                : runtime.RespondToPermissionAsync(toolUseId, allow));
+                : runtime.RespondToPermissionAsync(toolUseId, allow, answersJson, CancellationToken.None));
 
             // AC-1476: a call already waiting on the same rule is answered with it, or it would ask again once the session moves on.
             if (allow && forSession)
@@ -307,8 +355,21 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         return true;
     }
 
-    // A verify render is an image a view attaches; a headless session has no such turn to hand it.
-    public Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
+    public async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
+    {
+        Task sending;
+        lock (_gate)
+        {
+            if (_host.Runtime is not { IsRunning: true, Capabilities.SupportsVision: true })
+            {
+                return false;
+            }
+            sending = _host.SubmitForTheAgentAsync(new QueuedPrompt(caption, [ImageAttachment.FromBytes(screenshotPng, "image/png")]));
+        }
+        _RaiseHeldSignals();
+        await sending.ConfigureAwait(false);
+        return true;
+    }
 
     public Task<IReadOnlyList<SessionPendingPermission>> ReadPendingPermissionsAsync()
     {
@@ -625,19 +686,78 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     {
         lock (_gate)
         {
-            var prompt = new QueuedPrompt(text, [.. _pendingImages]);
+            _Submit(new QueuedPrompt(text, [.. _pendingImages]));
             _pendingImages.Clear();
-            if (_host.IsBusy || _host.TurnsHeldBecause is not null)
-            {
-                _host.Queue.Add(prompt);
-            }
-            else
-            {
-                _host.DispatchInBackground(prompt);
-            }
         }
 
         _RaisePendingStateChange();
+    }
+
+    public Task<bool> AnswerQuestionAsync(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers)
+    {
+        lock (_gate)
+        {
+            var row = _rows.FirstOrDefault(row => row.Id == rowId && row.Kind == "Question" && row.IsPendingBrokerAnswer);
+            if (row is null || row.InputJson != inputJson || JsonNode.Parse(row.InputJson ?? "{}") is not JsonObject input)
+            {
+                return Task.FromResult(false);
+            }
+            var questions = StructuredQuestionJson.Parse(row.InputJson);
+            if (!StructuredQuestionJson.TakesAnswers(questions, answers))
+            {
+                return Task.FromResult(false);
+            }
+            var saved = new JsonObject();
+            for (var index = 0; index < questions.Count; index++)
+            {
+                saved[questions[index].Question] = new JsonObject
+                {
+                    ["options"] = new JsonArray([.. answers[index].Select(answer => (JsonNode)JsonValue.Create(answer))]),
+                };
+            }
+            input["answers"] = saved;
+            _host.RecordRow(row with { IsPendingBrokerAnswer = false, InputJson = input.ToJsonString() });
+            _Submit(new QueuedPrompt(string.Join("\n", questions.Select((question, index) =>
+                StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", answers[index])))), []));
+        }
+        _RaisePendingStateChange();
+        return Task.FromResult(true);
+    }
+
+    public bool AcceptsImages => CanPasteImages;
+
+    // AC-2265: these images go with this message only; whatever was pasted stays pending for the next send.
+    public Task<bool> SubmitWithImagesAsync(string text, IReadOnlyList<byte[]> pngImages)
+    {
+        if (!AcceptsImages)
+        {
+            return Task.FromResult(false);
+        }
+
+        lock (_gate)
+        {
+            if (_host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
+            {
+                return Task.FromResult(false);
+            }
+            _Submit(new QueuedPrompt(text, [.. pngImages.Select(png => ImageAttachment.FromBytes(png, "image/png"))]));
+        }
+
+        _RaisePendingStateChange();
+        return Task.FromResult(true);
+    }
+
+    // Under _gate.
+    private void _Submit(QueuedPrompt prompt)
+    {
+        if (_host.IsBusy || _host.TurnsHeldBecause is not null)
+        {
+            _host.Queue.Add(prompt);
+        }
+        else
+        {
+            _host.DispatchInBackground(prompt);
+        }
     }
 
     public async Task<bool> CompactContextAsync()

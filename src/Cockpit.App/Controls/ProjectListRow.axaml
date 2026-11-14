@@ -145,7 +145,7 @@
                                             Command="{Binding Actions.StartWithOptions, FallbackValue={x:Null}}"
                                             CommandParameter="{Binding Project}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                            Padding="8,6" Content="Open folder" IsVisible="{Binding IsOnThisMachine}"
+                                            Padding="8,6" Content="Open folder" IsVisible="{Binding IsLocalProject}"
                                             Command="{Binding Actions.OpenFolder, FallbackValue={x:Null}}"
                                             CommandParameter="{Binding Project}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"

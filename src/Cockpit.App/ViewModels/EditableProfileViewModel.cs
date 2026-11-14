@@ -10,7 +10,9 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Provisioning;
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.OpenAiCompat;
 
 namespace Cockpit.App.ViewModels;
 
@@ -65,7 +67,9 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     // AC-1585: the label the profile was read under; null for one added since. A store that keeps what it never
     // handed out (a server's secrets) needs it to tell a rename from a new profile.
-    public string? OriginalLabel { get; init; }
+    public string? OriginalLabel { get; set; }
+
+    public string? CopyFromLabel { get; set; }
 
     // AC-1847: which servers this profile is kept in step with; set by Options › Sync, which owns the choice.
     [ObservableProperty]
@@ -104,6 +108,14 @@ public partial class EditableProfileViewModel : ViewModelBase
     // silently dropped the cap it appeared to show.
     [ObservableProperty]
     private int? _memoryCapMegabytes;
+
+    public IReadOnlyList<GuardrailMode> GuardrailModes { get; } = Enum.GetValues<GuardrailMode>();
+
+    [ObservableProperty]
+    private GuardrailMode _guardrailMode = GuardrailMode.Strict;
+
+    [ObservableProperty]
+    private string _guardrailAllowedPathsText = string.Empty;
 
     // AC-2026: the most sessions that run under this profile at once; 0 or blank is unlimited.
     [ObservableProperty]
@@ -288,7 +300,7 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     // Per-profile default editors for the selected plugin provider's own declared launch options (Claude's
     // permission mode/model/effort, Codex's sandbox) — rendered generically from the plugin's declaration, so the
-    // host imposes no provider vocabulary. Empty for a built-in provider or a plugin that declares none.
+    // host imposes no provider vocabulary. Local HTTP providers also expose the stream silence timeout here.
     public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginOptionDefaults { get; } = [];
 
     // Whether the selected plugin provider declares any start-option defaults to edit.
@@ -522,7 +534,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     // AC-1995: what IsValid checks apart from the provider's own settings, for a fixed provider whose view this desktop lacks.
     public bool IsValidBesidesProviderSettings =>
         !string.IsNullOrWhiteSpace(Label)
+        && _GuardrailAllowedPaths().All(GuardrailPaths.IsValid)
         && _AreEnvironmentVariablesValid()
+        && StreamSilenceTimeout.IsValid(PluginOptionDefaults.FirstOrDefault(option => option.Key == StreamSilenceTimeout.Key)?.Value)
         && (!IsLmStudioProvider || LmStudioLoadOptionsError is null);
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
@@ -606,6 +620,12 @@ public partial class EditableProfileViewModel : ViewModelBase
             }
         }
 
+        if (IsLocalProvider)
+        {
+            PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(
+                StreamSilenceTimeout.Key, StreamSilenceTimeout.Label, [], storedDefaults?.GetValueOrDefault(StreamSilenceTimeout.Key)));
+        }
+
         OnPropertyChanged(nameof(HasPluginOptionDefaults));
     }
 
@@ -682,6 +702,8 @@ public partial class EditableProfileViewModel : ViewModelBase
             brainHint ?? "None names no brain, so the provider's own instruction files decide. A project's own brain goes first.");
         BrainPicker.ValueChanged += reference => Assistant = reference ?? string.Empty;
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
+        _guardrailMode = profile.GuardrailMode;
+        _guardrailAllowedPathsText = string.Join(Environment.NewLine, profile.GuardrailAllowedPaths);
         _maxParallelSessions = profile.MaxParallelSessions;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
@@ -795,7 +817,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             : new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools);
         // The reading level is provider-neutral (AC-138) — any profile can launch an SDK session — so it rides on
         // Defaults for both the plugin and the legacy-typed branch above rather than only one of them.
-        defaults = defaults with { DefaultReadingLevel = SelectedReadingLevel.Value };
+        defaults = defaults with { DefaultReadingLevel = SelectedReadingLevel.Value, OptionDefaults = _CollectPluginOptionDefaults() };
 
         return new(
             Label.Trim(),
@@ -818,6 +840,8 @@ public partial class EditableProfileViewModel : ViewModelBase
             Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant.Trim(),
             ImageInputMode = ImageInputMode,
             MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
+            GuardrailMode = GuardrailMode,
+            GuardrailAllowedPaths = _GuardrailAllowedPaths(),
             MaxParallelSessions = Math.Max(0, MaxParallelSessions ?? 0),
             // A host without terminals persists SDK. Locally, a provider without a TTY route keeps the existing null.
             DefaultKind = !_hostRunsTty
@@ -827,6 +851,8 @@ public partial class EditableProfileViewModel : ViewModelBase
                     : null,
         };
     }
+
+    private string[] _GuardrailAllowedPaths() => GuardrailAllowedPathsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     // The per-profile option defaults the operator set, keyed by option key; only the ones actually chosen (a blank
     // value leaves the option on the plugin's own default). Null when the provider declares no options.

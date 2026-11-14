@@ -685,7 +685,14 @@
          a plugin that uses them requires host 0.172.0, contract stays 3. -->
     <!-- 3.84.0 (AC-2257): PluginTranscriptEntry.Index (init-property, 0 by default), set by ReadTranscriptAsync;
          a plugin that reads it requires host 0.173.0, contract stays 3. -->
-    <Version>3.84.0</Version>
+    <!-- 3.85.0 (AC-2251): PluginGuardViolation; providers emitting it require host 0.174.0, contract stays 3. -->
+    <!-- 3.86.0 (AC-2265): ICockpitHost.SendToSessionAsync(paneId, text, images) with SessionSendResult, OpenCockpitSession.AcceptsImages
+         and IAssistantChannelGateway.AcceptsImages (defaults: text only, false); a plugin that uses them requires host 0.175.0, contract stays 3. -->
+    <!-- 3.91.0 (AC-2307): IAssistantChannelGateway.AcceptsImagesChanged (default no-op); a plugin that uses it requires host 0.179.1, contract stays 3. -->
+    <!-- 3.92.0 (AC-2312): LiveFileSnapshot.PersistedVersion (init-property, null by default); a plugin that sets it requires host 0.180.0, contract stays 3. -->
+    <!-- 3.93.0 (AC-2301): ICockpitSessionObserver.ReadTranscriptBeforeAsync (default null); requires host 0.180.1, contract stays 3. -->
+    <!-- 3.95.0 (AC-2336): ICockpitHost.AddVaultProvider and the Vault namespace (default: a context that is never available); no plugin calls it yet, contract stays 3. -->
+    <Version>3.96.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

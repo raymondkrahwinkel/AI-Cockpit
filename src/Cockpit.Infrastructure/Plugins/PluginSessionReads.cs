@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Plugins;
@@ -14,20 +15,23 @@ public static class PluginSessionReads
             Statusline = _NullIfEmpty(handle.Statusline),
             IsTerminal = handle.IsTerminal,
             HasReadableTranscript = handle.HasReadableTranscript,
+            AcceptsImages = handle.AcceptsImages,
         };
 
-    public static async Task<PluginTranscriptSlice?> ReadTranscriptAsync(ISessionRegistry registry, ISessionLauncher? launcher, string paneId, int count)
+    public static async Task<PluginTranscriptSlice?> ReadTranscriptAsync(ISessionRegistry registry, ISessionLauncher? launcher, string paneId, int count, int? before = null)
     {
         if (await _FindAsync(registry, launcher, paneId).ConfigureAwait(false) is not { HasReadableTranscript: true } handle)
         {
             return null;
         }
 
-        var slice = await handle.ReadTranscriptAsync(count).ConfigureAwait(false);
+        SessionTranscriptSlice slice = before is { } boundary
+            ? await handle.ReadTranscriptBeforeAsync(boundary, count).ConfigureAwait(false)
+            : await handle.ReadTranscriptAsync(count).ConfigureAwait(false);
         var first = slice.TotalEntries - slice.Entries.Count;
         return new PluginTranscriptSlice(
             [.. slice.Entries.Select((entry, position) => _Kind(entry.Kind) is { } kind
-                ? new PluginTranscriptEntry(kind, entry.Text, entry.ToolResult) { Index = first + position }
+                ? new PluginTranscriptEntry(kind, entry.Text, entry.ToolResult) { Index = first + position, Timestamp = entry.Timestamp }
                 : null).OfType<PluginTranscriptEntry>()],
             slice.TotalEntries);
     }

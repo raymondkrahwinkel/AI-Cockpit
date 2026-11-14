@@ -54,21 +54,43 @@ internal static partial class ProjectsEndpoints
     {
         IProjectEditor editor() => services.GetRequiredService<IProjectEditor>();
 
-        // An operate key gets the id and name of the projects in its scope, and nothing that counts the others.
+        // An operate key gets the id and name of the projects in its scope, and nothing that counts the others. An admin
+        // key also gets what the ordinary project editor changes there (AC-2281), never links, plugin fields, MCP choice,
+        // extra rows, password or logo: any of those can hold a token or a Depot connection.
         api.MapGet("/projects", async (CancellationToken cancellationToken) =>
         {
             var caller = _Caller();
-            var pairing = services.GetRequiredService<INodePairingBroker>();
-            var known = await services.GetRequiredService<IAssistantReadGateway>().ListProjectsAsync().ConfigureAwait(false);
             var changed = services.GetService<IProjectCatalog>()?.Current.RemoteChangedProjectIds ?? new HashSet<string>();
             await _AuditAsync(services, caller, "api:list_projects", "called", null, cancellationToken).ConfigureAwait(false);
-            return caller.Capability == ConnectKeyCapability.Admin
-                ? Results.Json(new { projects = known.Select(project => new { id = project.Id, name = project.Name, description = project.Description, path = project.SourceDirectory, defaultProfile = project.DefaultProfileLabel, remoteChanged = changed.Contains(project.Id) }) })
-                : Results.Json(new { projects = known.Where(project => caller.AllowsProject(project.Id, pairing)).Select(project => new { id = project.Id, name = project.Name, remoteChanged = changed.Contains(project.Id) }) });
+            if (caller.Capability == ConnectKeyCapability.Admin)
+            {
+                var stored = await services.GetRequiredService<IProjectStore>().LoadAsync(cancellationToken).ConfigureAwait(false);
+                return Results.Json(new
+                {
+                    projects = stored.Projects.Select(project => new
+                    {
+                        id = project.Id,
+                        name = project.Name,
+                        description = project.Description,
+                        path = project.SourceDirectory,
+                        defaultProfile = project.DefaultProfileLabel,
+                        category = project.Category,
+                        behaviorPrompt = project.BehaviorPrompt,
+                        isolateInWorktree = project.IsolateInWorktreeByDefault,
+                        gitUrl = project.GitUrl is { } url && !GitCloneUrl.CarriesCredentials(url) ? url : null,
+                        remoteChanged = changed.Contains(project.Id),
+                    }),
+                });
+            }
+
+            var pairing = services.GetRequiredService<INodePairingBroker>();
+            var known = await services.GetRequiredService<IAssistantReadGateway>().ListProjectsAsync().ConfigureAwait(false);
+            return Results.Json(new { projects = known.Where(project => caller.AllowsProject(project.Id, pairing)).Select(project => new { id = project.Id, name = project.Name, remoteChanged = changed.Contains(project.Id) }) });
         }).RequireOperate();
 
-        api.MapPost("/projects", async (CloneProjectBody body, CancellationToken cancellationToken) =>
+        api.MapPost("/projects", (CloneProjectBody body, HttpContext context) => _UnderGateAsync(context, services, async () =>
         {
+            var cancellationToken = context.RequestAborted;
             var caller = _Caller();
             if (string.IsNullOrWhiteSpace(body.RepoUrl))
             {
@@ -91,7 +113,7 @@ internal static partial class ProjectsEndpoints
                 GitUrl = parsed.RemoteUrl,
             }));
             return Results.Json(new { id, name }, statusCode: StatusCodes.Status202Accepted);
-        }).RequireAdmin();
+        })).RequireAdmin();
 
         // AC-1514: what the server's own sources (Depot, as on the desktop) share and it has not added yet, without the
         // bound and hidden ones. A source that failed is one row with its reason, as the Projects page shows it.
@@ -208,9 +230,11 @@ internal static partial class ProjectsEndpoints
             return Results.Json(new { id, remoteChanged = catalog.Current.RemoteChangedProjectIds.Contains(id) });
         }).RequireAdmin();
 
-        // Name and settings only: a body that names a path has nowhere to put it.
-        api.MapPatch("/projects/{id}", async (string id, UpdateProjectBody body, CancellationToken cancellationToken) =>
+        // The fields the list shows an admin key and nothing else: a path, link or secret has nowhere to go, and what the
+        // body leaves out stays as stored. An empty text clears its field; the name cannot be cleared.
+        api.MapPatch("/projects/{id}", (string id, UpdateProjectBody body, HttpContext context) => _UnderGateAsync(context, services, async () =>
         {
+            var cancellationToken = context.RequestAborted;
             var caller = _Caller();
             if (await editor().FindProjectAsync(id).ConfigureAwait(false) is not { } project)
             {
@@ -227,8 +251,11 @@ internal static partial class ProjectsEndpoints
             var updated = project with
             {
                 Name = name,
-                Description = body.Description ?? project.Description,
-                DefaultProfileLabel = body.DefaultProfile ?? project.DefaultProfileLabel,
+                Description = body.Description is null ? project.Description : _OrNull(body.Description),
+                DefaultProfileLabel = body.DefaultProfile is null ? project.DefaultProfileLabel : _OrNull(body.DefaultProfile),
+                Category = body.Category is null ? project.Category : _OrNull(HealthEndpoints.Clean(body.Category)),
+                BehaviorPrompt = body.BehaviorPrompt is null ? project.BehaviorPrompt : _OrNull(body.BehaviorPrompt),
+                IsolateInWorktreeByDefault = body.IsolateInWorktree ?? project.IsolateInWorktreeByDefault,
             };
             if (await editor().UpdateStoredProjectAsync(updated).ConfigureAwait(false) is null)
             {
@@ -237,11 +264,12 @@ internal static partial class ProjectsEndpoints
 
             await _AuditAsync(services, caller, "api:update_project", "changed", name, cancellationToken).ConfigureAwait(false);
             return Results.Json(new { id, name });
-        }).RequireAdmin();
+        })).RequireAdmin();
 
         // The clone stays on disk, as a local remove leaves its folder: it may hold work.
-        api.MapDelete("/projects/{id}", async (string id, CancellationToken cancellationToken) =>
+        api.MapDelete("/projects/{id}", (string id, HttpContext context) => _UnderGateAsync(context, services, async () =>
         {
+            var cancellationToken = context.RequestAborted;
             var caller = _Caller();
             if (await editor().FindProjectAsync(id).ConfigureAwait(false) is not { } project)
             {
@@ -252,8 +280,26 @@ internal static partial class ProjectsEndpoints
             await editor().RemoveProjectAsync(id).ConfigureAwait(false);
             await _AuditAsync(services, caller, "api:remove_project", "removed", project.Name, cancellationToken).ConfigureAwait(false);
             return Results.Json(new { ok = true, id });
-        }).RequireAdmin();
+        })).RequireAdmin();
     }
+
+    // AC-2281: one write at a time with the Options writes, and the key as it stands once inside, so a revoke or downgrade
+    // while waiting stops it. A clone itself runs after the answer, outside the gate.
+    private static async Task<IResult> _UnderGateAsync(HttpContext context, IServiceProvider services, Func<Task<IResult>> write)
+    {
+        await OptionsSettingsEndpoints.EditGate.WaitAsync(context.RequestAborted).ConfigureAwait(false);
+        try
+        {
+            return await OptionsSettingsEndpoints.RefuseIfNoLongerAdminAsync(context, services).ConfigureAwait(false)
+                ?? await write().ConfigureAwait(false);
+        }
+        finally
+        {
+            OptionsSettingsEndpoints.EditGate.Release();
+        }
+    }
+
+    private static string? _OrNull(string text) => text.Trim() is { Length: > 0 } trimmed ? trimmed : null;
 
     // The URL checks and the folder claim every clone passes, whoever wrote the URL: a refusal, or what to clone where.
     private static async Task<(IResult? Refusal, GitCloneUrl? Parsed, string Branch, string Target)> _ClaimCloneAsync(
@@ -435,4 +481,4 @@ internal sealed record CloneProjectBody(string? RepoUrl, string? Branch, string?
 
 internal sealed record BindSharedProjectBody(string? SharedProjectId, string? Profile, string? Branch);
 
-internal sealed record UpdateProjectBody(string? Name, string? Description, string? DefaultProfile);
+internal sealed record UpdateProjectBody(string? Name, string? Description, string? DefaultProfile, string? Category = null, string? BehaviorPrompt = null, bool? IsolateInWorktree = null);

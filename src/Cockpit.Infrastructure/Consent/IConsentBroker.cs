@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Core;
 
 namespace Cockpit.Infrastructure.Consent;
 
@@ -9,6 +10,15 @@ namespace Cockpit.Infrastructure.Consent;
 /// </summary>
 public interface IConsentBroker
 {
+    /// <summary>The live prompts for an operator surface reconnecting while a decision waits.</summary>
+    IReadOnlyList<ConsentPrompt> PendingPrompts => [];
+
+    /// <summary>Atomically takes a current prompt; false when the desktop or cancellation already took it.</summary>
+    bool TryRespond(Guid promptId, ConsentOutcome outcome, OperatorDecisionOrigin origin = OperatorDecisionOrigin.Desktop)
+    {
+        return false;
+    }
+
     /// <summary>
     /// Asks the operator to approve <paramref name="request"/> and waits for the answer. Returns immediately with
     /// an approval when low-risk and already remembered for this source/session; the dangerous class is always

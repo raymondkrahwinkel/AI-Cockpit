@@ -24,6 +24,7 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
         send("sessions.list", writer =>
         {
             writer.WriteString("replyTo", id);
+            writer.WriteBoolean("history", true);
             writer.WriteStartArray("sessions");
             foreach (var session in sessions)
             {
@@ -34,6 +35,7 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
                 writer.WriteString("state", _State(session.Status));
                 writer.WriteBoolean("terminal", session.IsTerminal);
                 writer.WriteBoolean("readable", session.HasReadableTranscript);
+                writer.WriteBoolean("images", session.AcceptsImages);
                 writer.WriteEndObject();
             }
 
@@ -109,9 +111,66 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
         });
     }
 
-    public async Task SendAsync(string? id, string? paneId, string? text)
+    public async Task HistoryAsync(string? id, string? paneId, int? before, int? count)
+    {
+        const int pageLimit = 50;
+        int limit = Math.Clamp(count ?? pageLimit, 1, pageLimit);
+        PluginTranscriptSlice? slice = null;
+        string? error = null;
+        OpenCockpitSession? session = _Find(paneId);
+        if (before is not >= 0)
+        {
+            error = "A non-negative before row index is required.";
+        }
+        else if (session is { HasReadableTranscript: true })
+        {
+            try
+            {
+                slice = await host.Sessions.ReadTranscriptBeforeAsync(session.PaneId, before.Value, limit).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                logger?.LogWarning("Reading older transcript rows for a phone failed: {Reason}", exception.GetType().Name);
+                error = "Older transcript rows could not be read.";
+            }
+        }
+
+        int budget = MobileFrameCipher.MaxPlaintextBytes - _EnvelopeBytes - (paneId?.Length ?? 0);
+        List<(int Index, byte[] Json)> encoded = slice is null ? [] :
+            [.. slice.Entries.Where(entry => entry.Index >= 0 && entry.Index < before)
+                .Select(entry => (entry.Index, _Row(entry, budget - 1)))];
+        int size = encoded.Sum(row => row.Json.Length + 1);
+        int skip = 0;
+        while (skip < encoded.Count && size > budget)
+        {
+            size -= encoded[skip++].Json.Length + 1;
+        }
+
+        List<(int Index, byte[] Json)> sent = [.. encoded.Skip(skip)];
+        // Even a page containing only host markers must advance to the preceding source page.
+        int nextBefore = sent.Count > 0 ? sent[0].Index : Math.Max(0, Math.Min(before ?? 0, slice?.TotalEntries ?? 0) - limit);
+        send("session.history", writer =>
+        {
+            writer.WriteString("replyTo", id);
+            writer.WriteString("paneId", paneId);
+            writer.WriteBoolean("readable", slice is not null);
+            writer.WriteString("error", error);
+            writer.WriteNumber("nextBefore", nextBefore);
+            writer.WriteBoolean("more", slice is not null && nextBefore > 0);
+            writer.WriteStartArray("rows");
+            foreach ((int _, byte[] json) in sent)
+            {
+                writer.WriteRawValue(json, skipInputValidation: true);
+            }
+
+            writer.WriteEndArray();
+        });
+    }
+
+    public async Task SendAsync(string? id, string? paneId, string? text, (IReadOnlyList<byte[]> Images, string? Refusal) attached)
     {
         var session = _Find(paneId);
+        var (images, imagesRefused) = attached;
         string? error = null;
         var queued = false;
         if (session is null)
@@ -123,17 +182,24 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
             // A shell from the phone is a power nobody asked for; the phone talks to agents.
             error = "Messages go to agent sessions, not to a plain terminal.";
         }
-        else if (string.IsNullOrWhiteSpace(text))
+        else if (string.IsNullOrWhiteSpace(text) && images.Count == 0)
         {
             error = "The message is empty.";
         }
         else
         {
-            // A busy session takes it after its turn, from the host's own send queue (AC-294).
+            // A busy session takes it after its turn, from the host's own send queue (AC-294). A session that cannot see
+            // images still gets the text; the host says why the images stayed behind (AC-2265).
             queued = _State(session.Status) == "working";
             try
             {
-                await host.SendToSessionAsync(session.PaneId, text).ConfigureAwait(false);
+                var result = await host.SendToSessionAsync(session.PaneId, text ?? string.Empty, images).ConfigureAwait(false);
+                imagesRefused = MobileAssistantChannel.Join(imagesRefused, result.ImagesRefused);
+                if (!result.Delivered)
+                {
+                    error = "The session did not take the message.";
+                    queued = false;
+                }
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -149,6 +215,10 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
             writer.WriteBoolean("ok", error is null);
             writer.WriteBoolean("queued", queued);
             writer.WriteString("error", error);
+            if (imagesRefused is not null)
+            {
+                writer.WriteString("imagesRefused", imagesRefused);
+            }
         });
     }
 
@@ -174,14 +244,20 @@ internal sealed class MobileSessionChannel(ICockpitHost host, Action<string, Act
         var result = entry.ToolResult;
         while (true)
         {
-            var encoded = JsonSerializer.SerializeToUtf8Bytes(new
+            var row = new Dictionary<string, object?>
             {
-                id = entry.Index,
-                kind = JsonNamingPolicy.CamelCase.ConvertName(entry.Kind.ToString()),
-                text,
-                resultText = result,
-                truncated = text.Length != entry.Text.Length || result?.Length != entry.ToolResult?.Length,
-            });
+                ["id"] = entry.Index,
+                ["kind"] = JsonNamingPolicy.CamelCase.ConvertName(entry.Kind.ToString()),
+                ["text"] = text,
+                ["resultText"] = result,
+                ["truncated"] = text.Length != entry.Text.Length || result?.Length != entry.ToolResult?.Length,
+            };
+            if (entry.Timestamp is { } timestamp)
+            {
+                row["timestamp"] = timestamp;
+            }
+
+            var encoded = JsonSerializer.SerializeToUtf8Bytes(row);
             if (encoded.Length <= budget || (text.Length == 0 && string.IsNullOrEmpty(result)))
             {
                 return encoded;

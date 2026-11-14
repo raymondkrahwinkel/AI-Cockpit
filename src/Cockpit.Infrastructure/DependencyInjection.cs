@@ -88,10 +88,17 @@ public static class DependencyInjection
             typeof(Shell.CodingShellTools),
             () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled));
 
+        // cockpit-vault (AC-2346): offered once a vault provider is registered, also with encryption off, so the agent hears why.
+        services.AddSingleton(provider => new CockpitMcpEndpoint(
+            "cockpit-vault",
+            typeof(Vault.VaultMcpTools),
+            () => provider.GetRequiredService<Vault.VaultHub>().HasProviders));
+
         // cockpit-agents (AC-391, AC-392): agent-to-agent communication — list_agents, notify/read_inbox.
         // AlwaysMounted because it is a delivery route, not a capability to opt into: when it was tickable, a
         // profile with any saved MCP selection could silently miss it, so a message could be sent but unreadable.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-agents", typeof(Agents.AgentsMcpTools), AlwaysMounted: true));
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-operator-phone", typeof(Plugins.OperatorPhoneMcpTools), AlwaysMounted: true));
 
         // cockpit-assistant (AC-544): the voice assistant's read path across every workspace — the reach no
         // ordinary session has, so it's Internal rather than AlwaysMounted: it reaches only a launch that names

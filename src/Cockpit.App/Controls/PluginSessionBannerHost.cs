@@ -26,7 +26,7 @@ internal sealed class PluginSessionBannerHost : StackPanel
 
         AttachedToVisualTree += (_, _) =>
         {
-            _cockpit = Program.Services?.GetService<CockpitViewModel>();
+            _cockpit = TopLevel.GetTopLevel(this)?.DataContext as CockpitViewModel ?? Program.Services?.GetService<CockpitViewModel>();
             if (_cockpit is not null)
             {
                 _cockpit.PluginSessionBanners.CollectionChanged += _OnContributionsChanged;
@@ -51,7 +51,7 @@ internal sealed class PluginSessionBannerHost : StackPanel
     {
         _Clear();
 
-        var cockpit = Program.Services?.GetService<CockpitViewModel>();
+        var cockpit = _cockpit;
         if (cockpit is null || DataContext is not SessionPanelViewModel { ShowPluginHeaderItems: true } session)
         {
             return;

@@ -17,6 +17,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
     private const string BackupSuffix = ".bak";
 
+    internal const string VaultConnectedMessage =
+        "Encryption stays on while a vault is connected. Disconnect it under Options › Vault first; its token is never written in the clear.";
+
     private readonly string _configFilePath;
     private readonly SecretKeyHolder _keyHolder;
 
@@ -44,7 +47,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
     public async Task<SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
+        var document = await ReadDocumentAsync(cancellationToken, waitForWriter: true).ConfigureAwait(false);
         var security = document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions);
         var enabled = security?.Enabled ?? false;
         var unlocked = _keyHolder.Protector is not null;
@@ -142,6 +145,10 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
 
         var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
+        if (VaultHoldsConnection(document, protector))
+        {
+            throw new SecretProtectionException(VaultConnectedMessage);
+        }
 
         ConvertSecrets(document, progress, (path, value) =>
             SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
@@ -211,8 +218,15 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
         var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
 
-        // Every credential goes; everything else the operator configured stays. The backup the atomic write keeps
-        // still holds the ciphertext, so this is not quite the end of the world if the password resurfaces.
+        // Every credential goes, the vault's connections included; everything else the operator configured stays.
+        // AC-2364: `.bak` rotates away on the next saves, so the ciphertext keeps a copy of its own for a password that resurfaces.
+        if (File.Exists(_configFilePath))
+        {
+            var preReset = $"{_configFilePath}.pre-reset-{DateTimeOffset.Now:yyyyMMdd-HHmmss}";
+            File.Copy(_configFilePath, preReset, overwrite: true);
+            CockpitConfigPath.RestrictExistingFile(preReset);
+        }
+
         SecretJsonWalker.Transform(document, _keyHolder.Fields, (_, _) => string.Empty);
         WriteSecurity(document, security: null);
         WriteSecurityNotice(document, notice: null);
@@ -478,9 +492,26 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
     private ISecretProtector ProtectorFor(string password, SecretProtectionEntry security) =>
         _protectorFactory(SecretKey.Derive(password, Convert.FromBase64String(security.Salt), security.Iterations, security.Kdf));
 
-    private async Task<JsonNode> ReadDocumentAsync(CancellationToken cancellationToken)
+    // AC-2364: a vault connection may neither go to disk in the clear nor be dropped here; only its Disconnect removes it.
+    private static bool VaultHoldsConnection(JsonNode document, ISecretProtector protector)
     {
-        if (!File.Exists(_configFilePath))
+        if (document is not JsonObject root
+            || root.FirstOrDefault(entry => string.Equals(entry.Key, "Vault", StringComparison.OrdinalIgnoreCase)) is not { Value: JsonObject vault } section
+            || vault.FirstOrDefault(entry => string.Equals(entry.Key, "stateSecret", StringComparison.OrdinalIgnoreCase)) is not { Value: JsonValue stored } state
+            || !stored.TryGetValue(out string? value)
+            || value.Length == 0)
+        {
+            return false;
+        }
+
+        var json = SecretProtector.IsProtected(value) ? protector.Unprotect($"{section.Key}.{state.Key}", value) : value;
+        return JsonNode.Parse(json)?["credentials"] is JsonObject { Count: > 0 };
+    }
+
+    // A caller that holds the write gate passes false: no swap can be under way, and waiting would be on itself.
+    private async Task<JsonNode> ReadDocumentAsync(CancellationToken cancellationToken, bool waitForWriter = false)
+    {
+        if (!(waitForWriter ? await CockpitConfigWriteGate.ExistsAsync(_configFilePath, cancellationToken).ConfigureAwait(false) : File.Exists(_configFilePath)))
         {
             return new JsonObject();
         }
@@ -494,7 +525,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
     private async Task<SecretProtectionEntry?> ReadSecurityAsync(CancellationToken cancellationToken)
     {
-        var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
+        var document = await ReadDocumentAsync(cancellationToken, waitForWriter: true).ConfigureAwait(false);
 
         return document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions);
     }

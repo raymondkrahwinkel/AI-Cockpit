@@ -1,8 +1,19 @@
 using Cockpit.Core.Abstractions.Consent;
+using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
+using Cockpit.Core.Workspaces;
+using Cockpit.Core;
 using Cockpit.Core.Consent;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Consent;
@@ -43,6 +54,8 @@ public sealed class ConsentServiceTests
     [Fact]
     public async Task RequestConsentAsync_DangerousRequest_IsNeverRememberedAcrossCalls()
     {
+        var auditEntries = new List<ConsentAuditEntry>();
+        _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(auditEntries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         var broker = CreateBroker();
         var prompts = new List<ConsentPrompt>();
         broker.PromptOpened += (_, prompt) =>
@@ -60,6 +73,159 @@ public sealed class ConsentServiceTests
         Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
         Assert.All(prompts, prompt => Assert.True(!prompt.CanRemember, "the remember option is never offered for the dangerous class"));
         Assert.False(first.Remembered);
+
+        // Category A: only a current, device-bound, one-use capability reaches the same atomic consent callback.
+        var mobileBroker = CreateBroker();
+        var actions = new OperatorActionService(NullLogger<OperatorActionService>.Instance, mobileBroker);
+        using var services = new ServiceCollection().AddSingleton(actions).BuildServiceProvider();
+        PluginBackendHost Host(string pluginId) => new(pluginId, pluginId, services, Substitute.For<IPluginStorage>(),
+            Substitute.For<ICockpitSessionObserver>(), Substitute.For<ICockpitActions>(), new PluginDiagnostics());
+        Assert.Null(Host("untrusted").OperatorTransport);
+        Assert.Same(actions, Host("untrusted").OperatorActions);
+        var transport = Assert.IsAssignableFrom<IOperatorActionTransport>(Host("depot").OperatorTransport);
+        using var phone = transport.OpenChannel();
+        using var stranger = transport.OpenChannel();
+        var pending = mobileBroker.RequestConsentAsync(request);
+        var offered = Assert.Single(phone.Snapshot);
+        Assert.Equal(request.Title, offered.Title);
+        Assert.Equal(request.Risk.ToString(), offered.Risk);
+        Assert.Equal(request.Source.PluginId, offered.SourcePlugin);
+        Assert.False((await stranger.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+        Assert.False((await phone.RespondAsync(offered.Id, "obsolete", offered.Capability, "approve")).Ok);
+        Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "akkoord")).Ok);
+        Assert.False(pending.IsCompleted);
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+
+        Assert.True((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+        Assert.True((await pending).IsApproved);
+        Assert.Equal(OperatorDecisionOrigin.PhoneOperator, auditEntries[^1].Origin);
+        Assert.False((await phone.RespondAsync(offered.Id, offered.Revision, offered.Capability, "approve")).Ok);
+
+        var next = mobileBroker.RequestConsentAsync(request);
+        var desktopFirst = Assert.Single(phone.Snapshot);
+        mobileBroker.Respond(Guid.Parse(desktopFirst.Id), ConsentOutcome.Denied, false);
+        Assert.False((await phone.RespondAsync(desktopFirst.Id, desktopFirst.Revision, desktopFirst.Capability, "approve")).Ok);
+        Assert.False((await next).IsApproved);
+        Assert.Equal(OperatorDecisionOrigin.Desktop, auditEntries[^1].Origin);
+
+        var disconnected = mobileBroker.RequestConsentAsync(request);
+        var withdrawn = Assert.Single(phone.Snapshot);
+        phone.Dispose();
+        Assert.False((await phone.RespondAsync(withdrawn.Id, withdrawn.Revision, withdrawn.Capability, "approve")).Ok);
+        mobileBroker.Respond(Guid.Parse(withdrawn.Id), ConsentOutcome.Denied, false);
+        Assert.False((await disconnected).IsApproved);
+
+        var attempts = 0;
+        var waiting = true;
+        using var retryable = actions.Register(new OperatorAction("retryable", "r1", "consent", "", "test callback", ["approve"]),
+            _ =>
+            {
+                attempts++;
+                if (attempts == 1)
+                {
+                    throw new InvalidOperationException("callback failed before deciding");
+                }
+
+                waiting = attempts < 3;
+                return Task.FromResult(!waiting);
+            }, () => waiting);
+        var beforeFailure = Assert.Single(stranger.Snapshot);
+        Assert.False((await stranger.RespondAsync(beforeFailure.Id, beforeFailure.Revision, beforeFailure.Capability, "approve")).Ok);
+        var afterThrow = Assert.Single(stranger.Snapshot);
+        Assert.NotEqual(beforeFailure.Capability, afterThrow.Capability);
+        Assert.False((await stranger.RespondAsync(beforeFailure.Id, beforeFailure.Revision, beforeFailure.Capability, "approve")).Ok);
+        Assert.False((await stranger.RespondAsync(afterThrow.Id, afterThrow.Revision, afterThrow.Capability, "approve")).Ok);
+        var afterRefusal = Assert.Single(stranger.Snapshot);
+        Assert.NotEqual(afterThrow.Capability, afterRefusal.Capability);
+        Assert.True((await stranger.RespondAsync(afterRefusal.Id, afterRefusal.Revision, afterRefusal.Capability, "approve")).Ok);
+        Assert.Equal(3, attempts);
+        Assert.Empty(stranger.Snapshot);
+
+        // Category A: question answers require the current device capability and cannot answer a closed card.
+        var questionOpen = true;
+        var receivedAnswers = new List<IReadOnlyList<IReadOnlyList<string>>>();
+        using var questionRegistration = actions.RegisterQuestion(
+            new OperatorAction("question", "q1", "question", "cockpit-assistant", "Choose", [])
+            {
+                Questions = [new AssistantChannelQuestion { Question = "Choose", AllowOther = false, Options = [new("One", null), new("Two", null)] }],
+            }, answers =>
+            {
+                receivedAnswers.Add(answers);
+                questionOpen = false;
+                return Task.FromResult(true);
+            }, () => questionOpen);
+        using var operatorPhone = transport.OpenChannel();
+        var questionAction = Assert.Single(operatorPhone.Snapshot);
+        Assert.False((await stranger.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["One"]])).Ok);
+        Assert.False((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, "old", questionAction.Capability, [["One"]])).Ok);
+        Assert.False((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["Other"]])).Ok);
+        Assert.Empty(receivedAnswers);
+        Assert.True((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["Two"]])).Ok);
+        Assert.Equal("Two", Assert.Single(Assert.Single(Assert.Single(receivedAnswers))));
+        Assert.False((await operatorPhone.AnswerQuestionsAsync(questionAction.Id, questionAction.Revision, questionAction.Capability, [["One"]])).Ok);
+
+        // Category A: lifecycle authority stays on the authenticated channel, including retries after reconnect.
+        var launcher = Substitute.For<ISessionLauncher>();
+        var registry = Substitute.For<ISessionRegistry>();
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync().Returns(new[] { new SessionProfile("sdk", new ClaudeConfig(string.Empty)) });
+        launcher.Workspaces.Returns(new WorkspaceSettings { Workspaces = [new Workspace("desk", "Desk", WorkspaceType.Sessions)
+        {
+            Panes = [new WorkspacePane("agent", PaneKind.AiSession), new WorkspacePane("shell", PaneKind.Terminal)],
+        }] });
+        launcher.RunExclusiveAsync(Arg.Any<Func<bool>>()).Returns(call => Task.FromResult(call.Arg<Func<bool>>()()));
+        launcher.RunExclusiveAsync(Arg.Any<Func<OperatorSessionChoice[]>>()).Returns(call => Task.FromResult(call.Arg<Func<OperatorSessionChoice[]>>()()));
+        launcher.StartSessionAsync(Arg.Any<SessionLaunchRequest>()).Returns(new LaunchedSession("started", "SDK", null));
+        var agent = Substitute.For<ISessionHandle>();
+        registry.Find("agent").Returns(agent);
+        var shell = Substitute.For<ISessionHandle>();
+        shell.IsTerminal.Returns(true);
+        registry.Find("shell").Returns(shell);
+        var lifecycle = new OperatorActionService(NullLogger<OperatorActionService>.Instance, sessions: registry, launcher: launcher, profiles: profiles);
+        using var lifecycleServices = new ServiceCollection().AddSingleton(lifecycle).BuildServiceProvider();
+        var lifecycleHost = new PluginBackendHost("depot", "Depot", lifecycleServices, Substitute.For<IPluginStorage>(),
+            Substitute.For<ICockpitSessionObserver>(), Substitute.For<ICockpitActions>(), new PluginDiagnostics());
+        var lifecycleTransport = Assert.IsAssignableFrom<IOperatorActionTransport>(lifecycleHost.OperatorTransport);
+        using var owner = lifecycleTransport.OpenChannel("paired-phone");
+        using var other = lifecycleTransport.OpenChannel("other-phone");
+        var catalog = await owner.SessionCatalogAsync();
+        Assert.False((await owner.StartSessionAsync("old-host", catalog.Capability, "expired-epoch", "desk", "sdk")).Ok);
+        Assert.False((await other.StartSessionAsync("request", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
+        Assert.False((await owner.StartSessionAsync("bad-desk", catalog.Capability, catalog.Epoch, "unknown", "sdk")).Ok);
+        Assert.False((await owner.StartSessionAsync("bad-profile", catalog.Capability, catalog.Epoch, "desk", "unknown")).Ok);
+        try
+        {
+            McpRequestContext.Set("cockpit-assistant");
+            Assert.False((await owner.StartSessionAsync("mcp", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
+            Assert.False((await owner.StopSessionAsync(catalog.Capability, "agent")).Ok);
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+        Assert.True((await owner.StartSessionAsync("request", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
+        owner.Dispose();
+        Assert.False((await owner.StopSessionAsync(catalog.Capability, "agent")).Ok);
+        using var reconnected = lifecycleTransport.OpenChannel("paired-phone");
+        var fresh = await reconnected.SessionCatalogAsync();
+        Assert.False((await reconnected.StartSessionAsync("request", catalog.Capability, catalog.Epoch, "desk", "sdk")).Ok);
+        Assert.Equal("started", (await reconnected.StartSessionAsync("request", fresh.Capability, fresh.Epoch, "desk", "sdk")).PaneId);
+        Assert.False((await reconnected.StartSessionAsync("request", fresh.Capability, fresh.Epoch, "different", "sdk")).Ok);
+        await launcher.Received(1).StartSessionAsync(Arg.Is<SessionLaunchRequest>(start => start.WorkspaceId == "desk" && start.Profile.Label == "sdk" && start.Kind == null));
+        Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "shell")).Ok);
+        Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "cockpit-assistant")).Ok);
+        Assert.False((await reconnected.StopSessionAsync(fresh.Capability, "gone")).Ok);
+        Assert.True((await reconnected.StopSessionAsync(fresh.Capability, "agent")).Ok);
+        await launcher.Received(1).StopSessionAsync("agent");
+        await launcher.DidNotReceive().StopSessionAsync("shell");
     }
 
     /// <summary>The low-risk counterpart: once remembered, the second identical request is not asked again.</summary>
@@ -247,7 +413,7 @@ public sealed class ConsentServiceTests
     }
 
     [Fact]
-    public async Task RequestConsentAsync_WithABypassingPolicy_SkipsThePrompt_AndLogsBypassedRatherThanApproved()
+    public async Task RequestConsentAsync_WithABypassingPolicy_SkipsThePrompt_LogsBypassed_AndRemembersNothing()
     {
         var entries = new List<ConsentAuditEntry>();
         _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
@@ -258,7 +424,8 @@ public sealed class ConsentServiceTests
         try
         {
             McpRequestContext.Set("cockpit-assistant");
-            var decision = await broker.RequestConsentAsync(Request(ConsentRisk.LowRisk));
+            var request = Request(ConsentRisk.LowRisk, allowRemember: true);
+            var decision = await broker.RequestConsentAsync(request);
 
             Assert.True(decision.IsApproved);
             Assert.True(decision.Bypassed, "AC-759: a caller reading only IsApproved cannot tell this from a card the operator actually clicked.");
@@ -272,6 +439,11 @@ public sealed class ConsentServiceTests
             Assert.Equal("workflow.command", entry.Scope);
             Assert.Equal("cockpit-assistant", entry.PaneId);
             Assert.False(entry.Remembered);
+
+            // A bypass must not leave a remembered approval behind: once the operator unticks the source, the card comes back.
+            policy.Answer = false;
+            await broker.RequestConsentAsync(request);
+            Assert.Single(prompts);
         }
         finally
         {
@@ -351,36 +523,6 @@ public sealed class ConsentServiceTests
             Assert.Single(prompts);
             Assert.False(decision.Bypassed);
             Assert.Empty(policy.Asked);
-        }
-        finally
-        {
-            McpRequestContext.Set(null);
-        }
-    }
-
-
-
-    [Fact]
-    public async Task RequestConsentAsync_ABypassedRequest_DoesNotBecomeARememberedApproval()
-    {
-        // Why the check sits before the remember set and not after it. A bypass is the stronger statement of the
-        // two and must not leave the weaker one behind: switching the source off has to take the exemption with
-        // it, rather than finding the same action now silently approved by a remember the operator never gave.
-        var policy = new StubPolicy();
-        var broker = new ConsentService(_audit, policy);
-        var prompts = _RecordPrompts(broker);
-
-        try
-        {
-            McpRequestContext.Set("cockpit-assistant");
-            var request = Request(ConsentRisk.LowRisk, allowRemember: true);
-            await broker.RequestConsentAsync(request);
-            Assert.Empty(prompts);
-
-            policy.Answer = false;                       // the operator unticks the source
-            await broker.RequestConsentAsync(request);
-
-            Assert.Single(prompts);
         }
         finally
         {

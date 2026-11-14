@@ -46,7 +46,8 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         IReadOnlyDictionary<string, string?> managedClis,
         string serverName,
-        bool writeThrough = false)
+        bool writeThrough = false,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? intents = null)
     {
         _writeThrough = writeThrough;
         _relay = relay;
@@ -68,7 +69,8 @@ internal sealed class ServerPluginSettings
             (name, cancellationToken) => relay.SignOutMcpServerAsync(folderId, name, cancellationToken),
             profiles,
             projects,
-            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName);
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName,
+            relay, folderId, intents);
         _local = local;
     }
 
@@ -103,7 +105,24 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         string serverName)
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName, writeThrough: true);
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName,
+            writeThrough: true, intents: await relay.GetUiIntentsAsync(folderId));
+        local.OnSettingsSaved(async () =>
+        {
+            await settings._persisting.WaitAsync();
+            try
+            {
+                if (await settings.PersistAsync() is { } failure)
+                {
+                    throw new InvalidOperationException(failure);
+                }
+                await settings._RefreshAsync();
+            }
+            finally
+            {
+                settings._persisting.Release();
+            }
+        });
         return settings._host;
     }
 
@@ -164,6 +183,13 @@ internal sealed class ServerPluginSettings
                 // A key the view wrote again while this Save was out stays written, for the next one.
                 var now = _storage.Snapshot();
                 _written.RemoveWhere(key => now.TryGetValue(key, out var value) ? _seed.TryGetValue(key, out var was) && _SameJson(was, value) : !_seed.ContainsKey(key));
+                // The host survives Options; a later view must never read a credential the operator just saved.
+                foreach (var key in secrets.Where(key => !_written.Contains(key)))
+                {
+                    var masked = string.IsNullOrEmpty(_storage.GetSecret(key)) ? "" : "(set on the server)";
+                    _storage.SetSecret(key, masked);
+                    _seed[key] = JsonSerializer.Serialize(masked);
+                }
             }
 
             foreach (var saved in _host.SettingsSaved)

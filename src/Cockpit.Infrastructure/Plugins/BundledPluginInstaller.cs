@@ -2,12 +2,11 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Velopack;
 
 namespace Cockpit.Infrastructure.Plugins;
 
-// AC-1013: installs plugins that ship *with* the app (ex-core features, kept toggleable). Copied in and
-// pre-approved only on first appearance (per-id seed ledger); afterward it's an ordinary store-managed
-// plugin — never rolled back, re-pinned, re-seeded, or overriding an operator's disable.
+// Seeds bundled plugins and upgrades unchanged seeds, preserving operator installs, pins and removals.
 public sealed class BundledPluginInstaller : ISingletonService
 {
     // Folder in the app's output holding one subfolder per bundled plugin (its dll, deps.json and plugin.json).
@@ -51,10 +50,7 @@ public sealed class BundledPluginInstaller : ISingletonService
         var seeded = await _registrations.LoadSeededBundledIdsAsync(cancellationToken).ConfigureAwait(false);
         var saved = await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
 
-        // Classify by prior appearance: already-seeded ids are the store's to manage now; not-yet-seeded but
-        // already-installed ids (pre-dating this ledger, or operator-installed) are adopted — seed recorded,
-        // bytes untouched. Only a genuinely absent source is copied in fresh.
-        var freshSeedSources = new List<string>();
+        var sourcesToInstall = new List<string>();
         var toRecord = new List<string>();
         foreach (var source in Directory.EnumerateDirectories(bundledRoot))
         {
@@ -73,29 +69,61 @@ public sealed class BundledPluginInstaller : ISingletonService
                 await _registrations.SetExpectedMinVersionAsync(id, manifest.ExpectedMinVersion, cancellationToken).ConfigureAwait(false);
             }
 
-            if (seeded.Contains(id))
+            var target = Path.Combine(pluginsRoot, id);
+            if (!Directory.Exists(target))
             {
+                if (!seeded.Contains(id) && registration is null
+                    && PluginLoadPolicy.MeetsMinHostVersion(manifest.MinHostVersion, HostVersionInfo.Current))
+                {
+                    sourcesToInstall.Add(source);
+                }
                 continue;
             }
 
             toRecord.Add(id);
-            var alreadyInstalled = saved.ContainsKey(id) || Directory.Exists(Path.Combine(pluginsRoot, id));
-            if (!alreadyInstalled)
+            if (registration is { Enabled: false } or { VersionChosen: true } or { Source: not null }
+                || !PluginInstaller.IsInstalledPlugin(target)
+                || Directory.Exists(Path.Combine(pluginsRoot, ".pending-updates", id)))
             {
-                freshSeedSources.Add(source);
+                continue;
+            }
+
+            // Outside the plugin folder: a manual ZIP replacement must not erase its provenance.
+            var marker = Path.Combine(pluginsRoot, ".bundled-" + id);
+            var hash = await PluginClosureHash.OfInstalledFolderAsync(target, cancellationToken).ConfigureAwait(false);
+            if (!File.Exists(marker))
+            {
+                await File.WriteAllTextAsync(marker, hash, cancellationToken).ConfigureAwait(false);
+            }
+            if (!string.Equals(await File.ReadAllTextAsync(marker, cancellationToken).ConfigureAwait(false), hash, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (await _ReadManifestAsync(target, cancellationToken).ConfigureAwait(false) is { } current
+                && SemanticVersion.TryParse(manifest.Version, out var incomingVersion)
+                && SemanticVersion.TryParse(current.Version, out var currentVersion)
+                && incomingVersion.CompareTo(currentVersion) > 0
+                && PluginLoadPolicy.MeetsMinHostVersion(manifest.MinHostVersion, HostVersionInfo.Current))
+            {
+                sourcesToInstall.Add(source);
             }
         }
 
-        // The genuinely-absent sources are the only ones copied. Their targets do not exist, so the shared
-        // installer's replace/re-pin rules never fire — this is a clean first install and nothing else.
-        var installed = freshSeedSources.Count == 0
+        var installed = sourcesToInstall.Count == 0
             ? (IReadOnlyList<string>)[]
             : await new PluginSourceInstaller(_registrations, _logger)
-                .InstallFromSourceFoldersAsync(freshSeedSources, pluginsRoot, installNew: true, cancellationToken)
+                .InstallFromSourceFoldersAsync(sourcesToInstall, pluginsRoot, installNew: true, cancellationToken)
                 .ConfigureAwait(false);
 
+        foreach (var id in installed)
+        {
+            var hash = await PluginClosureHash.OfInstalledFolderAsync(Path.Combine(pluginsRoot, id), cancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(pluginsRoot, ".bundled-" + id), hash, cancellationToken).ConfigureAwait(false);
+        }
+
         // Record every classified id — freshly seeded and adopted alike — so none is ever seeded again.
-        await _registrations.MarkBundledSeededAsync(toRecord, cancellationToken).ConfigureAwait(false);
+        await _registrations.MarkBundledSeededAsync(toRecord.Concat(installed), cancellationToken).ConfigureAwait(false);
 
         return installed;
     }

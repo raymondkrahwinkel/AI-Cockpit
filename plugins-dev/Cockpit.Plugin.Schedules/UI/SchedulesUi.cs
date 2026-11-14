@@ -53,10 +53,10 @@ public sealed class SchedulesUi : ICockpitPluginUi
 
     internal static async Task OpenAsync(ICockpitUiHost host)
     {
-        var local = await SchedulesSource.OpenAsync(host);
+        var local = await SchedulesSource.OpenAsync(host, host.RemoteServer);
         using var state = local.State;
         // AC-1547: the servers the switch offers, each with this plugin's host there or the reason it has none.
         var servers = await host.GetServerTargetsAsync();
-        await host.ShowDialogAsync("Schedules", () => new SchedulesScreen(state, host, local.Profiles, servers: servers, folders: local.Folders), "schedules", width: 1280, height: 820);
+        await host.ShowDialogAsync("Schedules", () => new SchedulesScreen(state, host, local.Profiles, servers: servers, folders: local.Folders, server: local.Server), "schedules", width: 1280, height: 820);
     }
 }

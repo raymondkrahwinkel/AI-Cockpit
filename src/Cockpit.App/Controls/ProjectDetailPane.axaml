@@ -216,6 +216,7 @@
             <TextBlock Classes="paneHeading" Text="PROJECT"/>
             <UniformGrid Columns="2" Margin="-3,-3">
                 <Button Classes="paneAction" Margin="3" Command="{Binding Actions.OpenFolder, FallbackValue={x:Null}}" CommandParameter="{Binding Project}"
+                        IsVisible="{Binding IsLocalProject}"
                         IsEnabled="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <materialIcons:MaterialIcon Kind="FolderOutline" Width="15" Height="15"/>
@@ -235,7 +236,8 @@
                         <TextBlock Text="Sync now" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
-                <Button Classes="paneAction" Margin="3" Command="{Binding Actions.ToggleSharing, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                <Button Classes="paneAction" Margin="3" Command="{Binding Actions.ToggleSharing, FallbackValue={x:Null}}" CommandParameter="{Binding Project}"
+                        IsVisible="{Binding IsLocalProject}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <materialIcons:MaterialIcon Kind="{Binding ShareIcon}" Width="15" Height="15"/>
                         <TextBlock Text="{Binding ShareLabel}" VerticalAlignment="Center"/>
@@ -272,7 +274,7 @@
                     Command="{Binding Remove}" CommandParameter="{Binding Project}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <materialIcons:MaterialIcon Kind="DeleteOutline" Width="15" Height="15" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
-                    <TextBlock Text="Remove from this machine…" VerticalAlignment="Center" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                    <TextBlock Text="{Binding RemoveLabel}" VerticalAlignment="Center" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
                 </StackPanel>
             </Button>
         </StackPanel>

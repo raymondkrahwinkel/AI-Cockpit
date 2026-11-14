@@ -21,6 +21,17 @@ namespace Cockpit.Plugins.Abstractions;
 /// </remarks>
 public interface ICockpitHost
 {
+    /// <summary>
+    /// Registers delivery of deliberate operator phone pings; requires host 0.179.0.
+    /// </summary>
+    IOperatorPhoneNotifications? OperatorPhoneNotifications => null;
+
+    /// <summary>Revocable operator decisions, independent of any transport; requires host 0.176.0.</summary>
+    IOperatorActionService? OperatorActions => null;
+
+    /// <summary>Authenticated operator transport, available only to the host-authorised adapter; requires host 0.176.0.</summary>
+    IOperatorActionTransport? OperatorTransport => null;
+
     IServiceProvider Services { get; }
 
     ICockpitActions Actions { get; }
@@ -500,6 +511,23 @@ public interface ICockpitHost
     /// Default no-op so existing implementations keep compiling untouched.
     /// </remarks>
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+    /// <summary>
+    /// The same, with images attached to the message (AC-2265) — one message, not one per image, and an empty
+    /// <paramref name="text"/> with images is a message too. Hand the bytes over as they arrived: what an image is, how
+    /// big and how many is decided host-side, as on <see cref="Channels.IAssistantChannelGateway"/>.
+    /// </summary>
+    /// <remarks>
+    /// A session that cannot see images (<see cref="Sessions.OpenCockpitSession.AcceptsImages"/> false: a TTY session, a
+    /// plain terminal, a model without image input) still gets the text; the images come back refused with a reason.
+    /// Marshals to the UI thread itself. The default sends the text alone and refuses the images, the honest answer of
+    /// a host that predates this member.
+    /// </remarks>
+    async Task<SessionSendResult> SendToSessionAsync(string paneId, string text, IReadOnlyList<byte[]> images)
+    {
+        await SendToSessionAsync(paneId, text).ConfigureAwait(false);
+        return new SessionSendResult(!string.IsNullOrEmpty(text), images.Count > 0 ? "this Cockpit does not pass images on to a session" : null);
+    }
 
     /// <summary>
     /// Places <paramref name="text"/> in the input of the session named by <paramref name="paneId"/> without sending
@@ -1037,6 +1065,14 @@ public interface ICockpitHost
     /// The session-resource providers every plugin has contributed — what a starting session is assembled from. Default empty.
     /// </summary>
     IReadOnlyList<Sessions.ISessionResourceProvider> SessionResourceProviders => [];
+
+    /// <summary>
+    /// Connects a secret store to the host's vault hub (AC-2336) and returns the provider's own encryption-gated context.
+    /// </summary>
+    /// <remarks>
+    /// Default: a context that is never available, so existing implementations keep compiling untouched.
+    /// </remarks>
+    Vault.IVaultProviderContext AddVaultProvider(Vault.IVaultProvider provider) => Vault.UnavailableVaultProviderContext.Instance;
 
     /// <summary>
     /// Registers a place a plugin can list projects it shares elsewhere but this machine has not bound yet

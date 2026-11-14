@@ -1,5 +1,59 @@
 # AI-Cockpit
 
+On desktop, Options › 1Password installs the official `op` CLI (2.18.0 or later) into Cockpit's managed CLI directory.
+The plugin verifies 1Password's detached PGP signature against its pinned signing key, plus Windows
+Authenticode and publisher identity, before the shared installer makes the executable available.
+The existing managed CLI updater keeps it current; Options shows the version, update controls and a retry
+with the manual install page after a failure. This does not install anything system-wide.
+
+`cockpit-operator-phone.notify_operator_phone` lets the assistant and live agent sessions ping connected phones
+with a title (80 characters), short text (240), urgency (`normal` or `important`) and target (`assistant` or a
+live pane id). The host supplies the sender name and limits each sender to three pings per minute. Never put
+secrets or transcript in these fields. Depot delivers through the encrypted relay; the result counts streams
+accepting a queued ping, not device delivery. There is no offline backlog or extra consent click.
+
+Profiles have `GuardrailMode` (`Strict`, `Warn`, `Off`) and `GuardrailAllowedPaths` in
+`cockpit.json`, editable under Manage profiles and Options. New profiles default to
+`Strict`; existing entries without the mode default to `Warn`. Allowed paths default
+to an empty list and must be absolute or start with `~/` (one per line in the editor).
+They cannot contain the platform's path-list separator. Mode travels in the settings
+carrier; paths stay local. Invalid or machine-specific paths imported from elsewhere
+are skipped at launch with a log warning. Apply and Cancel stage both fields with the whole profile.
+Organisation profiles may supply `guardrailMode`; policy.permissions.minimumGuardrailMode
+can only make the effective mode stricter, without rewriting the local choice.
+Every agent launch receives `COCKPIT_GUARD_MODE` and `COCKPIT_GUARD_ROOTS` (joined with
+`Path.PathSeparator`): its working directory/worktree, session scratch, allowed paths
+and `<CLAUDE_CONFIG_DIR>/plans` (default `~/.claude/plans`). Profile variables cannot
+override these values. AC-2246 supplies this policy; enforcement follows in the other
+AC-1908 tickets. Existing coding-tool confinement remains active.
+
+Strict Claude profiles enable Claude Code's OS sandbox on Linux and macOS on TTY
+and SDK, with the session write roots as literal `sandbox.filesystem.allowWrite`
+paths. `autoAllowBashIfSandboxed` is enabled and `allowUnsandboxedCommands` is
+disabled; bypass remains available. `permissions.allow: ["WebFetch(domain:*)"]`
+allows all sandbox network hosts (Claude Code 2.1.186+); the runtime rejects a bare
+`*` in `sandbox.network.allowedDomains`. `failIfUnavailable` is false: a launch
+warning explains that commands run without OS isolation when it is unavailable.
+The server image includes bubblewrap and socat. Windows, Warn and Off are unchanged.
+
+Strict Codex profiles use `workspace-write` on TTY and app-server, including session
+scratch, allowed paths and the repository's git common directory as writable roots,
+with network access enabled. An explicit `read-only` choice remains read-only.
+Warn and Off keep the profile's existing sandbox. Approval policy and the Windows
+sandbox implementation are unchanged.
+
+**Known limitation (AC-2249):** Codex 0.167.0 protects the gitdir referenced by a
+worktree's `.git` file, even when it is covered by writable roots. See
+[`protocol/src/permissions.rs`, `default_read_only_subpaths_for_writable_root`](https://github.com/openai/codex/blob/rust-v0.167.0/codex-rs/protocol/src/permissions.rs).
+On Windows with `unelevated`, all three local probes failed with `index.lock:
+Permission denied`: without the git common directory, with it, and with both the
+common directory and the exact worktree gitdir. Therefore Strict skips its sandbox
+override in linked worktrees (`gitdir != common dir`) and keeps the profile's
+sandbox, logging the reason once at launch so commits remain possible. Path guards
+and detection from the other AC-1908 tickets remain the protection there; the Codex
+OS sandbox is not tightened in that case. Ordinary checkouts and non-git folders
+still receive the strict sandbox.
+
 Assistant Options controls spoken answers independently of text chat. `assistant.speechMode`
 (`Full`, `Summary`, `Short`; default `Short`), `assistant.speechMethod` (`Assistant`, `Profile`,
 `Rules`; default `Assistant`) and `assistant.speechProfileLabel` (optional existing profile label)
@@ -109,9 +163,16 @@ see the [plugin docs](#documentation).
 
 ## How it works
 
+**Open** on a connected server starts an ordinary Cockpit window for that server
+(`Cockpit --remote <server>`). Admin links open its Options › Servers category;
+plugin settings links open that plugin's ordinary Options category, or the Plugin store
+when its UI is unavailable. There is no separate admin panel. Connect keys, their scopes
+and certificate pins stay unchanged. Swarm pairing and enabling the node endpoint remain
+local to the server; remote internal-network exceptions must stay within private address space.
+
 File-source plugins can register `IFileSourceProvider` through `ICockpitHost.AddFileSource`
 (host 0.136.0, Abstractions 3.45.0). The host handles snapshot reads and conditional writes on the
-plugin's existing channel, including server-admin relays. The initial channel limits file content to
+plugin's existing channel, including remote server relays. The initial channel limits file content to
 1 MiB. See the [file source contract](docs/plugins/FILE-SOURCES.md) for ownership and conflict semantics.
 
 Host 0.137.0 (Abstractions 3.45.0 / UI 3.17.0) adds host-owned Markdown file workspaces.
@@ -555,6 +616,8 @@ dotnet test
   `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView`, the `Sessions` and `Mcp` namespaces), with signatures,
   parameters and short examples.
 - **[Example store index](docs/plugins/example-store-index.json)** — a template for your own store's `index.json`.
+- **Publishing store updates:** [Maintainer workflow](docs/plugins/AUTOMATED-PUBLISH.md#publishing-updates-after-a-nightly)
+  prepares missing versions in one Linux batch and at most one Windows batch, then publishes one store PR.
 - **Official plugin store:**
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
@@ -690,3 +753,15 @@ to the same place when their plugin is enabled again. Titles and owning plugin i
 let the panel explain a missing tool and use the existing plugin consent flow.
 These preferences stay on this machine, outside `SettingsCarrierWhitelist`,
 because its installed companion tools can differ from another machine's.
+
+### Stream silence timeout
+
+OpenAI-compatible profiles offer **Stream silence timeout (s)** in session defaults.
+Leave it empty for 600 seconds on loopback endpoints (including local LM Studio
+and Ollama), or 120 seconds on remote endpoints. Values must be whole seconds from 30 to 3600.
+The value is stored in `Profiles[].Defaults.OptionDefaults.streamSilenceTimeoutSeconds`,
+staged with the profile for Apply/Cancel and included in the existing profile settings carrier.
+`list_profiles` reports it with `SetOnProfile`; `start_agent` accepts
+`options: {"streamSilenceTimeoutSeconds": "900"}` as a per-spawn override.
+It changes no permissions. Every streamed update resets the timer; the first silence
+adds a transcript note and retries once, and a second silence fails the turn.

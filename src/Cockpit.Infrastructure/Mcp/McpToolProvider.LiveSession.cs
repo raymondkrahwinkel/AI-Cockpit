@@ -205,6 +205,11 @@ internal sealed partial class McpToolProvider
                         _deliveredInstructions.Add((server.Config.Name, text));
                         instructions.Add($"## {server.Config.Name}\n{text}");
                     }
+                    else if (server.Connection is null && server.Issue is { Length: > 0 } issue)
+                    {
+                        // The agent must hear that a selected server delivers no tools, not just the operator panel.
+                        instructions.Add($"## {server.Config.Name}\nNot connected, so it has no tools in this session: {issue}");
+                    }
                 }
                 return string.Join("\n\n", instructions);
             }
@@ -240,6 +245,7 @@ internal sealed partial class McpToolProvider
                 }
                 var upstream = new Upstream(server);
                 _servers.Add(server.Name, upstream);
+                _provider._LogBrainQuery(server, _paneId);
                 upstream.Worker = Task.Run(() => _ownsToken ? _ConnectLocalAsync(upstream) : _RunGatewayAsync(upstream));
                 connecting = upstream.Initial.Task.WaitAsync(cancellationToken);
             }
@@ -359,6 +365,7 @@ internal sealed partial class McpToolProvider
                     while (server.Signals.Reader.TryRead(out _)) { }
                     McpClient? client = null;
                     IAsyncDisposable? notification = null;
+                    var started = DateTime.UtcNow;
                     lock (_sync)
                     {
                         server.Connecting = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -368,7 +375,9 @@ internal sealed partial class McpToolProvider
                         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         deadline.CancelAfter(TimeSpan.FromSeconds(15));
                         var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection([server.Config.Name]), deadline.Token);
-                        var config = registry.FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
+                        // AC-2310: compare and connect with the same session query used by the binding's cache.
+                        var config = _provider._WithBrainQuery(registry, _paneId)
+                            .FirstOrDefault(candidate => candidate.Name.Equals(server.Config.Name, StringComparison.OrdinalIgnoreCase)) ?? server.Config with { Enabled = false };
                         if (_paneId is not null && _provider._mounts?.Set(_paneId)?.Context?.ConfineRoot is { } root)
                         {
                             config = _ConfinedServers([config], root)[0];
@@ -387,6 +396,8 @@ internal sealed partial class McpToolProvider
                             continue;
                         }
                         _Publish(server, outcome.Connection, null);
+                        _provider._logger.LogInformation("MCP server {Server} connected for pane {Pane} with {Count} tool(s) in {Elapsed} ms.",
+                            server.Config.Name, _paneId, outcome.Connection?.Tools.Count, (long)(DateTime.UtcNow - started).TotalMilliseconds);
                         _FinishConnecting(server);
                         notification = client.RegisterNotificationHandler("notifications/tools/list_changed", (_, _) =>
                         {
@@ -400,9 +411,9 @@ internal sealed partial class McpToolProvider
                     {
                         throw;
                     }
-                    catch (Exception)
+                    catch (Exception exception)
                     {
-                        _provider._logger.LogWarning("MCP catalog or connection refresh failed for {Server}; retrying.", server.Config.Name);
+                        _provider._logger.LogWarning(exception, "MCP catalog or connection refresh failed for {Server}; retrying.", server.Config.Name);
                         _Failed(server, "Upstream connection unavailable.");
                     }
                     finally

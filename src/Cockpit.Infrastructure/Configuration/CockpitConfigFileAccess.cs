@@ -58,7 +58,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             await CockpitConfigWriteGate.WaitForWriterAsync(configFilePath, cancellationToken).ConfigureAwait(false);
         }
 
-        if (await TryReadAsync(configFilePath, cancellationToken).ConfigureAwait(false) is { } configFile)
+        if (await TryReadAsync(configFilePath, waitForWriter, cancellationToken).ConfigureAwait(false) is { } configFile)
         {
             return configFile;
         }
@@ -66,7 +66,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         // The file exists but does not parse. Treating it as absent would let a caller write an empty
         // document back over everything, so the last known-good `.bak` is tried first instead.
         if (File.Exists(configFilePath)
-            && await TryReadAsync(configFilePath + BackupSuffix, cancellationToken).ConfigureAwait(false) is { } recovered)
+            && await TryReadAsync(configFilePath + BackupSuffix, waitForWriter: false, cancellationToken).ConfigureAwait(false) is { } recovered)
         {
             var damaged = $"{configFilePath}.damaged-{DateTimeOffset.Now:yyyyMMdd-HHmmss}";
             File.Move(configFilePath, damaged, overwrite: true);
@@ -94,14 +94,14 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // AC-1892: every read hands out its own fresh DTO (callers mutate what they get), but from a snapshot that is
     // read and decrypted once per write generation. Generation and stat are taken before reading, so a write that
     // lands mid-read, here or from another process, leaves a snapshot that no longer matches rather than a stale hit.
-    private async Task<CockpitConfigFile?> TryReadAsync(string path, CancellationToken cancellationToken)
+    private async Task<CockpitConfigFile?> TryReadAsync(string path, bool waitForWriter, CancellationToken cancellationToken)
     {
-        var file = new FileInfo(path);
-        if (!file.Exists)
+        if (!(waitForWriter ? await CockpitConfigWriteGate.ExistsAsync(path, cancellationToken).ConfigureAwait(false) : File.Exists(path)))
         {
             return null;
         }
 
+        var file = new FileInfo(path);
         var generation = CockpitConfigWriteGate.Generation;
         var protector = _keyHolder.Protector;
         var fields = _keyHolder.Fields;
@@ -185,7 +185,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // can still swap the file, and no recovery. Null without a file; a document that does not parse throws instead.
     internal static async Task<JsonNode?> ReadOnceAsync(string path, CancellationToken cancellationToken)
     {
-        if (!File.Exists(path))
+        if (!await CockpitConfigWriteGate.ExistsAsync(path, cancellationToken).ConfigureAwait(false))
         {
             return null;
         }

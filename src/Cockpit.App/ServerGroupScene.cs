@@ -43,9 +43,45 @@ internal static class ServerGroupScene
     // AC-1487 (mockup v2 tab 5): the `--remote` window on the same stand-in, with its first session open.
     public static MainWindow Remote(int width, int height)
     {
-        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns(), _ => Task.CompletedTask);
+        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns());
         cockpit.OpenServerSessionCommand.Execute(cockpit.ServerGroups[0].Sessions[0]);
         return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    // AC-2281: the remote window's ordinary Projects page, listing the stand-in server's projects.
+    public static MainWindow RemoteProjects(int width, int height)
+    {
+        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns());
+        cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
+        return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    // AC-2281: the ordinary project editor over a server project: only what the server lets an admin key change.
+    public static ProjectDialog RemoteProjectEditor(bool existing)
+    {
+        var project = existing
+            ? new Cockpit.Core.Projects.Project("depot", "depot")
+            {
+                Description = "Depot on the server.",
+                Category = "Work",
+                GitUrl = "https://github.com/raymondkrahwinkel/depot.git",
+                DefaultProfileLabel = "work",
+                SourceDirectories = [new Cockpit.Core.Projects.ProjectRepository("/work/clones/github.com/raymondkrahwinkel/depot")],
+            }
+            : null;
+        var editor = ProjectDialogViewModel.ForServer(project, "huis-cockpit", ["work", "personal"], ["Work"], Task.FromResult);
+        return new ProjectDialog { DataContext = editor, Height = 1000 };
+    }
+
+    // AC-2279: the remote window's ordinary Options on one page: the server's parts shown, this device's own hidden.
+    public static OptionsDialog RemoteOptions(string category)
+    {
+        var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns());
+        // The stand-in server answers synchronously, so its keys are on the page before the render.
+        _ = cockpit.LoadRemoteServerKeysAsync();
+        var dialog = new OptionsDialog { DataContext = cockpit, Width = 1100, Height = 1100 };
+        dialog.SelectCategory(category);
+        return dialog;
     }
 
     // AC-1762 (mockups Company v8 #22 and Productivity v3 #09): the panels sidebar with two projects, this laptop with two
@@ -177,15 +213,15 @@ internal static class ServerGroupScene
 
         public ISessionLauncher? Launcher => null;
 
-        public IConnectKeyAdministration Administration { get; } = ServerAdminScene.StandIn();
+        public IConnectKeyAdministration Administration { get; } = ServerSceneServices.StandIn();
 
         public IPluginAdministration Plugins { get; } = new ScenePlugins();
 
-        public IServerProjects Projects { get; } = ServerAdminScene.ProjectsStandIn();
+        public IServerProjects Projects { get; } = ServerSceneServices.ProjectsStandIn();
 
-        public IServerProfiles Profiles { get; } = ServerAdminScene.ProfilesStandIn();
+        public IServerProfiles Profiles { get; } = ServerSceneServices.ProfilesStandIn();
 
-        public IAssistantAdministration AssistantAdministration { get; } = ServerAdminScene.AssistantStandIn();
+        public IAssistantAdministration AssistantAdministration { get; } = ServerSceneServices.AssistantStandIn();
 
         public RemoteServerState State { get; } = state;
 

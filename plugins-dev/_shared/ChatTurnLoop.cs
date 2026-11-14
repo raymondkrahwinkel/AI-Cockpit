@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Shared;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugins.OpenAiCompat;
 
@@ -136,11 +137,23 @@ internal static class ChatTurnLoop
         guard?.BeginTurn();
         var turnText = new StringBuilder();
         var toolRounds = 0;
+        var idleRetried = false;
 
         for (var continuation = 0; ; continuation++)
         {
             var historyStart = history.Count;
-            var round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken, streamIdleTimeout ?? StreamIdleTimeout).ConfigureAwait(false);
+            RoundResult round;
+            try
+            {
+                round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken, streamIdleTimeout ?? StreamIdleTimeout).ConfigureAwait(false);
+            }
+            catch (ChatStreamIdleTimeoutException ex) when (!idleRetried && !cancellationToken.IsCancellationRequested)
+            {
+                idleRetried = true;
+                toolRounds += history.Skip(historyStart).Count(message => message.Role == ChatRole.Tool);
+                onText($"\n\n(cockpit) model silent for {ex.Timeout.TotalSeconds:0}s, retrying once\n\n");
+                round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken, streamIdleTimeout ?? StreamIdleTimeout).ConfigureAwait(false);
+            }
             toolRounds += round.ToolRounds;
             if (_HasRepeatedToolFailureStop(history.Skip(historyStart)))
             {
@@ -257,6 +270,13 @@ internal static class ChatTurnLoop
                 relay.Flush();
                 toolRounds += _Append(history, updates, complete: true);
                 return new RoundResult(relay.Raw.ToString(), updates.LastOrDefault(update => update.FinishReason is not null)?.FinishReason, toolRounds);
+            }
+            catch (ChatStreamIdleTimeoutException)
+            {
+                // Keep completed tool calls on retry, just as for a dropped connection.
+                _Append(history, updates, complete: false);
+                relay.DropHeld();
+                throw;
             }
             catch (Exception ex) when (attempt < MaxTransportRetries && !cancellationToken.IsCancellationRequested && _IsTransportFailure(ex))
             {
@@ -450,9 +470,38 @@ internal static class ChatTurnLoop
 }
 
 internal sealed class ChatStreamIdleTimeoutException(TimeSpan timeout)
-    : TimeoutException($"The model did not send an update within {timeout.TotalSeconds:0} seconds.")
+    : TimeoutException($"The model sent nothing for {timeout.TotalSeconds:0} s (likely still processing a long prompt). Raise the stream silence timeout on this profile if this repeats.")
 {
     internal TimeSpan Timeout { get; } = timeout;
+}
+
+// Shared by profile editors and both HTTP drivers; this is a start option, never a permission key.
+public static class StreamSilenceTimeout
+{
+    public const string Key = "streamSilenceTimeoutSeconds";
+    public const string Label = "Stream silence timeout (s)";
+    public const string ValidationMessage = "Stream silence timeout must be a whole number from 30 to 3600 seconds, or empty for the provider default.";
+
+    public static PluginSessionLaunchOption LaunchOption { get; } = new(Key, Label, []);
+
+    public static PluginSessionOptionDescriptor Descriptor { get; } = new(Key, Label);
+
+    public static bool IsValid(string? value) => string.IsNullOrWhiteSpace(value)
+        || (int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var seconds) && seconds is >= 30 and <= 3600);
+
+    public static TimeSpan Resolve(string? value, TimeSpan providerDefault)
+    {
+        if (!IsValid(value))
+        {
+            throw new ArgumentException(ValidationMessage);
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? providerDefault : TimeSpan.FromSeconds(int.Parse(value, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    public static TimeSpan DefaultFor(string baseUrl) => Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) && uri.IsLoopback
+        ? TimeSpan.FromSeconds(600)
+        : TimeSpan.FromSeconds(120);
 }
 
 internal sealed record ChatTurnOutcome(string Text, ChatFinishReason? FinishReason, int ToolRounds, int Continuations);
