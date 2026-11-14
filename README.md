@@ -1,5 +1,11 @@
 # AI-Cockpit
 
+Options › 1Password installs the official `op` CLI (2.18.0 or later) into Cockpit's managed CLI directory.
+The plugin verifies 1Password's detached PGP signature against its pinned signing key, plus Windows
+Authenticode and publisher identity, before the shared installer makes the executable available.
+The existing managed CLI updater keeps it current; Options shows the version, update controls and a retry
+with the manual install page after a failure. This does not install anything system-wide.
+
 `cockpit-operator-phone.notify_operator_phone` lets the assistant and live agent sessions ping connected phones
 with a title (80 characters), short text (240), urgency (`normal` or `important`) and target (`assistant` or a
 live pane id). The host supplies the sender name and limits each sender to three pings per minute. Never put

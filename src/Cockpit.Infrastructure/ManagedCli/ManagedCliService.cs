@@ -34,6 +34,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     private static readonly TimeSpan PromoteHelperTimeout = TimeSpan.FromMinutes(5);
 
     private readonly ConcurrentDictionary<string, ManagedCliDescriptor> _descriptors = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _installGates = new(StringComparer.Ordinal);
     private readonly string _cliRoot;
     private readonly HttpClient _http;
     private readonly ILogger<ManagedCliService>? _logger;
@@ -181,6 +182,25 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     }
 
     public async Task<ManagedCliInstallResult> EnsureInstalledAsync(string cliName, CancellationToken cancellationToken = default)
+    {
+        if (!_IsSafeCliName(cliName) || !_descriptors.ContainsKey(cliName))
+        {
+            return ManagedCliInstallResult.Fail($"No managed-CLI descriptor is registered for '{cliName}'.");
+        }
+
+        var gate = _installGates.GetOrAdd(cliName, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await _EnsureInstalledAsync(cliName, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task<ManagedCliInstallResult> _EnsureInstalledAsync(string cliName, CancellationToken cancellationToken)
     {
         if (!_IsSafeCliName(cliName))
         {
@@ -360,7 +380,9 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         // Verify before anything is written out or unpacked. A mismatch means the bytes are not what the provider
         // published — reject and install nothing.
         var actualSha = PluginHash.Compute(bytes);
-        if (!string.Equals(actualSha, artifact.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+        if ((!string.IsNullOrWhiteSpace(artifact.ExpectedSha256)
+                && !string.Equals(actualSha, artifact.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+            || (string.IsNullOrWhiteSpace(artifact.ExpectedSha256) && artifact.VerifySignatureAsync is null))
         {
             throw new InvalidOperationException(
                 $"The download of '{artifact.FileName}' did not match the published SHA-256 and was rejected (expected {artifact.ExpectedSha256.Trim()}, got {actualSha}).");
@@ -381,6 +403,11 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
                 throw new InvalidOperationException($"Unsupported managed-CLI archive format '{artifact.ArchiveFormat}'.");
         }
 
+        if (artifact.VerifySignatureAsync is { } verifySignature)
+        {
+            await verifySignature(bytes, stagingPath, cancellationToken).ConfigureAwait(false);
+        }
+
         if (artifact.NeedsExecutableBit && !OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(stagingPath, ExecutableMode);
@@ -394,7 +421,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     private static IEnumerable<ManagedCliArtifactPlan> _AllArtifacts(ManagedCliDownloadPlan plan)
     {
         yield return new ManagedCliArtifactPlan(
-            plan.Url, plan.ExpectedSha256, plan.ExecutableFileName, plan.ArchiveFormat, plan.ExecutableEntryName, plan.NeedsExecutableBit);
+            plan.Url, plan.ExpectedSha256, plan.ExecutableFileName, plan.ArchiveFormat, plan.ExecutableEntryName, plan.NeedsExecutableBit, plan.VerifySignatureAsync);
 
         foreach (var artifact in plan.AdditionalArtifacts)
         {
@@ -411,7 +438,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         string FileName,
         ManagedCliArchiveFormat ArchiveFormat,
         string? ArchiveEntryName,
-        bool NeedsExecutableBit);
+        bool NeedsExecutableBit,
+        Func<byte[], string, CancellationToken, Task>? VerifySignatureAsync = null);
 
     // Fetch the binary/archive bytes with a size cap, a timeout and a User-Agent. Streams the body and aborts the
     // moment it passes the cap, so an oversized (declared or actual) response never fully materialises in memory.

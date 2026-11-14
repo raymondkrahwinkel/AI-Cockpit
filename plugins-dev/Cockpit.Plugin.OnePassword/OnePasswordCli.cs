@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.OnePassword;
 
@@ -11,15 +12,46 @@ internal sealed class OnePasswordException(string reason) : Exception(reason)
 }
 
 // Runs the official `op` CLI. The service-account token goes only into the child's environment, never into an argument.
-internal sealed class OnePasswordCli(Func<string, string?> resolveManagedCliPath)
+internal sealed class OnePasswordCli(ICockpitHost host)
 {
+    internal async Task<string> EnsureInstalledAsync(CancellationToken cancellationToken)
+    {
+        if (host.ResolveManagedCliPath("op") is { Length: > 0 } installed)
+        {
+            return installed;
+        }
+
+        try
+        {
+            var text = await _RunAsync("op", string.Empty, ["--version"], cancellationToken).ConfigureAwait(false);
+            if (Version.TryParse(text.Trim(), out var version) && version >= OnePasswordManagedCli.MinimumVersion)
+            {
+                return "op";
+            }
+        }
+        catch (OnePasswordException)
+        {
+        }
+
+        var result = await host.InstallManagedCliAsync("op", cancellationToken).ConfigureAwait(false);
+        return result.Success && result.ExecutablePath is { Length: > 0 } path
+            ? path
+            : throw new OnePasswordException(result.Error ?? "Could not install the 1Password CLI.");
+    }
+
     public const string TokenVariable = "OP_SERVICE_ACCOUNT_TOKEN";
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     public async Task<string> RunAsync(string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        var start = new ProcessStartInfo(resolveManagedCliPath("op") is { Length: > 0 } managed ? managed : "op")
+        var executable = await EnsureInstalledAsync(cancellationToken).ConfigureAwait(false);
+        return await _RunAsync(executable, token, arguments, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<string> _RunAsync(string executable, string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
             CreateNoWindow = true,

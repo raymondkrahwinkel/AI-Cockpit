@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Plugin.OnePassword;
@@ -24,9 +25,24 @@ public sealed class OnePasswordPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        var provider = new OnePasswordProvider(new OnePasswordCli(host.ResolveManagedCliPath));
+        host.AddManagedCli(OnePasswordManagedCli.Descriptor);
+        var cli = new OnePasswordCli(host);
+        var provider = new OnePasswordProvider(cli);
         provider.Bind(host.AddVaultProvider(provider));
         _provider = provider;
+
+        _registrations.Add(host.Channel.Handle(OnePasswordChannel.PrepareCli, async (_, ct) =>
+        {
+            try
+            {
+                var path = await cli.EnsureInstalledAsync(ct).ConfigureAwait(false);
+                return _Reply(ManagedCliInstallResult.Ok(string.Empty, path));
+            }
+            catch (OnePasswordException exception)
+            {
+                return _Reply(ManagedCliInstallResult.Fail(exception.Reason));
+            }
+        }));
 
         _registrations.Add(host.Channel.Handle(OnePasswordChannel.Status, async (_, ct) => _Reply(await provider.StatusAsync(ct).ConfigureAwait(false))));
         _registrations.Add(host.Channel.Handle(OnePasswordChannel.Test, async (payload, ct) => _Reply(await provider.TestAsync(_Token(payload), ct).ConfigureAwait(false))));

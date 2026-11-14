@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Cockpit installs and updates the 1Password CLI automatically, verifies the official signature and Windows Authenticode before use, and shows installation status and retry under Options › 1Password.
+
 - Projectless sessions on the headless server can enter their scratch directory before switching to the agent user. Closing a server terminal session now also removes it from the session list and desk.
 
 - The desktop status bar shows notifications, CPU/RAM, disk space and managed worktrees from left to right, followed by secrets only while in use.

@@ -7,6 +7,6 @@ public sealed class OnePasswordUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddSettings(() => new OnePasswordConnectPage(host.Channel));
+        host.AddSettings(() => new OnePasswordConnectPage(host));
     }
 }
