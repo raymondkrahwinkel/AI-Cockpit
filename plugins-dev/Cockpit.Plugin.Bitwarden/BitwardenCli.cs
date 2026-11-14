@@ -78,6 +78,11 @@ internal sealed class BitwardenCli(Func<string, string?> resolveManagedCliPath)
     internal static string Classify(string standardError)
     {
         var text = standardError.ToLowerInvariant();
+        if (text.Contains("403") || text.Contains("forbidden") || text.Contains("permission") || text.Contains("read-only") || text.Contains("read only"))
+        {
+            return "write permission denied";
+        }
+
         if (text.Contains("token") || text.Contains("authenticat") || text.Contains("401") || text.Contains("unauthori") || text.Contains("invalid"))
         {
             return "token invalid";

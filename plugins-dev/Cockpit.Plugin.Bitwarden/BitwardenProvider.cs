@@ -1,12 +1,17 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Cockpit.Plugins.Abstractions.Vault;
 
 namespace Cockpit.Plugin.Bitwarden;
 
 // The Bitwarden side of the host's vault hub (AC-2349): one machine account that reads exactly one Secrets Manager project.
-internal sealed class BitwardenProvider(BitwardenCli cli) : IVaultProvider
+internal sealed class BitwardenProvider(BitwardenCli cli, Func<bool> allowAgentWrites) : IVaultProvider
 {
     private const string Prefix = "bws://";
+    internal const int FieldLimit = 64;
+
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     private IVaultProviderContext _context = UnavailableVaultProviderContext.Instance;
 
@@ -15,6 +20,133 @@ internal sealed class BitwardenProvider(BitwardenCli cli) : IVaultProvider
     public string DisplayName => "Bitwarden";
 
     public string ReferenceScheme => "bws";
+
+    public bool CanWrite => allowAgentWrites() && Availability == VaultAvailability.Available;
+
+    public Task WriteAsync(string name, string? reference, string value, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, value, null, cancellationToken);
+
+    public Task WriteAsync(string name, string reference, string value, VaultItemVersion expected, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, value, null, cancellationToken, expected);
+
+    public Task WriteFieldsAsync(string name, string? reference, IReadOnlyDictionary<string, string> fields, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, null, fields, cancellationToken);
+
+    public Task WriteFieldsAsync(string name, string reference, IReadOnlyDictionary<string, string> fields, VaultItemVersion expected, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, null, fields, cancellationToken, expected);
+
+    public async Task<VaultItemVersion> GetVersionAsync(string reference, CancellationToken cancellationToken)
+    {
+        Connection connection = _Connection() ?? throw new BitwardenException("not configured");
+        var secrets = BitwardenCli.ParseSecrets(await cli.RunAsync(connection.Token, ["secret", "list", connection.ProjectId], cancellationToken).ConfigureAwait(false));
+        var (id, _) = _Target(reference, connection, secrets);
+        using var document = JsonDocument.Parse(await cli.RunAsync(connection.Token, ["secret", "get", id], cancellationToken).ConfigureAwait(false));
+        return _Version(connection, document.RootElement);
+    }
+
+    private static VaultItemVersion _Version(Connection connection, JsonElement item)
+    {
+        string revision = item.GetProperty("revisionDate").GetString() ?? throw new BitwardenException("item revision missing");
+        string value = item.GetProperty("value").GetString() ?? throw new BitwardenException("item value missing");
+        string? note = item.TryGetProperty("note", out var metadata) ? metadata.GetString() : null;
+        return new VaultItemVersion(connection.ProjectId + "/" + item.GetProperty("id").GetString(),
+            revision + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value + "\0" + note))));
+    }
+
+    private async Task _WriteAsync(string name, string? reference, string? value, IReadOnlyDictionary<string, string>? changes, CancellationToken cancellationToken, VaultItemVersion? expected = null)
+    {
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!CanWrite)
+            {
+                throw new UnauthorizedAccessException("Agent writes are disabled.");
+            }
+
+            Connection connection = _Connection() ?? throw new BitwardenException("not configured");
+            var secrets = BitwardenCli.ParseSecrets(await cli.RunAsync(connection.Token, ["secret", "list", connection.ProjectId], cancellationToken).ConfigureAwait(false));
+            if (reference is null && secrets.Any(secret => secret.Name == name))
+            {
+                throw new BitwardenException("item already exists");
+            }
+
+            string? id = null;
+            string? field = null;
+            Dictionary<string, string>? fields = null;
+            if (reference is not null)
+            {
+                (id, field) = _Target(reference, connection, secrets);
+                string currentJson = await cli.RunAsync(connection.Token, ["secret", "get", id], cancellationToken).ConfigureAwait(false);
+                using var current = JsonDocument.Parse(currentJson);
+                if (expected is not null && _Version(connection, current.RootElement) != expected)
+                {
+                    throw new VaultWriteConflictException();
+                }
+                fields = _Fields(BitwardenCli.ParseValue(currentJson), _DeclaredFields(current.RootElement));
+                if ((changes is not null || field is not null) && fields is null)
+                {
+                    throw new BitwardenException("item is not a field bundle");
+                }
+
+                if (fields is not null && changes is null && (field is null || !fields.ContainsKey(field)))
+                {
+                    throw new BitwardenException("choose an existing field reference");
+                }
+            }
+
+            if (changes is not null)
+            {
+                fields ??= new Dictionary<string, string>(StringComparer.Ordinal);
+                MergeFields(fields, changes);
+            }
+            else if (fields is not null && field is not null && value is not null)
+            {
+                fields[field] = value;
+            }
+
+            string storedValue = fields is null ? value ?? throw new BitwardenException("value missing")
+                : JsonSerializer.Serialize(new Dictionary<string, object> { ["$cockpitFields"] = 1, ["fields"] = fields });
+
+            if (!CanWrite)
+            {
+                throw new UnauthorizedAccessException("Agent writes are disabled.");
+            }
+
+            var arguments = new List<string> { "secret", reference is null ? "create" : "edit" };
+            if (changes is not null && fields is not null)
+            {
+                arguments.AddRange(["--note", JsonSerializer.Serialize(new { cockpitVaultBundleVersion = 1, fieldNames = fields.Keys.ToArray() })]);
+            }
+
+            arguments.AddRange(reference is null ? ["--", name, storedValue, connection.ProjectId]
+                : [id ?? throw new BitwardenException("item missing"), "--value=" + storedValue]);
+            try
+            {
+                await cli.RunAsync(connection.Token, arguments, cancellationToken).ConfigureAwait(false);
+            }
+            catch (BitwardenException exception) when (exception.Reason == "write permission denied")
+            {
+                throw new UnauthorizedAccessException("The account does not permit writing.");
+            }
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
+
+    internal static void MergeFields(Dictionary<string, string> fields, IReadOnlyDictionary<string, string> changes)
+    {
+        if (fields.Keys.Concat(changes.Keys).Distinct(StringComparer.Ordinal).Count() > FieldLimit)
+        {
+            throw new BitwardenException("field bundle exceeds the supported field limit");
+        }
+
+        foreach (var change in changes)
+        {
+            fields[change.Key] = change.Value;
+        }
+    }
 
     public void Bind(IVaultProviderContext context) => _context = context;
 
@@ -48,30 +180,115 @@ internal sealed class BitwardenProvider(BitwardenCli cli) : IVaultProvider
         }
     }
 
-    // Reference and name only: the list answer also carries every value, and ParseSecrets copies out id and key, never the value.
+    // Only the multi-field writer sets the public note flag; scalar contents never define metadata.
     public async Task<IReadOnlyList<VaultItem>> ListItemsAsync(CancellationToken cancellationToken)
     {
         var connection = _Connection() ?? throw new BitwardenException("not configured");
-        var secrets = BitwardenCli.ParseSecrets(await cli.RunAsync(connection.Token, ["secret", "list", connection.ProjectId], cancellationToken).ConfigureAwait(false));
-        return [.. secrets.Select(secret => new VaultItem($"{Prefix}{connection.ProjectName}/{secret.Name}", secret.Name))];
+        string json = await cli.RunAsync(connection.Token, ["secret", "list", connection.ProjectId], cancellationToken).ConfigureAwait(false);
+        return ItemsIn(json, connection);
+    }
+
+    internal static IReadOnlyList<VaultItem> ItemsIn(string json, Connection connection)
+    {
+        var secrets = BitwardenCli.ParseSecrets(json);
+        using var document = JsonDocument.Parse(json);
+        var result = new List<VaultItem>();
+        foreach (var secret in secrets)
+        {
+            JsonElement element = document.RootElement.EnumerateArray().First(item => item.GetProperty("id").GetString() == secret.Id);
+            string[]? fields = _DeclaredFields(element);
+            string reference = $"{Prefix}{connection.ProjectName}/{secret.Name}";
+            if (fields is null)
+            {
+                result.Add(new VaultItem(reference, secret.Name));
+            }
+            else
+            {
+                result.AddRange(fields.Select(key => new VaultItem(reference + "#field=" + Uri.EscapeDataString(key), secret.Name + " · " + key)));
+            }
+        }
+
+        if (result.Select(item => item.Reference).Distinct(StringComparer.Ordinal).Count() != result.Count)
+        {
+            throw new BitwardenException("item or field references are ambiguous");
+        }
+
+        return result;
     }
 
     public async Task<string> ResolveAsync(string reference, CancellationToken cancellationToken)
     {
         var connection = _Connection() ?? throw new BitwardenException("not configured");
-        if (SecretNameIn(reference, connection) is not { } name)
+        var secrets = BitwardenCli.ParseSecrets(await cli.RunAsync(connection.Token, ["secret", "list", connection.ProjectId], cancellationToken).ConfigureAwait(false));
+        var (id, field) = _Target(reference, connection, secrets);
+        string json = await cli.RunAsync(connection.Token, ["secret", "get", id], cancellationToken).ConfigureAwait(false);
+        using var document = JsonDocument.Parse(json);
+        string stored = BitwardenCli.ParseValue(json);
+        return field is null ? stored : _Fields(stored, _DeclaredFields(document.RootElement))?.GetValueOrDefault(field) ?? throw new BitwardenException("field missing");
+    }
+
+    private static string[]? _DeclaredFields(JsonElement item)
+    {
+        if (!item.TryGetProperty("note", out var note) || note.ValueKind != JsonValueKind.String || note.GetString() is not { } text)
         {
-            throw new BitwardenException("reference outside the connected project");
+            return null;
         }
 
-        var matches = BitwardenCli.ParseSecrets(await cli.RunAsync(connection.Token, ["secret", "list", connection.ProjectId], cancellationToken).ConfigureAwait(false))
-            .Where(secret => secret.Name == name).ToList();
-        if (matches.Count != 1)
+        try
         {
-            throw new BitwardenException(matches.Count == 0 ? "secret not found" : "secret name is not unique");
+            using var document = JsonDocument.Parse(text);
+            if (!document.RootElement.TryGetProperty("cockpitVaultBundleVersion", out var version) || version.GetInt32() != 1)
+            {
+                return null;
+            }
+
+            string[]? names = document.RootElement.GetProperty("fieldNames").Deserialize<string[]>();
+            return names is { Length: > 0 and <= FieldLimit } && names.Distinct(StringComparer.Ordinal).Count() == names.Length
+                && names.All(name => name is { Length: > 0 and <= 64 } && char.IsAsciiLetter(name[0])
+                    && name.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-')) ? names : null;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    private static Dictionary<string, string>? _Fields(string value, string[]? declared)
+    {
+        if (declared is null)
+        {
+            return null;
         }
 
-        return BitwardenCli.ParseValue(await cli.RunAsync(connection.Token, ["secret", "get", matches[0].Id], cancellationToken).ConfigureAwait(false));
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            Dictionary<string, string>? result = document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("$cockpitFields", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number == 1
+                && document.RootElement.TryGetProperty("fields", out var fields)
+                ? fields.Deserialize<Dictionary<string, string>>() : null;
+            return result is not null && result.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(declared)
+                ? result : throw new BitwardenException("bundle does not match declared field metadata");
+        }
+        catch (JsonException)
+        {
+            throw new BitwardenException("invalid declared field bundle");
+        }
+    }
+
+    private static (string Id, string? Field) _Target(string reference, Connection connection, IReadOnlyList<(string Id, string Name)> secrets)
+    {
+        string name = SecretNameIn(reference, connection) ?? throw new BitwardenException("reference outside the connected project");
+        string? field = null;
+        var matches = secrets.Where(secret => secret.Name == name).ToList();
+        int separator = name.LastIndexOf("#field=", StringComparison.Ordinal);
+        if (matches.Count == 0 && separator >= 0)
+        {
+            field = Uri.UnescapeDataString(name[(separator + 7)..]);
+            matches = secrets.Where(secret => secret.Name == name[..separator]).ToList();
+        }
+
+        return matches is [{ } only] ? (only.Id, field) : throw new BitwardenException("item missing or not unique");
     }
 
     // What the token can read, with the secret count of each project. Stores nothing.

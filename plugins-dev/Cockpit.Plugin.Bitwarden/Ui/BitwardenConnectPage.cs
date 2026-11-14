@@ -25,10 +25,17 @@ internal sealed class BitwardenConnectPage : UserControl
     private readonly TextBlock _connected = _Text(string.Empty, 12.5);
     private TestReply? _tested;
 
-    public BitwardenConnectPage(IPluginUiChannel channel)
+    public BitwardenConnectPage(ICockpitUiHost host)
     {
+        var channel = host.Channel;
         _channel = channel;
         _context = new ChannelVaultContext(channel);
+        var allowWrites = new CheckBox
+        {
+            Content = "Allow agents to create and update items",
+            IsChecked = host.Storage.Get<bool>("allowAgentWrites"),
+        };
+        allowWrites.IsCheckedChanged += (_, _) => host.Storage.Set("allowAgentWrites", allowWrites.IsChecked == true);
         _connect.Classes.Add("Accent");
         _test.Click += async (_, _) => await _TestAsync();
         _connect.Click += async (_, _) => await _ConnectAsync();
@@ -51,6 +58,8 @@ internal sealed class BitwardenConnectPage : UserControl
             Children =
             {
                 new VaultEncryptionRequiredPanel(_context),
+                allowWrites,
+                _Text("Off by default. Writing also requires the account's create/update permissions. No extra approval is requested; items are never deleted. The bws CLI receives the value (the whole JSON bundle for multi-field items) in its process arguments, visible to local process inspection; Cockpit never returns it to agents.", 11),
                 _Text("Lets your agents use secrets from one Bitwarden Secrets Manager project through Cockpit's vault. Agents get names; the value goes only into a process when it starts.", 12.5),
                 _Text("Use a separate project for agents. Create a project that holds only what agents may use, for example Agents, and move those secrets into it. Then create a machine account in Bitwarden that can read only that project. Never give it your other projects: whatever the token can read, an approved agent process can receive.", 11.5),
                 _Heading("1. MACHINE ACCOUNT"),

@@ -19,11 +19,11 @@ internal static class CommandRunnerProcess
     // AC-2333 S5: starts a command whose whole tree ends when the result is disposed, orphans included. Windows starts it
     // suspended inside a kill-on-close job; Linux gives it its own process group. Either containment failing starts
     // nothing. Elsewhere (macOS) it is the tree walk, which only reaches descendants of a parent still alive.
-    internal static ContainedRun StartContained(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment)
+    internal static ContainedRun StartContained(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment, bool redirectInput = false)
     {
         if (OperatingSystem.IsWindows())
         {
-            return WindowsContainedStart.Start(NormalizeExecutablePath(executable), arguments, directory, environment);
+            return WindowsContainedStart.Start(NormalizeExecutablePath(executable), arguments, directory, environment, redirectInput);
         }
 
         var ownGroup = OperatingSystem.IsLinux();
@@ -38,6 +38,8 @@ internal static class CommandRunnerProcess
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = redirectInput,
+            StandardInputEncoding = redirectInput ? new UTF8Encoding(false) : null,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
@@ -72,7 +74,8 @@ internal static class CommandRunnerProcess
                 }
 
                 process.Dispose();
-            });
+            },
+            redirectInput ? process.StandardInput : null);
     }
 
     [DllImport("libc", SetLastError = true)]

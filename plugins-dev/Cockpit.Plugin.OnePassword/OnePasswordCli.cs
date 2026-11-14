@@ -81,14 +81,14 @@ internal sealed class OnePasswordCli(ICockpitHost host)
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
-    public async Task<string> RunAsync(string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    public async Task<string> RunAsync(string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken, string? input = null)
     {
         var installed = await EnsureInstalledAsync(cancellationToken).ConfigureAwait(false);
         var executable = installed.ExecutablePath ?? throw new OnePasswordException("op CLI missing");
-        return await _RunAsync(executable, token, arguments, cancellationToken).ConfigureAwait(false);
+        return await _RunAsync(executable, token, arguments, cancellationToken, input).ConfigureAwait(false);
     }
 
-    private static async Task<string> _RunAsync(string executable, string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private static async Task<string> _RunAsync(string executable, string token, IReadOnlyList<string> arguments, CancellationToken cancellationToken, string? input = null)
     {
         var start = new ProcessStartInfo(executable)
         {
@@ -96,6 +96,7 @@ internal sealed class OnePasswordCli(ICockpitHost host)
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = input is not null,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
@@ -127,6 +128,12 @@ internal sealed class OnePasswordCli(ICockpitHost host)
             var error = process.StandardError.ReadToEndAsync(timeout.Token);
             try
             {
+                if (input is not null)
+                {
+                    await process.StandardInput.WriteAsync(input.AsMemory(), timeout.Token).ConfigureAwait(false);
+                    process.StandardInput.Close();
+                }
+
                 await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
                 if (process.ExitCode == 0)
                 {
@@ -152,6 +159,11 @@ internal sealed class OnePasswordCli(ICockpitHost host)
     internal static string Classify(string standardError)
     {
         var text = standardError.ToLowerInvariant();
+        if (text.Contains("403") || text.Contains("forbidden") || text.Contains("permission") || text.Contains("read-only") || text.Contains("read only"))
+        {
+            return "write permission denied";
+        }
+
         if (text.Contains("token") || text.Contains("authenticat") || text.Contains("401") || text.Contains("unauthori"))
         {
             return "token invalid";

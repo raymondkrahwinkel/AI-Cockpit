@@ -1,13 +1,13 @@
 {
   "id": "bitwarden",
   "name": "Bitwarden",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "entryAssembly": "Cockpit.Plugin.Bitwarden.dll",
   "entryType": "Cockpit.Plugin.Bitwarden.BitwardenPlugin",
   "uiAssembly": "Cockpit.Plugin.Bitwarden.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Bitwarden.UI.BitwardenUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.182.0",
+  "minHostVersion": "0.184.0",
   "description": "Connects one Bitwarden Secrets Manager project to Cockpit's vault, so agents can use its secrets without ever seeing a value: vault_run starts a command you approve with the secret in its environment. Uses a machine account through the official `bws` CLI, which Cockpit can install (SHA-256 verified) or which you pin on PATH. The machine account must read exactly one project, ideally a separate one such as \"Agents\"; a token that reads more is refused. Needs Cockpit's credential encryption to be on: the token is stored encrypted by the vault and handed to `bws` only as BWS_ACCESS_TOKEN in its environment.",
   "author": "Cockpit"
 }
