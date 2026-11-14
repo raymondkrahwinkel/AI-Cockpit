@@ -109,15 +109,6 @@ internal sealed class OnePasswordConnectPage : UserControl
                 throw new InvalidOperationException(result?.Error ?? "The plugin returned no CLI installation result.");
             }
 
-            if (result.ExecutablePath != "op" && string.IsNullOrEmpty(_host.ResolveManagedCliPath("op")))
-            {
-                var installed = await _host.InstallManagedCliAsync("op");
-                if (!installed.Success)
-                {
-                    throw new InvalidOperationException(installed.Error);
-                }
-            }
-
             _cliStatus.Text = result.ExecutablePath == "op" ? "Using system 1Password CLI (2.18.0 or later)." : string.Empty;
             _cliPanel.Content ??= new ManagedCliConfigSection(_host, "op", "1Password CLI").View;
             _ApplyAvailability();

@@ -1,6 +1,6 @@
 # AI-Cockpit
 
-Options › 1Password installs the official `op` CLI (2.18.0 or later) into Cockpit's managed CLI directory.
+On desktop, Options › 1Password installs the official `op` CLI (2.18.0 or later) into Cockpit's managed CLI directory.
 The plugin verifies 1Password's detached PGP signature against its pinned signing key, plus Windows
 Authenticode and publisher identity, before the shared installer makes the executable available.
 The existing managed CLI updater keeps it current; Options shows the version, update controls and a retry

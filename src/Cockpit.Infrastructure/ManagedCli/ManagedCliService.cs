@@ -380,9 +380,13 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         // Verify before anything is written out or unpacked. A mismatch means the bytes are not what the provider
         // published — reject and install nothing.
         var actualSha = PluginHash.Compute(bytes);
-        if ((!string.IsNullOrWhiteSpace(artifact.ExpectedSha256)
-                && !string.Equals(actualSha, artifact.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
-            || (string.IsNullOrWhiteSpace(artifact.ExpectedSha256) && artifact.VerifySignatureAsync is null))
+        if (string.IsNullOrWhiteSpace(artifact.ExpectedSha256) && artifact.VerifySignatureAsync is null)
+        {
+            throw new InvalidOperationException($"The download of '{artifact.FileName}' has no SHA-256 or signature verifier and was refused.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(artifact.ExpectedSha256)
+            && !string.Equals(actualSha, artifact.ExpectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
                 $"The download of '{artifact.FileName}' did not match the published SHA-256 and was rejected (expected {artifact.ExpectedSha256.Trim()}, got {actualSha}).");

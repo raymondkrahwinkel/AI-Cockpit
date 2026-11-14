@@ -26,7 +26,7 @@ public sealed class ManagedCliServiceTests : IDisposable
     {
         var payload = "the real bytes"u8.ToArray();
         await _AssertRejectedAsync(_RawPlan(payload) with { ExpectedSha256 = PluginHash.Compute("other bytes"u8.ToArray()) }, "SHA-256");
-        await _AssertRejectedAsync(_RawPlan(payload) with { ExpectedSha256 = string.Empty }, "SHA-256");
+        await _AssertRejectedAsync(_RawPlan(payload) with { ExpectedSha256 = string.Empty }, "no SHA-256 or signature verifier");
         await _AssertRejectedAsync(_RawPlan(payload) with
         {
             ExpectedSha256 = string.Empty,
