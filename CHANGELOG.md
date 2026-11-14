@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2364: A vault connection (1Password, Bitwarden) is no longer removed when Cockpit reads credential encryption as off. A settings save could make that reading happen while encryption was on, which wiped the connection. An unavailable vault now only refuses use; only Disconnect removes a connection, together with its grants. Turning encryption off is refused while a vault is connected. A forgotten-password reset says it removes vault connections and keeps a dated copy of the encrypted cockpit.json.
+
 - Cockpit checks existing managed and PATH copies of the 1Password CLI before installing it, shows the exact version and path in Options, and keeps managed copies updated after signature verification. The masked service-account field stays within the available width, and “Turn on encryption” opens Security even when Options is already open.
 
 - Projectless sessions on the headless server can enter their scratch directory before switching to the agent user. Closing a server terminal session now also removes it from the session list and desk.

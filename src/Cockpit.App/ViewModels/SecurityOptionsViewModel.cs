@@ -889,15 +889,23 @@ public sealed partial class SecurityOptionsViewModel(
 
     public async Task DisableAsync()
     {
-        // The Hello key wraps the key that is about to stop existing (AC-1879).
+        try
+        {
+            await RunMigrationAsync(
+                "Writing your credentials back in the clear…",
+                progress => protection.DisableAsync(progress)).ConfigureAwait(true);
+        }
+        catch (SecretProtectionException exception)
+        {
+            Status = exception.Message;
+            return;
+        }
+
+        // The Hello key wraps the key that just stopped existing (AC-1879); only once Disable went through (AC-2364).
         if (HelloSigner is { } signer)
         {
             await protection.DisableHelloAsync(signer).ConfigureAwait(true);
         }
-
-        await RunMigrationAsync(
-            "Writing your credentials back in the clear…",
-            progress => protection.DisableAsync(progress)).ConfigureAwait(true);
 
         Status = "Encryption is off. Your keys and tokens are readable in cockpit.json again, and the cockpit starts without asking for a password.";
     }

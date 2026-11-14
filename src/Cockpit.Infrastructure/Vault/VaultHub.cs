@@ -1,21 +1,18 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Secrets;
-using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Plugins.Abstractions.Vault;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Vault;
 
-// AC-2336: the host's vault hub. Stores and reads nothing unless credential encryption is on and unlocked.
+// AC-2336: the host's vault hub. Stores and reads nothing unless credential encryption is on and unlocked; only ClearCredential deletes (AC-2364).
 internal sealed partial class VaultHub : ISingletonService
 {
-    internal const string WipedMessage = "Vault data was removed because credential encryption was turned off.";
     internal const int AuditCapacity = 500;
 
     private static readonly JsonSerializerOptions StateOptions = new();
@@ -26,7 +23,6 @@ internal sealed partial class VaultHub : ISingletonService
     private readonly ILogger<VaultHub> _logger;
     private readonly IToastService? _toasts;
     private readonly Dictionary<string, IVaultProvider> _providers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly SemaphoreSlim _wipe = new(1, 1);
     private readonly Lock _gate = new();
     private VaultAvailability? _last;
     private Func<Task>? _openSecurity;
@@ -102,7 +98,7 @@ internal sealed partial class VaultHub : ISingletonService
         }
     }
 
-    // The start-up check: wipes the section if encryption went off, and logs a stored state that no longer decrypts.
+    // The start-up check: logs a stored state that no longer decrypts; an unavailable vault is refused, never cleared (AC-2364).
     public async Task CheckAtStartAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -124,11 +120,6 @@ internal sealed partial class VaultHub : ISingletonService
         var availability = !status.Enabled
             ? VaultAvailability.EncryptionOff
             : status.Unlocked ? VaultAvailability.Available : VaultAvailability.Locked;
-
-        if (!status.Enabled)
-        {
-            await _WipeIfPresentAsync(cancellationToken).ConfigureAwait(false);
-        }
 
         _Note(availability);
         return availability;
@@ -159,9 +150,30 @@ internal sealed partial class VaultHub : ISingletonService
         _TryUpdateAsync(section => _WithState(section, state => state.Credentials[slot] = value), CancellationToken.None)
             .GetAwaiter().GetResult();
 
-    private void _Clear(string slot) =>
-        _TryUpdateAsync(section => _WithState(section, state => state.Credentials.Remove(slot)), CancellationToken.None)
-            .GetAwaiter().GetResult();
+    // Disconnect is the one explicit delete (AC-2364): the credential and every grant on its provider's items go together.
+    private void _Clear(string slot, string scheme)
+    {
+        bool Owned(string key) => ReferenceOf(key).StartsWith(scheme + ":", StringComparison.OrdinalIgnoreCase);
+        lock (_gate)
+        {
+            foreach (var keys in _sessionGrants.Values)
+            {
+                keys.RemoveWhere(Owned);
+            }
+
+            _generation++;
+        }
+
+        _TryUpdateAsync(section => _WithState(section, state =>
+        {
+            state.Credentials.Remove(slot);
+            foreach (var keys in state.ProjectGrants.Values)
+            {
+                keys.RemoveAll(Owned);
+            }
+        }), CancellationToken.None).GetAwaiter().GetResult();
+        _RaiseChanged();
+    }
 
     private string? _Read(string slot)
     {
@@ -233,48 +245,6 @@ internal sealed partial class VaultHub : ISingletonService
     private static T? _Parse<T>(string? json) where T : class =>
         string.IsNullOrEmpty(json) ? null : JsonSerializer.Deserialize<T>(json, StateOptions);
 
-    private async Task _WipeIfPresentAsync(CancellationToken cancellationToken)
-    {
-        await _wipe.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var file = await _config.ReadAsync(cancellationToken).ConfigureAwait(false);
-            if (file?.Vault is null && !_BackupHoldsVault())
-            {
-                return;
-            }
-
-            // AC-2333 S2: every save turns the file it replaces into `.bak`, so the first save leaves the section readable
-            // there. The second one makes `.bak` the already-wiped file; recovery keeps a valid copy, just without the vault.
-            await _config.UpdateAsync(current => current.Vault = null, cancellationToken).ConfigureAwait(false);
-            await _config.UpdateAsync(current => current.Vault = null, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _wipe.Release();
-        }
-
-        _Invalidate();
-
-        _logger.LogWarning("Credential encryption is off, so the vault's data was removed from the configuration.");
-        _toasts?.Show(WipedMessage, ToastSeverity.Warning, "Open Security", OpenEncryptionSettings);
-    }
-
-    // A wipe that stopped between its two saves leaves the section only in `.bak`; the next check finishes it.
-    private bool _BackupHoldsVault()
-    {
-        try
-        {
-            var backup = _config.ConfigFilePath + ".bak";
-            return File.Exists(backup) && JsonNode.Parse(File.ReadAllText(backup)) is JsonObject root
-                && root.Any(property => string.Equals(property.Key, "vault", StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return false;
-        }
-    }
-
     private void _Note(VaultAvailability availability)
     {
         lock (_gate)
@@ -341,7 +311,7 @@ internal sealed partial class VaultHub : ISingletonService
         {
             if (hub._Holds(provider))
             {
-                hub._Clear(slot);
+                hub._Clear(slot, provider.ReferenceScheme);
             }
         }
 

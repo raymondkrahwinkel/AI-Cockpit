@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Consent;
@@ -30,12 +31,14 @@ public sealed class VaultHubTests : IDisposable
         }
     }
 
+    // Also category B (AC-2364): an unavailable vault refuses use but never deletes the stored connection.
     [Fact]
-    public async Task WithEncryptionOff_TheHubRefusesToStore_AndWritesNoVaultSection()
+    public async Task WithEncryptionOff_TheHubRefusesToStore_AndNeverDeletesAStoredConnection()
     {
         var holder = new SecretKeyHolder();
         await File.WriteAllTextAsync(ConfigPath, "{ \"Profiles\": [] }");
-        var hub = new VaultHub(new SecretProtectionService(ConfigPath, holder), ConfigPath, holder, NullLogger<VaultHub>.Instance);
+        var protection = new SecretProtectionService(ConfigPath, holder);
+        var hub = new VaultHub(protection, ConfigPath, holder, NullLogger<VaultHub>.Instance);
         var context = hub.Register("plugin-a", new Provider());
 
         Assert.NotNull(context);
@@ -46,6 +49,35 @@ public sealed class VaultHubTests : IDisposable
         var written = await File.ReadAllTextAsync(ConfigPath);
         Assert.DoesNotContain("Vault", written, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, written, StringComparison.Ordinal);
+
+        await protection.EnableAsync("vault-test-password");
+        Assert.True(context.TryStoreCredential(Canary));
+        var stored = await File.ReadAllTextAsync(ConfigPath);
+
+        // The 2026-11-14 incident: a status read that lands mid-swap reports encryption off while it is on.
+        var misread = Substitute.For<ISecretProtectionService>();
+        misread.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(new SecretProtectionStatus(Enabled: false, Unlocked: false, ShouldWarnUnprotected: false));
+        var blind = new VaultHub(misread, ConfigPath, holder, NullLogger<VaultHub>.Instance).Register("plugin-a", new Provider())!;
+        Assert.Equal(VaultAvailability.EncryptionOff, blind.Availability);
+        Assert.Null(blind.ReadCredential());
+        Assert.False(blind.TryStoreCredential("other"));
+
+        Assert.Equal(stored, await File.ReadAllTextAsync(ConfigPath));
+
+        // The race itself: mid-swap, under the write gate, the file is briefly gone; a reader waits instead of reading "off".
+        var aside = ConfigPath + ".swapping";
+        var gate = await CockpitConfigWriteGate.AcquireAsync(ConfigPath, CancellationToken.None);
+        File.Move(ConfigPath, aside);
+        var read = Task.Run(context.ReadCredential);
+        var answeredMidSwap = await Task.WhenAny(read, Task.Delay(500)) == read;
+        File.Move(aside, ConfigPath);
+        await gate.DisposeAsync();
+        Assert.False(answeredMidSwap);
+        Assert.Equal(Canary, await read);
+
+        Assert.Equal(stored, await File.ReadAllTextAsync(ConfigPath));
+        await Assert.ThrowsAsync<SecretProtectionException>(() => protection.DisableAsync());
+        Assert.Equal(stored, await File.ReadAllTextAsync(ConfigPath));
     }
 
     [Fact]
