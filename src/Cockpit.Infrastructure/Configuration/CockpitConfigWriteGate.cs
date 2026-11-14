@@ -21,18 +21,35 @@ internal static class CockpitConfigWriteGate
     // AC-1251: once a writer holds the gate, new readers wait instead of extending the handles blocking its swap.
     public static async Task WaitForWriterAsync(string configFilePath, CancellationToken cancellationToken)
     {
+        await using var probe = await _HoldOffWritersAsync(configFilePath, cancellationToken).ConfigureAwait(false);
+    }
+
+    // AC-2364: `File.Replace` frees the name for an instant under this gate; the second look runs while no writer can hold it.
+    public static async Task<bool> ExistsAsync(string configFilePath, CancellationToken cancellationToken)
+    {
+        if (File.Exists(configFilePath))
+        {
+            return true;
+        }
+
+        await using var probe = await _HoldOffWritersAsync(configFilePath, cancellationToken).ConfigureAwait(false);
+        return File.Exists(configFilePath);
+    }
+
+    // Null when there is no lock file, so no writer ever ran; while the returned handle is open no writer can take the gate.
+    private static async Task<FileStream?> _HoldOffWritersAsync(string configFilePath, CancellationToken cancellationToken)
+    {
         var lockFilePath = configFilePath + LockSuffix;
         var deadline = DateTimeOffset.UtcNow + GateTimeout;
         while (true)
         {
             try
             {
-                using var writerLock = new FileStream(lockFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                return;
+                return new FileStream(lockFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             }
             catch (IOException exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
             {
-                return;
+                return null;
             }
             catch (UnauthorizedAccessException exception)
             {

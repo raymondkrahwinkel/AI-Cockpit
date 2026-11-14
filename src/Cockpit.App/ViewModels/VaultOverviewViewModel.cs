@@ -343,7 +343,6 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     private static string _AuditDetail(VaultAuditEvent entry) => entry.Kind switch
     {
         "Masked" => entry.Count is { } count ? $"{count} {(count == 1 ? "occurrence" : "occurrences")} in the output" : string.Empty,
-        "VaultWiped" => IVaultOverviewService.WipedMessage,
         _ => string.Empty,
     };
 

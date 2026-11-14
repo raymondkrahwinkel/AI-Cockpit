@@ -4,7 +4,7 @@ namespace Cockpit.Plugins.Abstractions.Vault;
 /// What the hub hands a provider: its own credential slot, gated on the host's credential encryption.
 /// </summary>
 /// <remarks>
-/// A provider keeps its token here and nowhere else (not in <see cref="IPluginStorage"/>), so it is encrypted and wiped with the vault.
+/// A provider keeps its token here and nowhere else (not in <see cref="IPluginStorage"/>), so it is encrypted with the vault and only removed by <see cref="ClearCredential"/>.
 /// </remarks>
 public interface IVaultProviderContext
 {
