@@ -1,12 +1,15 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions.Vault;
 
 namespace Cockpit.Plugin.OnePassword;
 
 // The 1Password side of the host's vault hub (AC-2348): one service account that reads exactly one vault.
-internal sealed class OnePasswordProvider(OnePasswordCli cli) : IVaultProvider
+internal sealed class OnePasswordProvider(OnePasswordCli cli, Func<bool> allowAgentWrites) : IVaultProvider
 {
     private const int ItemLimit = 200;
+
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
 
     private IVaultProviderContext _context = UnavailableVaultProviderContext.Instance;
 
@@ -15,6 +18,157 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli) : IVaultProvider
     public string DisplayName => "1Password";
 
     public string ReferenceScheme => "op";
+
+    public bool CanWrite => allowAgentWrites() && Availability == VaultAvailability.Available;
+
+    public Task WriteAsync(string name, string? reference, string value, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, null, value, cancellationToken);
+
+    public Task WriteAsync(string name, string reference, string value, VaultItemVersion expected, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, null, value, cancellationToken, expected);
+
+    public Task WriteFieldsAsync(string name, string? reference, IReadOnlyDictionary<string, string> fields, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, fields, null, cancellationToken);
+
+    public Task WriteFieldsAsync(string name, string reference, IReadOnlyDictionary<string, string> fields, VaultItemVersion expected, CancellationToken cancellationToken) =>
+        _WriteAsync(name, reference, fields, null, cancellationToken, expected);
+
+    public async Task<VaultItemVersion> GetVersionAsync(string reference, CancellationToken cancellationToken)
+    {
+        Connection connection = _Connection() ?? throw new OnePasswordException("not configured");
+        if (!InVault(reference, connection))
+        {
+            throw new OnePasswordException("reference outside the connected vault");
+        }
+
+        JsonObject item = JsonNode.Parse(await cli.RunAsync(connection.Token,
+            ["item", "get", reference["op://".Length..].Split('/')[1], "--vault", connection.VaultId, "--format", "json"], cancellationToken).ConfigureAwait(false))?.AsObject()
+            ?? throw new OnePasswordException("unexpected response");
+        return _Version(connection, item);
+    }
+
+    private static VaultItemVersion _Version(Connection connection, JsonObject item) => new(
+        connection.VaultId + "/" + (item["id"]?.GetValue<string>() ?? throw new OnePasswordException("item identity missing")),
+        item["version"]?.ToJsonString() ?? throw new OnePasswordException("item revision missing"));
+
+    private async Task _WriteAsync(string name, string? reference, IReadOnlyDictionary<string, string>? changes, string? value, CancellationToken cancellationToken, VaultItemVersion? expected = null)
+    {
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!CanWrite)
+            {
+                throw new UnauthorizedAccessException("Agent writes are disabled.");
+            }
+
+            Connection connection = _Connection() ?? throw new OnePasswordException("not configured");
+            JsonObject item;
+            string[] arguments;
+            if (reference is null)
+            {
+                if (OnePasswordCli.ParseItems(await cli.RunAsync(connection.Token, ["item", "list", "--vault", connection.VaultId, "--format", "json"], cancellationToken).ConfigureAwait(false)).Any(item => item.Name == name))
+                {
+                    throw new OnePasswordException("item already exists; use its reference to update");
+                }
+
+                item = new JsonObject
+                {
+                    ["title"] = name,
+                    ["category"] = "PASSWORD",
+                    ["fields"] = new JsonArray(new JsonObject
+                    {
+                        ["id"] = "password", ["label"] = "password", ["type"] = "CONCEALED", ["purpose"] = "PASSWORD", ["value"] = value,
+                    }),
+                };
+                if (changes is not null)
+                {
+                    item["category"] = "SECURE_NOTE";
+                    item["fields"] = new JsonArray(changes.Select(field => (JsonNode)new JsonObject
+                    {
+                        ["label"] = field.Key, ["type"] = "CONCEALED", ["value"] = field.Value,
+                    }).ToArray());
+                }
+
+                arguments = ["item", "create", "-", "--vault", connection.VaultId, "--format", "json"];
+            }
+            else
+            {
+                if (!InVault(reference, connection))
+                {
+                    throw new OnePasswordException("reference outside the connected vault");
+                }
+
+                string[] segments = reference["op://".Length..].Split('/');
+                if (segments.Length is not (3 or 4))
+                {
+                    throw new OnePasswordException("invalid field reference");
+                }
+
+                item = JsonNode.Parse(await cli.RunAsync(connection.Token,
+                    ["item", "get", segments[1], "--vault", connection.VaultId, "--format", "json", "--reveal"], cancellationToken).ConfigureAwait(false))?.AsObject()
+                    ?? throw new OnePasswordException("unexpected response");
+                if (expected is not null && _Version(connection, item) != expected)
+                {
+                    throw new VaultWriteConflictException();
+                }
+                var fields = item["fields"]?.AsArray().OfType<JsonObject>().Where(field =>
+                    (field["id"]?.GetValue<string>() == segments[^1] || field["label"]?.GetValue<string>() == segments[^1])
+                    && (segments.Length == 3 ? field["section"] is null
+                        : field["section"]?["id"]?.GetValue<string>() == segments[2] || field["section"]?["label"]?.GetValue<string>() == segments[2])).ToList();
+                if (changes is null && (fields is not [{ } target] || target["type"]?.GetValue<string>() != "CONCEALED"))
+                {
+                    throw new OnePasswordException("concealed field not found or not unique");
+                }
+
+                if (changes is null)
+                {
+                    JsonObject selected = fields?.Single() ?? throw new OnePasswordException("field missing");
+                    selected["value"] = value;
+                }
+                else
+                {
+                    JsonArray allFields = item["fields"]?.AsArray() ?? throw new OnePasswordException("fields missing");
+                    foreach (var change in changes)
+                    {
+                        var matches = allFields.OfType<JsonObject>().Where(field => field["section"] is null
+                            && (field["id"]?.GetValue<string>() == change.Key || field["label"]?.GetValue<string>() == change.Key)).ToList();
+                        if (matches.Count > 1 || matches.Any(field => field["type"]?.GetValue<string>() is not ("CONCEALED" or "STRING")))
+                        {
+                            throw new OnePasswordException("field is ambiguous or not a text field");
+                        }
+
+                        if (matches.Count == 0)
+                        {
+                            allFields.Add(new JsonObject { ["label"] = change.Key, ["type"] = "CONCEALED", ["value"] = change.Value });
+                        }
+                        else
+                        {
+                            matches[0]["value"] = change.Value;
+                        }
+                    }
+                }
+                arguments = ["item", "edit", item["id"]?.GetValue<string>() ?? throw new OnePasswordException("item id missing"), "--vault", connection.VaultId, "--format", "json"];
+            }
+
+            if (!CanWrite)
+            {
+                throw new UnauthorizedAccessException("Agent writes are disabled.");
+            }
+
+            try
+            {
+                await cli.RunAsync(connection.Token, arguments, cancellationToken, item.ToJsonString()).ConfigureAwait(false);
+            }
+            catch (OnePasswordException exception) when (exception.Reason == "write permission denied")
+            {
+                throw new UnauthorizedAccessException("The account does not permit writing.");
+            }
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
 
     public void Bind(IVaultProviderContext context) => _context = context;
 
@@ -56,7 +210,7 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli) : IVaultProvider
         foreach (var (id, title) in items.Take(ItemLimit))
         {
             var json = await cli.RunAsync(connection.Token, ["item", "get", id, "--vault", connection.VaultId, "--format", "json"], cancellationToken).ConfigureAwait(false);
-            result.AddRange(ConcealedFields(title, json));
+            result.AddRange(TextFields(title, json));
         }
 
         return result;
@@ -145,8 +299,8 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli) : IVaultProvider
             && (string.Equals(segments[0], connection.VaultName, StringComparison.OrdinalIgnoreCase) || segments[0] == connection.VaultId);
     }
 
-    // The concealed fields of one `op item get --format json`: reference and label only; the values in it are never read.
-    internal static IEnumerable<VaultItem> ConcealedFields(string title, string itemJson)
+    // Text-field references and labels only; values stay inside the provider.
+    internal static IEnumerable<VaultItem> TextFields(string title, string itemJson)
     {
         using var document = JsonDocument.Parse(itemJson);
         if (!document.RootElement.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array)
@@ -157,8 +311,8 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli) : IVaultProvider
         var found = new List<VaultItem>();
         foreach (var field in fields.EnumerateArray())
         {
-            var concealed = field.TryGetProperty("type", out var type) && type.GetString() == "CONCEALED";
-            if (concealed && field.TryGetProperty("reference", out var reference) && reference.GetString() is { Length: > 0 } text)
+            var textField = field.TryGetProperty("type", out var type) && type.GetString() is "CONCEALED" or "STRING";
+            if (textField && field.TryGetProperty("reference", out var reference) && reference.GetString() is { Length: > 0 } text)
             {
                 var label = field.TryGetProperty("label", out var labelElement) ? labelElement.GetString() : null;
                 found.Add(new VaultItem(text, string.IsNullOrEmpty(label) ? title : $"{title} · {label}"));

@@ -36,6 +36,9 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\..\plugins-dev\Cockpit.Plugin.Bitwarden\BitwardenProvider.cs" Link="Vault\BitwardenProvider.cs" />
+    <Compile Include="..\..\plugins-dev\Cockpit.Plugin.Bitwarden\BitwardenCli.cs" Link="Vault\BitwardenCli.cs" />
+    <Compile Include="..\..\plugins-dev\Cockpit.Plugin.Bitwarden\BitwardenChannel.cs" Link="Vault\BitwardenChannel.cs" />
   </ItemGroup>
 
   <ItemGroup>

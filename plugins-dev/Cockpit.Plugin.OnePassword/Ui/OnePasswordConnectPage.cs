@@ -37,6 +37,12 @@ internal sealed class OnePasswordConnectPage : UserControl
         var channel = host.Channel;
         _channel = channel;
         _context = new ChannelVaultContext(channel);
+        var allowWrites = new CheckBox
+        {
+            Content = "Allow agents to create and update items",
+            IsChecked = host.Storage.Get<bool>("allowAgentWrites"),
+        };
+        allowWrites.IsCheckedChanged += (_, _) => host.Storage.Set("allowAgentWrites", allowWrites.IsChecked == true);
         var tokenRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         tokenRow.Children.Add(_token);
         Grid.SetColumn(_test, 1);
@@ -71,6 +77,8 @@ internal sealed class OnePasswordConnectPage : UserControl
             Children =
             {
                 new VaultEncryptionRequiredPanel(_context),
+                allowWrites,
+                _Text("Off by default. Writing also requires the account's create/update permissions. No extra approval is requested; items are never deleted.", 11),
                 _cliStatus,
                 _cliPanel,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _retryCli, _installFallback } },
@@ -78,7 +86,7 @@ internal sealed class OnePasswordConnectPage : UserControl
                 _Text("Use a separate vault for agents. Create a vault that holds only what agents may use, for example Agents, and copy those items into it. Then create a service account in 1Password that can read only that vault. Never give it your private or shared vaults: whatever the token can read, an approved agent process can receive.", 11.5),
                 _Heading("1. SERVICE ACCOUNT"),
                 tokenRow,
-                _Text("Created in 1Password under Developer › Service accounts. Stored encrypted with your other credentials (Options › Security); agents and the vault MCP can never read it. Needs the 1Password CLI (op) 2.18.0 or later.", 11),
+                _Text("Created in 1Password under Developer › Service accounts. Stored encrypted with your other credentials (Options › Security); agents and the vault MCP can never read it. Needs the 1Password CLI (op) 2.23.0 or later.", 11),
                 _Heading("2. WHICH VAULT IT READS"),
                 _connected,
                 _result,

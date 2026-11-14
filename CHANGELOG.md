@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2361: Agents can create and update 1Password and Bitwarden items when the provider's default-off write setting and account permissions allow it. Values come from private command output or internal generation; updates never delete items. Vault commands can use stdin, private files and multiple fields, verify credentials without output, and safely stage rotations with revision checks. Windows private storage now enforces verified owner-only permissions. Bitwarden 0.2.0 and 1Password 0.3.0 require Cockpit 0.184.0; 1Password installs op 2.23.0 or newer.
+
 - AC-2364: A vault connection (1Password, Bitwarden) is no longer removed when Cockpit reads credential encryption as off. A settings save could make that reading happen while encryption was on, which wiped the connection. An unavailable vault now only refuses use; only Disconnect removes a connection, together with its grants. Turning encryption off is refused while a vault is connected. A forgotten-password reset says it removes vault connections and keeps a dated copy of the encrypted cockpit.json.
 
 - Cockpit checks existing managed and PATH copies of the 1Password CLI before installing it, shows the exact version and path in Options, and keeps managed copies updated after signature verification. The masked service-account field stays within the available width, and “Turn on encryption” opens Security even when Options is already open.

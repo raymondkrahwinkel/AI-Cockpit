@@ -27,7 +27,7 @@ public sealed class OnePasswordPlugin : ICockpitPlugin
     {
         host.AddManagedCli(OnePasswordManagedCli.Descriptor);
         var cli = new OnePasswordCli(host);
-        var provider = new OnePasswordProvider(cli);
+        var provider = new OnePasswordProvider(cli, () => host.Storage.Get<bool>("allowAgentWrites"));
         provider.Bind(host.AddVaultProvider(provider));
         _provider = provider;
 

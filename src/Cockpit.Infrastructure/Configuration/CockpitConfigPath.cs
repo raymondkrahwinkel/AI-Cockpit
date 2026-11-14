@@ -87,6 +87,12 @@ internal static class CockpitConfigPath
     // Creates `directory` if needed and restricts it to its owner. Idempotent.
     public static void EnsurePrivateDirectory(string directory)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            WindowsPrivateAccess.Restrict(directory, directory: true, create: true);
+            return;
+        }
+
         Directory.CreateDirectory(directory);
         Restrict(directory, PrivateDirectoryMode);
     }
@@ -114,9 +120,16 @@ internal static class CockpitConfigPath
         }
 
         var stream = new FileStream(path, options);
-        Restrict(path, PrivateFileMode);
-
-        return stream;
+        try
+        {
+            Restrict(path, PrivateFileMode);
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     // Restricts a file the cockpit wrote before it knew better. This is what migrates an operator's existing
@@ -252,24 +265,18 @@ internal static class CockpitConfigPath
         }
     }
 
-    // Applies `mode` to an existing file or directory. A no-op on Windows, which has no Unix
-    // mode bits — there the equivalent protection is the per-user profile directory itself, and pretending
-    // otherwise by throwing would break the platform that does not need this.
+    // AC-2361: a private writer must fail closed when permissions cannot be enforced.
     private static void Restrict(string path, UnixFileMode mode)
     {
         if (OperatingSystem.IsWindows())
         {
+            WindowsPrivateAccess.Restrict(path, Directory.Exists(path));
             return;
         }
-
-        try
+        File.SetUnixFileMode(path, mode);
+        if (File.GetUnixFileMode(path) != mode)
         {
-            File.SetUnixFileMode(path, mode);
-        }
-        catch (Exception)
-        {
-            // A file on a filesystem that carries no permissions (a mounted share, a container volume) is not a
-            // reason to refuse to save the operator's settings. The write itself is what matters most.
+            throw new UnauthorizedAccessException("Private storage permissions could not be verified.");
         }
     }
 }

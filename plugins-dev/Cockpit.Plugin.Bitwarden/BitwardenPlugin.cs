@@ -26,7 +26,7 @@ public sealed class BitwardenPlugin : ICockpitPlugin
     {
         // Bitwarden publishes SHA-256 checksums for bws, so the host may install it; a pinned or PATH copy still wins.
         host.AddManagedCli(BitwardenManagedCli.Descriptor);
-        var provider = new BitwardenProvider(new BitwardenCli(host.ResolveManagedCliPath));
+        var provider = new BitwardenProvider(new BitwardenCli(host.ResolveManagedCliPath), () => host.Storage.Get<bool>("allowAgentWrites"));
         provider.Bind(host.AddVaultProvider(provider));
         _provider = provider;
 

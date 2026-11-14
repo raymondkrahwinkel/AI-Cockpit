@@ -50,10 +50,21 @@ internal sealed partial class VaultHub
         }
     }
 
-    public static string GrantKey(string reference, string variable, IReadOnlyList<string> argv) =>
-        JsonSerializer.Serialize<string[]>([reference, variable, .. argv], StateOptions);
+    public static string GrantKey(VaultGrant grant) => JsonSerializer.Serialize(grant, StateOptions);
 
-    public static string ReferenceOf(string grantKey) => JsonSerializer.Deserialize<string[]>(grantKey, StateOptions)?[0] ?? string.Empty;
+    public static string ReferenceOf(string grantKey)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(grantKey);
+            return document.RootElement.ValueKind == JsonValueKind.Array && document.RootElement.GetArrayLength() > 0 ? document.RootElement[0].GetString() ?? string.Empty
+                : document.RootElement.GetProperty(nameof(VaultGrant.Reference)).GetString() ?? string.Empty;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException)
+        {
+            return string.Empty;
+        }
+    }
 
     // The pane's own grants and, when it has a project, that project's; an unreadable state grants nothing.
     public async Task<(IReadOnlySet<string> Session, IReadOnlySet<string> Project)> GrantsForAsync(

@@ -49,6 +49,9 @@ internal sealed partial class VaultHub : ISingletonService
 
     public event EventHandler? AvailabilityChanged;
 
+    internal string RuntimeDirectory => Path.Combine(Path.GetDirectoryName(_config.ConfigFilePath)
+        ?? throw new InvalidOperationException("Vault configuration has no directory."), "runtime", "vault");
+
     public IReadOnlyList<IVaultProvider> Providers
     {
         get

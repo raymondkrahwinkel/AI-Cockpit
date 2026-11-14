@@ -7,6 +7,6 @@ public sealed class BitwardenUi : ICockpitPluginUi
 {
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddSettings(() => new BitwardenConnectPage(host.Channel));
+        host.AddSettings(() => new BitwardenConnectPage(host));
     }
 }

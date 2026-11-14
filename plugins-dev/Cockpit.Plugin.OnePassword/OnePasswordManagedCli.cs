@@ -5,7 +5,7 @@ namespace Cockpit.Plugin.OnePassword;
 
 internal static class OnePasswordManagedCli
 {
-    internal static readonly Version MinimumVersion = new(2, 18, 0);
+    internal static readonly Version MinimumVersion = new(2, 23, 0);
 
     public static ManagedCliDescriptor Descriptor { get; } = new()
     {
@@ -53,5 +53,5 @@ internal static class OnePasswordManagedCli
     private static string _Version(string? text) =>
         Version.TryParse(text, out var version) && version >= MinimumVersion && version.Revision < 0
             ? version.ToString()
-            : throw new InvalidOperationException("1Password CLI reported an invalid version; version 2.18.0 or later is required.");
+            : throw new InvalidOperationException("1Password CLI reported an invalid version; version 2.23.0 or later is required.");
 }

@@ -10,13 +10,15 @@ namespace Cockpit.Infrastructure;
 
 // AC-2333 S5: a command started by CommandRunnerProcess.StartContained. Disposing it ends every process it started.
 internal sealed class ContainedRun(
-    StreamReader output, StreamReader error, Func<CancellationToken, Task> waitForExit, Func<int?> exitCode, Action end) : IDisposable
+    StreamReader output, StreamReader error, Func<CancellationToken, Task> waitForExit, Func<int?> exitCode, Action end, StreamWriter? input = null) : IDisposable
 {
     private Action? _end = end;
 
     public StreamReader Output => output;
 
     public StreamReader Error => error;
+
+    public StreamWriter? Input => input;
 
     // Null while the command still runs.
     public int? ExitCode => exitCode();
@@ -38,7 +40,7 @@ internal static class WindowsContainedStart
     private const uint HandleFlagInherit = 0x00000001;
     private const uint StillActive = 259;
 
-    public static ContainedRun Start(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment)
+    public static ContainedRun Start(string executable, IReadOnlyList<string> arguments, string directory, IReadOnlyDictionary<string, string> environment, bool redirectInput = false)
     {
         // Every handle is owned from the moment it exists: any failure below closes all of them, and a process that
         // was created is terminated before it ran a single instruction.
@@ -94,6 +96,7 @@ internal static class WindowsContainedStart
 
             outputRead?.Dispose();
             errorRead?.Dispose();
+            inputWrite?.Dispose();
             throw;
         }
         finally
@@ -103,11 +106,14 @@ internal static class WindowsContainedStart
                 WindowsJobSessionAnchor.NativeMethods.CloseHandle(info.Thread);
             }
 
-            // The child's ends are its own now; the command gets an empty stdin, as it did through Process.
+            // Keep only the parent's input end when the caller will feed a secret.
             outputWrite?.Dispose();
             errorWrite?.Dispose();
             inputRead?.Dispose();
-            inputWrite?.Dispose();
+            if (!redirectInput)
+            {
+                inputWrite?.Dispose();
+            }
         }
 
         var process = info.Process;
@@ -122,11 +128,17 @@ internal static class WindowsContainedStart
             () =>
             {
                 WindowsJobSessionAnchor.NativeMethods.TerminateJobObject(job, exitCode: 1);
+                // Termination is asynchronous; wait before a caller removes the child's working directory.
+                signal.WaitOne(TimeSpan.FromSeconds(5));
                 WindowsJobSessionAnchor.NativeMethods.CloseHandle(job);
                 registration.Unregister(null);
                 signal.Dispose();
                 WindowsJobSessionAnchor.NativeMethods.CloseHandle(process);
-            });
+                inputWrite?.Dispose();
+            },
+            redirectInput && inputWrite is not null
+                ? new StreamWriter(new FileStream(inputWrite, FileAccess.Write, 4096, isAsync: false), new UTF8Encoding(false))
+                : null);
     }
 
     private static IntPtr _KillOnCloseJob()
