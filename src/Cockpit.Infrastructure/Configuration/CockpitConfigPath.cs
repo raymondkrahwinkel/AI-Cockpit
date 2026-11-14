@@ -103,7 +103,8 @@ internal static class CockpitConfigPath
     public static FileStream CreatePrivateFile(string path)
     {
         var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory))
+        // An existing parent may be shared (such as /tmp); only explicit directory owners may restrict it.
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {
             EnsurePrivateDirectory(directory);
         }
