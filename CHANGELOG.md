@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Cockpit checks existing managed and PATH copies of the 1Password CLI before installing it, shows the exact version and path in Options, and keeps managed copies updated after signature verification. The masked service-account field stays within the available width, and “Turn on encryption” opens Security even when Options is already open.
+
 - Projectless sessions on the headless server can enter their scratch directory before switching to the agent user. Closing a server terminal session now also removes it from the session list and desk.
 
 - The desktop status bar shows notifications, CPU/RAM, disk space and managed worktrees from left to right, followed by secrets only while in use.

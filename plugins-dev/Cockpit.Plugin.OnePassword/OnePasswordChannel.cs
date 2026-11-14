@@ -6,6 +6,8 @@ namespace Cockpit.Plugin.OnePassword;
 internal static class OnePasswordChannel
 {
     public const string Status = "onepassword.status";
+    public const string PrepareCli = "onepassword.prepare-cli";
+    public const string CheckCli = "onepassword.check-cli";
     public const string Test = "onepassword.test";
     public const string Connect = "onepassword.connect";
     public const string Disconnect = "onepassword.disconnect";

@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Vault;
 
 namespace Cockpit.Plugin.OnePassword.UI;
@@ -16,8 +17,13 @@ internal sealed class OnePasswordConnectPage : UserControl
     private const string InstallPage = "https://developer.1password.com/docs/cli/get-started/";
 
     private readonly IPluginUiChannel _channel;
+    private readonly ICockpitUiHost _host;
+    private readonly ContentControl _cliPanel = new();
+    private readonly TextBlock _cliStatus = _Text(string.Empty, 12);
+    private readonly Button _retryCli = new() { Content = "Retry CLI installation", IsVisible = false };
+    private readonly Button _installFallback = new() { Content = "Open the 1Password CLI install page", IsVisible = false };
     private readonly ChannelVaultContext _context;
-    private readonly TextBox _token = new() { PasswordChar = '•', PlaceholderText = "ops_…", MinWidth = 320 };
+    private readonly TextBox _token = new() { PasswordChar = '•', PlaceholderText = "ops_…", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Button _test = new() { Content = "Test connection" };
     private readonly Button _connect = new() { IsVisible = false };
     private readonly Button _disconnect = new() { Content = "Disconnect", IsVisible = false };
@@ -25,12 +31,26 @@ internal sealed class OnePasswordConnectPage : UserControl
     private readonly TextBlock _connected = _Text(string.Empty, 12.5);
     private TestReply? _tested;
 
-    public OnePasswordConnectPage(IPluginUiChannel channel)
+    public OnePasswordConnectPage(ICockpitUiHost host)
     {
+        _host = host;
+        var channel = host.Channel;
         _channel = channel;
         _context = new ChannelVaultContext(channel);
+        var tokenRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        tokenRow.Children.Add(_token);
+        Grid.SetColumn(_test, 1);
+        tokenRow.Children.Add(_test);
         _connect.Classes.Add("Accent");
         _test.Click += async (_, _) => await _TestAsync();
+        _retryCli.Click += async (_, _) => await _PrepareCliAsync();
+        _installFallback.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(this)?.Launcher is { } launcher)
+            {
+                await launcher.LaunchUriAsync(new Uri(InstallPage));
+            }
+        };
         _connect.Click += async (_, _) => await _ConnectAsync();
         _disconnect.Click += async (_, _) =>
         {
@@ -51,10 +71,13 @@ internal sealed class OnePasswordConnectPage : UserControl
             Children =
             {
                 new VaultEncryptionRequiredPanel(_context),
+                _cliStatus,
+                _cliPanel,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _retryCli, _installFallback } },
                 _Text("Lets your agents use items from one 1Password vault through Cockpit's vault. Agents get names; the value goes only into a process when it starts.", 12.5),
                 _Text("Use a separate vault for agents. Create a vault that holds only what agents may use, for example Agents, and copy those items into it. Then create a service account in 1Password that can read only that vault. Never give it your private or shared vaults: whatever the token can read, an approved agent process can receive.", 11.5),
                 _Heading("1. SERVICE ACCOUNT"),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _token, _test } },
+                tokenRow,
                 _Text("Created in 1Password under Developer › Service accounts. Stored encrypted with your other credentials (Options › Security); agents and the vault MCP can never read it. Needs the 1Password CLI (op) 2.18.0 or later.", 11),
                 _Heading("2. WHICH VAULT IT READS"),
                 _connected,
@@ -62,7 +85,48 @@ internal sealed class OnePasswordConnectPage : UserControl
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _connect, _disconnect } },
             },
         };
-        _ = _RefreshAsync();
+        _ = _InitializeAsync();
+    }
+
+    private async Task _InitializeAsync()
+    {
+        await _PrepareCliAsync();
+        await _RefreshAsync();
+    }
+
+    private async Task<bool> _PrepareCliAsync()
+    {
+        _test.IsEnabled = false;
+        _retryCli.IsVisible = false;
+        _installFallback.IsVisible = false;
+        _cliStatus.Text = "Checking for an installed 1Password CLI…";
+        try
+        {
+            var response = await _channel.InvokeAsync(OnePasswordChannel.CheckCli, JsonSerializer.SerializeToElement(true));
+            var result = response.Deserialize<ManagedCliInstallResult>(OnePasswordChannel.Json);
+            if (result is null)
+            {
+                _cliStatus.Text = "Installing 1Password CLI and verifying its signature…";
+                response = await _channel.InvokeAsync(OnePasswordChannel.PrepareCli, JsonSerializer.SerializeToElement(true));
+                result = response.Deserialize<ManagedCliInstallResult>(OnePasswordChannel.Json);
+            }
+            if (result is not { Success: true })
+            {
+                throw new InvalidOperationException(result?.Error ?? "The plugin returned no CLI installation result.");
+            }
+
+            _cliStatus.Text = $"Using installed 1Password CLI {result.Version} at {result.ExecutablePath}";
+            _cliPanel.Content ??= new ManagedCliConfigSection(_host, "op", "1Password CLI").View;
+            _ApplyAvailability();
+            return true;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or JsonException)
+        {
+            _cliStatus.Text = $"Could not install 1Password CLI: {exception.Message}";
+            _retryCli.IsVisible = true;
+            _installFallback.IsVisible = true;
+            return false;
+        }
     }
 
     private async Task _RefreshAsync()
@@ -95,6 +159,11 @@ internal sealed class OnePasswordConnectPage : UserControl
 
     private async Task _TestAsync()
     {
+        if (!await _PrepareCliAsync())
+        {
+            return;
+        }
+
         _test.IsEnabled = false;
         _result.Children.Clear();
         _tested = await _CallAsync<TestReply>(OnePasswordChannel.Test, new TokenRequest(_token.Text ?? string.Empty));
@@ -106,7 +175,7 @@ internal sealed class OnePasswordConnectPage : UserControl
 
         if (!reply.Ok)
         {
-            _result.Children.Add(_Failure($"Could not check the token: {reply.Error}.", reply.Error));
+            _result.Children.Add(_Notice($"Could not check the token: {reply.Error}.", isError: true));
             return;
         }
 
@@ -141,7 +210,7 @@ internal sealed class OnePasswordConnectPage : UserControl
         }
         else if (status is { Error: { } error })
         {
-            _result.Children.Add(_Failure($"Not connected: {error}.", error));
+            _result.Children.Add(_Notice($"Not connected: {error}.", isError: true));
         }
 
         await _RefreshAsync();
@@ -173,25 +242,6 @@ internal sealed class OnePasswordConnectPage : UserControl
         BorderBrush = new SolidColorBrush(Color.Parse(isError ? "#D9534F" : "#4CAF50")),
         Child = new StackPanel { Spacing = 6, Children = { _Text(text, 12), below ?? new Panel() } },
     };
-
-    // A missing `op` says what to install and where to get it; any other reason is shown as it is.
-    private Border _Failure(string text, string? reason)
-    {
-        if (reason != "op CLI missing")
-        {
-            return _Notice(text, isError: true);
-        }
-
-        var install = new Button { Content = "Open the 1Password CLI install page", HorizontalAlignment = HorizontalAlignment.Left };
-        install.Click += async (_, _) =>
-        {
-            if (TopLevel.GetTopLevel(this)?.Launcher is { } launcher)
-            {
-                await launcher.LaunchUriAsync(new Uri(InstallPage));
-            }
-        };
-        return _Notice($"{text} The 1Password CLI (op) 2.18.0 or later must be installed on this machine.", isError: true, below: install);
-    }
 
     // The page's view of the host's context, over the channel: the panel only needs the availability, its change event and Open Security.
     private sealed class ChannelVaultContext : IVaultProviderContext
