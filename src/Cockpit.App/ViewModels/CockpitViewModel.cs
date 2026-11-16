@@ -3457,6 +3457,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
 
+            // A selection left standing on another desk would keep the sidebar and `list_sessions` pointing at a hidden pane.
+            if (!SimpleView && SelectedSession is { } selected && !BelongsToActiveWorkspace(selected))
+            {
+                SelectedSession = Sessions.FirstOrDefault(BelongsToActiveWorkspace);
+            }
+
             // A desk can arrange itself differently from the last one, so switching re-reads the effective layout
             // and re-docks the TTY headers — the same work Options changing does, for the same reason.
             // It ends in RefreshPaneVisibility, which is also what keeps the other desks' sessions alive but unshown.
