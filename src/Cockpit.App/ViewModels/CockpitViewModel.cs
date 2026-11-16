@@ -123,6 +123,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The panes a start from this window asked to select, by the id it minted; selected when they land.
     private readonly HashSet<string> _selectOnLanding = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SessionPanelViewModel> _lastSelectedByDesk = new(StringComparer.Ordinal);
     private readonly ISessionDialogService? _dialogService;
     private Func<CockpitViewModel, string?, Task>? _presentOptions;
     private Func<PluginManagerViewModel, PluginStoreFilter?, Task>? _presentPluginStore;
@@ -3192,6 +3193,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (newValue is not null)
         {
             newValue.IsSelected = true;
+            if (SessionWorkspacePlacement.Resolve(newValue, SessionWorkspacePlacement.FirstSessionsWorkspaceId(Workspaces.Settings)) is { } deskId)
+            {
+                _lastSelectedByDesk[deskId] = newValue;
+            }
         }
 
         RefreshPaneVisibility();
@@ -3457,10 +3462,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
 
-            // A selection left standing on another desk would keep the sidebar and `list_sessions` pointing at a hidden pane.
+            // A selection left on another desk would point the sidebar and `list_sessions` at a hidden pane.
             if (!SimpleView && SelectedSession is { } selected && !BelongsToActiveWorkspace(selected))
             {
-                SelectedSession = Sessions.FirstOrDefault(BelongsToActiveWorkspace);
+                SelectedSession = Workspaces.Active is { } desk
+                    && _lastSelectedByDesk.TryGetValue(desk.Id, out var last)
+                    && Sessions.Contains(last)
+                    && BelongsToActiveWorkspace(last)
+                    ? last
+                    : Sessions.FirstOrDefault(BelongsToActiveWorkspace);
             }
 
             // A desk can arrange itself differently from the last one, so switching re-reads the effective layout
