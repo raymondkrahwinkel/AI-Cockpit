@@ -40,7 +40,13 @@ public enum SharedProjectReadState
     TooLarge,
 }
 
-public sealed record SharedProjectReadStatus(string Id, string Name, string? Role, SharedProjectReadState State);
+public sealed record SharedProjectReadStatus(string Id, string Name, string? Role, SharedProjectReadState State)
+{
+    /// <summary>
+    /// Whether the operator may write this project's definition, so the host can offer to create a missing one.
+    /// </summary>
+    public bool CanWrite { get; init; }
+}
 
 /// <summary>
 /// See <see cref="SharedProjectListResult.VisibleButUnreadable"/>.

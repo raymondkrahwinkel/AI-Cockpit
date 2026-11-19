@@ -442,7 +442,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                     .Concat(result.ProjectReadStates
                         .Where(state => state.State != SharedProjectReadState.Ok
                             && !boundIds.Contains(state.Id) && !hiddenIds.Contains(state.Id))
-                        .Select(state => new SharedProjectOffer(state.Id, state.Name, Role: state.Role, Unavailable: _Unavailable(state.State))))
+                        .Select(state => _UnavailableOffer(state, source.CanPublish)))
                     .ToList()
                 : [];
 
@@ -461,6 +461,46 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         _boundProjectLocations = boundLocations;
         _hiddenSharedProjectLocations = hiddenLocations;
         _PublishAndRaise();
+    }
+
+    // AC-2370: a missing definition is something to create, not to retry; a reader is told who can.
+    private static SharedProjectOffer _UnavailableOffer(SharedProjectReadStatus state, bool canPublish)
+    {
+        var missing = state.State == SharedProjectReadState.Absent;
+        var why = _Unavailable(state.State);
+        return new SharedProjectOffer(
+            state.Id, state.Name, Role: state.Role,
+            Unavailable: missing && !(canPublish && state.CanWrite) ? $"{why} Ask an owner or member of this project to create it." : why,
+            MissingDefinition: missing, CanCreateDefinition: missing && canPublish && state.CanWrite);
+    }
+
+    // AC-2370: the same publish a Cockpit-made project goes through, with the project's own name and nothing else set.
+    public async Task<string?> CreateSharedProjectDefinitionAsync(string sharedProjectId)
+    {
+        var offer = _sharedProjectGroups.SelectMany(group => group.Projects).FirstOrDefault(candidate => candidate.Id == sharedProjectId);
+        var source = _sharedSources.Sources.FirstOrDefault(candidate => sharedProjectId.StartsWith(candidate.Key + ":", StringComparison.Ordinal));
+        if (offer is not { CanCreateDefinition: true } || source is null)
+        {
+            return "This project's definition cannot be created from here.";
+        }
+
+        try
+        {
+            var published = await source.PublishAsync(
+                sharedProjectId, new SharedProjectPublishDefinition(offer.Name, null, null, null, false, null, []), CancellationToken.None).ConfigureAwait(false);
+            if (published.Outcome is not (SharedProjectPublishOutcome.Success or SharedProjectPublishOutcome.AlreadyPublished))
+            {
+                return published.Error ?? "The connection did not confirm the new definition.";
+            }
+
+            await RefreshSharedProjectsAsync().ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Creating the definition of {Project} failed.", sharedProjectId);
+            return exception.Message;
+        }
     }
 
     // AC-1758: a project the source listed but could not offer still shows, with why it cannot be added yet.

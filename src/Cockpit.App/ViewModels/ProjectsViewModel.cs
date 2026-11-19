@@ -576,6 +576,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                         Add = FinishSettingUpCommand,
                         Hide = HideSharedProjectCommand,
                         TryAgain = RefreshSharedProjectsCommand,
+                        CreateDefinition = CreateDefinitionCommand,
                         Origin = _Origin(location),
                         WhereItLives = _WhereItLives(location),
                     });
@@ -701,6 +702,31 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             // for this project, so it is what they are looking at. On the assistant's own route nobody clicked, and
             // moving the selection would take it out from under whatever they had picked in Manage projects.
             SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
+        }
+    }
+
+    // AC-2370: writes the missing definition through the catalog; the refresh it triggers turns the row into "Ready to add".
+    [RelayCommand]
+    private async Task CreateDefinitionAsync(ProjectListItemViewModel row)
+    {
+        if (row.SharedProject is not { CanCreateDefinition: true } offer || row.IsCreatingDefinition)
+        {
+            return;
+        }
+
+        row.ActionError = null;
+        row.IsCreatingDefinition = true;
+        try
+        {
+            row.ActionError = await _catalog.CreateSharedProjectDefinitionAsync(offer.Id).ConfigureAwait(true);
+            if (row.ActionError is null)
+            {
+                _ApplyCurrent();
+            }
+        }
+        finally
+        {
+            row.IsCreatingDefinition = false;
         }
     }
 

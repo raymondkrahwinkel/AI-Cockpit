@@ -97,7 +97,22 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
 
     public bool HasAdditionalInfo => Project?.HasAdditionalInfo == true;
 
-    public bool IsUnavailable => SharedProject is { CanAdd: false };
+    // A missing definition is fixed by creating it, so only a real read failure gets "Try again" (AC-2370).
+    public bool IsUnavailable => SharedProject is { CanAdd: false, MissingDefinition: false };
+
+    public bool CanCreateDefinition => SharedProject is { CanCreateDefinition: true };
+
+    // Takes this row; `ProjectsViewModel.CreateDefinitionCommand`.
+    public ICommand? CreateDefinition { get; init; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActionError))]
+    private string? _actionError;
+
+    public bool HasActionError => ActionError is not null;
+
+    [ObservableProperty]
+    private bool _isCreatingDefinition;
 
     public string ShareLabel => IsInOrganization ? "Stop sharing…" : "Share with your team…";
 

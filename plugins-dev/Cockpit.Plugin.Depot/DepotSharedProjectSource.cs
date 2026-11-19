@@ -191,7 +191,7 @@ internal sealed class DepotSharedProjectSource(
             var state = _StateFor(cockpit?.State);
             if (state != SharedProjectReadState.Ok || cockpit?.Definition is not { } definition)
             {
-                states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), state == SharedProjectReadState.Ok ? SharedProjectReadState.Invalid : state));
+                states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), state == SharedProjectReadState.Ok ? SharedProjectReadState.Invalid : state) { CanWrite = canWrite });
                 if (!canWrite)
                 {
                     unreadable.Add(new UnreadableSharedProject(id, name, role.ToDisplayString()));

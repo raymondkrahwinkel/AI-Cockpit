@@ -35,7 +35,7 @@ public sealed record SharedProjectGroup(
 // AC-1758: Unavailable says why a listed project cannot be added yet (no Cockpit definition, say); null means it can.
 public sealed record SharedProjectOffer(
     string Id, string Name, string? Description = null, string? Role = null, SharedProjectOrganizationInfo? Organization = null,
-    string? Unavailable = null)
+    string? Unavailable = null, bool MissingDefinition = false, bool CanCreateDefinition = false)
 {
     public bool CanAdd => Unavailable is null;
 }

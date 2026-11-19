@@ -134,7 +134,17 @@
                     <TextBlock Text="Try again" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
+            <Button Classes="Accent paneAction" HorizontalContentAlignment="Center"
+                    IsVisible="{Binding CanCreateDefinition}" IsEnabled="{Binding !IsCreatingDefinition}"
+                    Command="{Binding CreateDefinition}" CommandParameter="{Binding}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="FileCogOutline" Width="15" Height="15"/>
+                    <TextBlock Text="Create Cockpit project definition" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
         </Panel>
+
+        <TextBlock Text="{Binding ActionError}" IsVisible="{Binding HasActionError}" TextWrapping="Wrap" Margin="0,8,0,0"/>
 
         <Button Content="Try again" Classes="paneAction" IsVisible="{Binding HasPublicationError}" Command="{Binding TryAgain}" Margin="0,8,0,0"/>
 

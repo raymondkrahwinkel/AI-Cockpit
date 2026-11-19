@@ -32,6 +32,12 @@ public interface IProjectCatalog
     /// </summary>
     Task SyncNowAsync(string projectId);
 
+    /// <summary>
+    /// Creates the missing portable definition of a listed shared project with safe defaults, then re-reads the sources.
+    /// Returns null on success, otherwise the reason it failed.
+    /// </summary>
+    Task<string?> CreateSharedProjectDefinitionAsync(string sharedProjectId) => Task.FromResult<string?>("This source cannot create a project definition.");
+
     /// <summary>Hides one shared offer on this machine through the catalog's serialized settings writer.</summary>
     Task HideSharedProjectAsync(string sharedProjectId);
 
