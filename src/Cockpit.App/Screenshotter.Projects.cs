@@ -29,6 +29,8 @@ internal static partial class Screenshotter
         new("projects-workspace-empty", (_, _) => _ProjectsWorkspace(stage: null)),
         // A team project the source listed but cannot offer yet sits beside one it can (AC-1758).
         new("projects-workspace-team-partial", (_, _) => _ProjectsWorkspace(_StagePartialTeamProjects)),
+        new("projects-workspace-definition-missing", (_, _) => _ProjectsWorkspace(cockpit => _StageMissingDefinition(cockpit, "startpage"))),
+        new("projects-workspace-definition-readonly", (_, _) => _ProjectsWorkspace(cockpit => _StageMissingDefinition(cockpit, "handbook"))),
         // Raymond, 26-10: a server that fails with no known list gets one section on its connection, with the reason
         // and Try again; the other server's sections are unaffected.
         new("projects-workspace-unreachable", (_, _) => _ProjectsWorkspace(_StageUnreachableServer)),
@@ -273,6 +275,12 @@ internal static partial class Screenshotter
         }
     }
 
+    private static void _StageMissingDefinition(CockpitViewModel cockpit, string name)
+    {
+        _StagePartialTeamProjects(cockpit);
+        cockpit.Projects.SelectedListItem = cockpit.Projects.ProjectSections.SelectMany(section => section.Items).First(item => item.Name == name);
+    }
+
     private static void _StagePartialTeamProjects(CockpitViewModel cockpit) =>
         cockpit.Projects.StageSnapshot(ProjectCatalogSnapshot.Empty with
         {
@@ -283,7 +291,9 @@ internal static partial class Screenshotter
                 [
                     new($"{SynvolutionSource}:release-guide", "Release guide", "The current release checklist.", "Editor", _synvolution),
                     new($"{SynvolutionSource}:startpage", "startpage", Role: "Owner", Organization: _synvolution,
-                        Unavailable: "No Cockpit project definition yet."),
+                        Unavailable: "No Cockpit project definition yet.", MissingDefinition: true, CanCreateDefinition: true),
+                    new($"{SynvolutionSource}:handbook", "handbook", Role: "Viewer", Organization: _synvolution,
+                        Unavailable: "No Cockpit project definition yet. Ask an owner or member of this project to create it.", MissingDefinition: true),
                 ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl", ReadAt: DateTimeOffset.UtcNow),
             ],
         });
