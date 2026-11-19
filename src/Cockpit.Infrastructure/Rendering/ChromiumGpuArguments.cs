@@ -1,18 +1,11 @@
-using Cockpit.Core.Rendering;
+using Cockpit.Shared;
 
 namespace Cockpit.Infrastructure.Rendering;
 
 public static class ChromiumGpuArguments
 {
     public const string EnvironmentVariable = "COCKPIT_CHROMIUM_GPU_ARGS";
+    public const string DeviceNameVariable = DxgiAdapters.DeviceNameVariable;
 
-    public static string[] For(GpuPreference preference) => OperatingSystem.IsWindows()
-        ? [
-            "--enable-gpu",
-            "--use-gl=angle",
-            "--use-angle=d3d11",
-            "--disable-software-rasterizer",
-            preference is GpuPreference.Integrated ? "--force_low_power_gpu" : "--force_high_performance_gpu",
-        ]
-        : [];
+    public static string[] For(string? deviceName) => DxgiAdapters.ChromiumArguments(deviceName);
 }

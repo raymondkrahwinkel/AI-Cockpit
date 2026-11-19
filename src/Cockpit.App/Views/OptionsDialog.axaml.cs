@@ -56,6 +56,7 @@ public partial class OptionsDialog : Window
     // AC-2018: what the loading state says on each page `CockpitViewModel.OptionsLoadingPages` can name.
     private static readonly Dictionary<string, string> PageLoadingCaptions = new(StringComparer.Ordinal)
     {
+        ["general"] = "GPU’s detecteren…",
         ["voice"] = "Loading audio devices…",
         ["profiles"] = "Loading profiles…",
         ["mcp-servers"] = "Loading MCP servers…",

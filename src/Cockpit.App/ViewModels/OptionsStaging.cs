@@ -28,7 +28,6 @@ internal static class OptionsStaging
         "GlobalFocusRailLayout",
         "GlobalSingleSessionLayout",
         "GlobalStackSessionsVertically",
-        "GpuPreferenceIndex",
         "IdleThresholdMinutes",
         "IncludeNightlyBuilds",
         "LocalNotificationsEnabled",
@@ -57,6 +56,7 @@ internal static class OptionsStaging
         "ScreenshotHotkeyKeyName",
         "ScreenshotPreviewEnabled",
         "SelectedInputDevice",
+        "SelectedGpuDevice",
         "SelectedOutputDevice",
         "SelectedReadAloudLanguage",
         "SelectedSttLanguage",
@@ -170,6 +170,7 @@ internal static class OptionsStaging
     // load is done, the rest when the dialog opens.
     public static readonly string[] LoadedAfterOpen =
     [
+        "SelectedGpuDevice",
         "SelectedInputDevice",
         "SelectedOutputDevice",
         "Swarm.ExtraInternalCidrsText",

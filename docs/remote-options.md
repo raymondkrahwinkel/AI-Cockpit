@@ -43,7 +43,6 @@ A session start whose MCP gateway cannot be prepared stops, never falling back t
 | `GlobalFocusRailLayout` | Client presentation/device |
 | `GlobalSingleSessionLayout` | Client presentation/device |
 | `GlobalStackSessionsVertically` | Client presentation/device |
-| `GpuPreferenceIndex` | Lokale Windows-desktop (AC-2369) |
 | `IdleThresholdMinutes` | Server backend (AC-2278) |
 | `IncludeNightlyBuilds` | Client presentation/device |
 | `LocalNotificationsEnabled` | Client presentation/device |
@@ -72,6 +71,7 @@ A session start whose MCP gateway cannot be prepared stops, never falling back t
 | `ScreenshotHotkeyKeyName` | Client presentation/device |
 | `ScreenshotPreviewEnabled` | Client presentation/device |
 | `SelectedInputDevice` | Client presentation/device |
+| `SelectedGpuDevice` | Lokale Windows-desktop (AC-2369) |
 | `SelectedOutputDevice` | Client presentation/device |
 | `SelectedReadAloudLanguage` | Client presentation/device |
 | `SelectedSttLanguage` | Client presentation/device |

@@ -32,6 +32,7 @@ namespace Cockpit.App;
 sealed class Program
 {
     private static RenderingSettings? _startupRenderingSettings;
+    internal static string? StartupGpuDeviceName => _startupRenderingSettings?.GpuDeviceName;
 
     // AC-883: internal rather than private so a view test can populate the container and then prove a pane did
     // *not* reach into it. With it null, "resolved nothing" and "was never allowed to resolve" look identical.
@@ -99,7 +100,7 @@ sealed class Program
         if (OperatingSystem.IsWindows())
         {
             _startupRenderingSettings = RenderBackendConfig.Read();
-            _SetBrowserGpuArguments(_startupRenderingSettings.GpuPreference);
+            _SetBrowserGpuArguments(_startupRenderingSettings.GpuDeviceName);
         }
 
         var logPath = CockpitBuild.LogPath;
@@ -603,7 +604,7 @@ sealed class Program
         watchdog.Start();
     }
 
-    private static void _SetBrowserGpuArguments(GpuPreference preference)
+    private static void _SetBrowserGpuArguments(string deviceName)
     {
         const string webViewArguments = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
         var existingArguments = Environment.GetEnvironmentVariable(webViewArguments) ?? string.Empty;
@@ -612,7 +613,8 @@ sealed class Program
         {
             existingArguments = existingArguments[..^inheritedGpuArguments.Length];
         }
-        var gpuArguments = string.Join(' ', ChromiumGpuArguments.For(preference));
+        var gpuArguments = string.Join(' ', ChromiumGpuArguments.For(deviceName));
+        Environment.SetEnvironmentVariable(ChromiumGpuArguments.DeviceNameVariable, deviceName);
         Environment.SetEnvironmentVariable(ChromiumGpuArguments.EnvironmentVariable, gpuArguments);
         Environment.SetEnvironmentVariable(webViewArguments, $"{existingArguments.TrimEnd()} {gpuArguments}".TrimStart());
     }
@@ -636,12 +638,11 @@ sealed class Program
         {
             builder = builder.With(new AvaloniaNativePlatformOptions { RenderingMode = [.. selection.Modes] });
         }
-        if (OperatingSystem.IsWindows()
-            && GpuHardwareProbe.WindowsAdapterLuids(settings.GpuPreference) is { Count: > 0 } adapterLuids)
+        if (OperatingSystem.IsWindows())
         {
             builder = builder.With(new Win32PlatformOptions
             {
-                GraphicsAdapterSelectionCallback = adapters => _SelectWindowsAdapter(adapters, adapterLuids, settings.GpuPreference),
+                GraphicsAdapterSelectionCallback = adapters => _SelectWindowsAdapter(adapters, settings.GpuDeviceName),
             });
         }
 
@@ -649,22 +650,23 @@ sealed class Program
     }
 
     private static int _SelectWindowsAdapter(
-        IReadOnlyList<PlatformGraphicsDeviceAdapterDescription> adapters, IReadOnlyList<long> adapterLuids, GpuPreference preference)
+        IReadOnlyList<PlatformGraphicsDeviceAdapterDescription> adapters, string deviceName)
     {
-        foreach (var luid in adapterLuids)
+        foreach (var (name, luid) in GpuHardwareProbe.WindowsAdapters(deviceName))
         {
             for (var index = 0; index < adapters.Count; index++)
             {
                 var adapter = adapters[index];
                 if (adapter.DeviceLuid is { Length: sizeof(long) } bytes && BitConverter.ToInt64(bytes) == luid)
                 {
-                    Cockpit.App.Logging.LifecycleLog.Write($"Avalonia GPU preference {preference}: {adapter.Description} (LUID {luid:X16}).");
+                    var mode = string.Equals(name, deviceName, StringComparison.OrdinalIgnoreCase) ? "Selected" : "Automatic";
+                    Cockpit.App.Logging.LifecycleLog.Write($"Avalonia GPU preference {mode}: {name} (LUID {luid:X16}).");
                     return index;
                 }
             }
         }
 
-        Cockpit.App.Logging.LifecycleLog.Write($"Avalonia GPU preference {preference}: no matching DXGI adapter, using the default.");
+        Cockpit.App.Logging.LifecycleLog.Write("Avalonia GPU preference Automatic: no matching DXGI adapter, using the default.");
         return 0;
     }
 

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- AC-2369: Cockpit en door Cockpit gestarte agentbrowsers geven op Windows voorrang aan de discrete GPU. De voorkeur is instelbaar in Options › Algemeen. Laadanimaties stoppen zodra hun placeholders verborgen zijn.
+- AC-2369: Options › Algemeen biedt Automatisch en de gedetecteerde GPU’s op naam. De keuze geldt voor Cockpit en voor door Cockpit gestarte agentbrowsers. Een ontbrekende GPU valt zichtbaar terug op Automatisch. Laadanimaties stoppen zodra hun placeholders verborgen zijn.
 
 - AC-2361: Saving a private file no longer changes permissions on an existing shared parent directory, fixing workspace saves on Linux. Vault runtime directories remain private.
 

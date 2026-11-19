@@ -316,10 +316,12 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock x:Name="GpuPreferenceLabel" Text="Voorkeur-GPU" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             <ComboBox AutomationProperties.LabeledBy="{Binding #GpuPreferenceLabel}"
-                                      ItemsSource="{Binding GpuPreferenceChoices}" SelectedIndex="{Binding GpuPreferenceIndex}"
-                                      Width="180"/>
+                                      ItemsSource="{Binding GpuDevices}" SelectedItem="{Binding SelectedGpuDevice}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="230"/>
                         </StackPanel>
-                        <TextBlock Classes="optionsHint" Text="Automatisch gebruikt de discrete GPU als die beschikbaar is. Geïntegreerd kan de accu sparen." TextWrapping="Wrap"/>
+                        <TextBlock Classes="optionsHint" Text="Automatisch geeft voorrang aan een discrete GPU. Kies een gedetecteerde GPU om dit te overrulen." TextWrapping="Wrap"/>
+                        <TextBlock Classes="optionsHint" Text="{Binding GpuDeviceFallback}" TextWrapping="Wrap"
+                                   IsVisible="{Binding GpuDeviceFallback, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding GpuPreferenceNeedsRestart}">
                             <TextBlock Classes="optionsHint" Text="Herstart Cockpit om de GPU-keuze toe te passen." VerticalAlignment="Center"/>
                             <Button Content="Cockpit herstarten" Classes="Accent" Command="{Binding RestartAppCommand}"/>

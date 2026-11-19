@@ -7,14 +7,14 @@ namespace Cockpit.Infrastructure.Configuration;
 internal sealed class RenderingSettingsEntry
 {
     public RenderBackendChoice Backend { get; set; } = RenderBackendChoice.Auto;
-    public GpuPreference GpuPreference { get; set; } = GpuPreference.Automatic;
+    public string? GpuDeviceName { get; set; }
 
     public static RenderingSettingsEntry FromDomain(RenderingSettings settings) =>
-        new() { Backend = settings.Backend, GpuPreference = settings.GpuPreference };
+        new() { Backend = settings.Backend, GpuDeviceName = settings.GpuDeviceName };
 
     public RenderingSettings ToDomain() => new()
     {
         Backend = Backend,
-        GpuPreference = Enum.IsDefined(GpuPreference) ? GpuPreference : GpuPreference.Automatic,
+        GpuDeviceName = GpuDeviceName ?? string.Empty,
     };
 }

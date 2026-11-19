@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Net.WebSockets;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Cockpit.Shared;
 
 namespace Cockpit.Plugin.Browser;
 
@@ -621,15 +622,9 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             RedirectStandardError = true,
             RedirectStandardOutput = true,
         };
-        if (OperatingSystem.IsWindows())
+        foreach (var argument in DxgiAdapters.ChromiumArguments(Environment.GetEnvironmentVariable(DxgiAdapters.DeviceNameVariable)))
         {
-            var gpuArguments = Environment.GetEnvironmentVariable("COCKPIT_CHROMIUM_GPU_ARGS")?.Split(' ');
-            var integrated = gpuArguments?.Contains("--force_low_power_gpu", StringComparer.Ordinal) == true;
-            start.ArgumentList.Add(integrated ? "--force_low_power_gpu" : "--force_high_performance_gpu");
-            start.ArgumentList.Add("--enable-gpu");
-            start.ArgumentList.Add("--use-gl=angle");
-            start.ArgumentList.Add("--use-angle=d3d11");
-            start.ArgumentList.Add("--disable-software-rasterizer");
+            start.ArgumentList.Add(argument);
         }
         foreach (var argument in new[]
         {
