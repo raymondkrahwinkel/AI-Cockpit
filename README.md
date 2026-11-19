@@ -451,6 +451,18 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
+Op Windows staat **Voorkeur-GPU** onder Options › Algemeen. `Rendering.GpuPreference` in
+`cockpit.json` heeft de waarden `Automatic` (standaard), `Discrete` en `Integrated`.
+Automatisch en Discreet geven voorrang aan de krachtigste beschikbare GPU. Geïntegreerd geeft
+voorrang aan de energiezuinige GPU. Sla de wijziging op en herstart Cockpit. De voorkeur is
+machinegebonden en gaat daarom niet mee via de settings carrier.
+
+De voorkeur geldt voor het Avalonia-venster, Chromium dat Cockpit voor agents start en Chromium
+dat rechtstreeks als Verify-commando is ingesteld. Op Windows krijgen Verify-scripts
+`COCKPIT_CHROMIUM_GPU_ARGS` mee als spatiegescheiden argumenten voor eigen Chromium-starts.
+Gebruik die als `args` bij Playwright en laat eventuele conflicterende GPU-argumenten weg.
+De Browser-plugin meldt software-rendering van agent-Chromium in het Cockpit-log.
+
 Plugins can supply runtime plugin stores with request-time credentials. Manage stores shows these sources with
 Hide/Show instead of Remove. `HiddenPluginStoreSources` is a string array of hidden source keys (default empty),
 saved immediately by Manage stores; Options Apply/Cancel does not change it. This machine-local preference is

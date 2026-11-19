@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,7 @@ using Cockpit.App.Views;
 using Cockpit.Core;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Rendering;
 using Cockpit.Core.Startup;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Assistant;
@@ -21,12 +23,16 @@ using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Provisioning;
+using Cockpit.Infrastructure.Rendering;
+using Cockpit.Infrastructure.Voice;
 using Velopack;
 
 namespace Cockpit.App;
 
 sealed class Program
 {
+    private static RenderingSettings? _startupRenderingSettings;
+
     // AC-883: internal rather than private so a view test can populate the container and then prove a pane did
     // *not* reach into it. With it null, "resolved nothing" and "was never allowed to resolve" look identical.
     public static IServiceProvider Services { get; internal set; } = null!;
@@ -90,6 +96,11 @@ sealed class Program
         // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, then restrict
         // leftover credential files before any state access. Set before anything can spawn a session.
         CockpitBackend.MarkProcess();
+        if (OperatingSystem.IsWindows())
+        {
+            _startupRenderingSettings = RenderBackendConfig.Read();
+            _SetBrowserGpuArguments(_startupRenderingSettings.GpuPreference);
+        }
 
         var logPath = CockpitBuild.LogPath;
 
@@ -592,6 +603,20 @@ sealed class Program
         watchdog.Start();
     }
 
+    private static void _SetBrowserGpuArguments(GpuPreference preference)
+    {
+        const string webViewArguments = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+        var existingArguments = Environment.GetEnvironmentVariable(webViewArguments) ?? string.Empty;
+        var inheritedGpuArguments = Environment.GetEnvironmentVariable(ChromiumGpuArguments.EnvironmentVariable);
+        if (!string.IsNullOrEmpty(inheritedGpuArguments) && existingArguments.EndsWith(inheritedGpuArguments, StringComparison.Ordinal))
+        {
+            existingArguments = existingArguments[..^inheritedGpuArguments.Length];
+        }
+        var gpuArguments = string.Join(' ', ChromiumGpuArguments.For(preference));
+        Environment.SetEnvironmentVariable(ChromiumGpuArguments.EnvironmentVariable, gpuArguments);
+        Environment.SetEnvironmentVariable(webViewArguments, $"{existingArguments.TrimEnd()} {gpuArguments}".TrimStart());
+    }
+
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
     {
@@ -606,12 +631,41 @@ sealed class Program
 
         // Before DI, honor COCKPIT_RENDER_BACKEND or the saved macOS override while leaving default Metal detection
         // alone. The inert-on-other-platforms option enables same-build Metal memory comparisons (AC-57/AC-67).
-        if (RenderBackendOverride.Resolve(RenderBackendConfig.Read()) is { } selection)
+        var settings = _startupRenderingSettings ?? RenderBackendConfig.Read();
+        if (RenderBackendOverride.Resolve(settings.Backend) is { } selection)
         {
             builder = builder.With(new AvaloniaNativePlatformOptions { RenderingMode = [.. selection.Modes] });
         }
+        if (OperatingSystem.IsWindows()
+            && GpuHardwareProbe.WindowsAdapterLuids(settings.GpuPreference) is { Count: > 0 } adapterLuids)
+        {
+            builder = builder.With(new Win32PlatformOptions
+            {
+                GraphicsAdapterSelectionCallback = adapters => _SelectWindowsAdapter(adapters, adapterLuids, settings.GpuPreference),
+            });
+        }
 
         return builder;
+    }
+
+    private static int _SelectWindowsAdapter(
+        IReadOnlyList<PlatformGraphicsDeviceAdapterDescription> adapters, IReadOnlyList<long> adapterLuids, GpuPreference preference)
+    {
+        foreach (var luid in adapterLuids)
+        {
+            for (var index = 0; index < adapters.Count; index++)
+            {
+                var adapter = adapters[index];
+                if (adapter.DeviceLuid is { Length: sizeof(long) } bytes && BitConverter.ToInt64(bytes) == luid)
+                {
+                    Cockpit.App.Logging.LifecycleLog.Write($"Avalonia GPU preference {preference}: {adapter.Description} (LUID {luid:X16}).");
+                    return index;
+                }
+            }
+        }
+
+        Cockpit.App.Logging.LifecycleLog.Write($"Avalonia GPU preference {preference}: no matching DXGI adapter, using the default.");
+        return 0;
     }
 
     // Add platform emoji fallbacks because Inter/Cascadia Mono lack those glyphs. Share the setup so headless

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.WebSockets;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -142,8 +143,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
 
         WriteOwner(process, profile);
+        var browserPid = process.Id;
 
         var running = new Running(process, profile, network);
+        var lifetime = running.Lifetime.Token;
         bool registered;
         lock (_gate)
         {
@@ -213,6 +216,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             process.EnableRaisingEvents = true;
         }
         Changed?.Invoke();
+        if (OperatingSystem.IsWindows())
+        {
+            _ = LogGpuAsync(port.Value, browserPid, lifetime);
+        }
         return running.Proxy.Endpoint;
     }
 
@@ -546,12 +553,46 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             return;
         }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var browser = await ConnectToBrowserAsync(port, timeout.Token).ConfigureAwait(false);
+        await browser.SendAsync("Browser.close").WaitAsync(timeout.Token).ConfigureAwait(false);
+    }
+
+    private static async Task<CdpPage> ConnectToBrowserAsync(int port, CancellationToken token)
+    {
         using var http = new HttpClient();
-        using var version = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version", timeout.Token).ConfigureAwait(false));
+        using var version = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version", token).ConfigureAwait(false));
         var socketUrl = version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()
             ?? throw new IOException("The browser response is missing its socket URL.");
-        using var browser = await CdpPage.ConnectAsync(socketUrl, (_, _) => { }, timeout.Token).ConfigureAwait(false);
-        await browser.SendAsync("Browser.close").WaitAsync(timeout.Token).ConfigureAwait(false);
+        return await CdpPage.ConnectAsync(socketUrl, (_, _) => { }, token).ConfigureAwait(false);
+    }
+
+    private async Task LogGpuAsync(int port, int pid, CancellationToken lifetime)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            using var browser = await ConnectToBrowserAsync(port, timeout.Token).ConfigureAwait(false);
+            var info = await browser.CallAsync("SystemInfo.getInfo", null, timeout.Token).ConfigureAwait(false);
+            var gpu = info.GetProperty("gpu");
+            var renderer = gpu.TryGetProperty("auxAttributes", out var attributes) && attributes.TryGetProperty("glRenderer", out var gl)
+                ? gl.GetString() : null;
+            var compositing = gpu.TryGetProperty("featureStatus", out var features) && features.TryGetProperty("gpu_compositing", out var status)
+                ? status.GetString() : null;
+            var software = compositing?.Contains("software", StringComparison.OrdinalIgnoreCase) == true
+                || renderer?.Contains("SwiftShader", StringComparison.OrdinalIgnoreCase) == true
+                || renderer?.Contains("Basic Render Driver", StringComparison.OrdinalIgnoreCase) == true;
+            Report(software || string.IsNullOrWhiteSpace(renderer) ? LogLevel.Warning : LogLevel.Information,
+                $"Agent Chromium PID {pid}: {(software ? "software rendering" : "GPU renderer")} {renderer ?? "unknown"}, compositing {compositing ?? "unknown"}.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or WebSocketException or IOException
+            or OperationCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
+        {
+            if (!lifetime.IsCancellationRequested)
+            {
+                Report(LogLevel.Warning, $"Agent Chromium PID {pid}: could not confirm hardware rendering ({exception.GetType().Name}).");
+            }
+        }
     }
 
     // Chromium's own words when it cannot set up its sandbox: user namespaces refused, or no setuid helper to fall back on.
@@ -580,6 +621,16 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             RedirectStandardError = true,
             RedirectStandardOutput = true,
         };
+        if (OperatingSystem.IsWindows())
+        {
+            var gpuArguments = Environment.GetEnvironmentVariable("COCKPIT_CHROMIUM_GPU_ARGS")?.Split(' ');
+            var integrated = gpuArguments?.Contains("--force_low_power_gpu", StringComparer.Ordinal) == true;
+            start.ArgumentList.Add(integrated ? "--force_low_power_gpu" : "--force_high_performance_gpu");
+            start.ArgumentList.Add("--enable-gpu");
+            start.ArgumentList.Add("--use-gl=angle");
+            start.ArgumentList.Add("--use-angle=d3d11");
+            start.ArgumentList.Add("--disable-software-rasterizer");
+        }
         foreach (var argument in new[]
         {
             "--headless=new",

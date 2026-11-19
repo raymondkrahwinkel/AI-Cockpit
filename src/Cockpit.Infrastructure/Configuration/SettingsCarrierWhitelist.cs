@@ -52,6 +52,7 @@ internal static class SettingsCarrierWhitelist
         "Voice.DuckOtherAudioWhileSpeaking", "Voice.DuckingLevel",
         "PluginTrust",
         "Layout.CompanionStripLayout",
+        "Rendering.GpuPreference",
         "HiddenPluginStoreSources",
         "HeavyRuns.MaxParallelRuns", "HeavyRuns.CpuCeilingPercent", "HeavyRuns.MemoryCeilingPercent",
         "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",

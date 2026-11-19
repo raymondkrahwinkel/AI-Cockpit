@@ -197,6 +197,14 @@
                             <TextBlock Classes="subnavGroup" Text="SYSTEM"/>
                         </ListBoxItem>
 
+                        <ListBoxItem Tag="general" IsVisible="{Binding ShowGpuPreference}">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Grid.Column="0" Kind="Cog" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Algemeen" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge"><TextBlock/></Border>
+                            </Grid>
+                        </ListBoxItem>
+
                         <ListBoxItem Tag="security">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="ShieldLock" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -300,6 +308,24 @@
 
             <DockPanel Grid.Column="1">
             <Panel x:Name="CategoryContent" IsEnabled="{Binding CanEditOptions, FallbackValue=True}">
+
+                <ScrollViewer Tag="general"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=general}">
+                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8" IsVisible="{Binding ShowGpuPreference}">
+                        <TextBlock Text="Algemeen" FontSize="20" FontWeight="Bold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock x:Name="GpuPreferenceLabel" Text="Voorkeur-GPU" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <ComboBox AutomationProperties.LabeledBy="{Binding #GpuPreferenceLabel}"
+                                      ItemsSource="{Binding GpuPreferenceChoices}" SelectedIndex="{Binding GpuPreferenceIndex}"
+                                      Width="180"/>
+                        </StackPanel>
+                        <TextBlock Classes="optionsHint" Text="Automatisch gebruikt de discrete GPU als die beschikbaar is. Geïntegreerd kan de accu sparen." TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding GpuPreferenceNeedsRestart}">
+                            <TextBlock Classes="optionsHint" Text="Herstart Cockpit om de GPU-keuze toe te passen." VerticalAlignment="Center"/>
+                            <Button Content="Cockpit herstarten" Classes="Accent" Command="{Binding RestartAppCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <ScrollViewer Tag="swarm"
                               IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=swarm}">

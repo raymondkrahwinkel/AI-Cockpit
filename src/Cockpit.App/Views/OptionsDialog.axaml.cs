@@ -144,7 +144,7 @@ public partial class OptionsDialog : Window
                 _BuildPluginCategories(cockpit);
                 foreach (var page in this.GetLogicalDescendants().OfType<ScrollViewer>())
                 {
-                    if (page.Tag is string tag && tag is "sessions" or "appearance" or "terminal" or "notifications" or "shortcuts" or "voice" or "debug"
+                    if (page.Tag is string tag && tag is "general" or "sessions" or "appearance" or "terminal" or "notifications" or "shortcuts" or "voice" or "debug"
                         && page.Content is StackPanel body && !_sectionErrorLabels.ContainsKey(tag))
                     {
                         body.Children.Insert(1, _SectionErrorLabel(tag));
@@ -582,7 +582,7 @@ public partial class OptionsDialog : Window
         {
             var tag = (string)item.Tag!;
             var matchCount = matches.GetValueOrDefault(tag);
-            _SetSearchVisibility(item, searching ? matchCount > 0 : null);
+            _SetSearchVisibility(item, searching ? item.IsVisible && matchCount > 0 : null);
             _SetSearchMatchBadge(item, searching ? matchCount : null);
         }
 

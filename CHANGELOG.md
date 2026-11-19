@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2369: Cockpit en door Cockpit gestarte agentbrowsers geven op Windows voorrang aan de discrete GPU. De voorkeur is instelbaar in Options › Algemeen. Laadanimaties stoppen zodra hun placeholders verborgen zijn.
+
 - AC-2361: Saving a private file no longer changes permissions on an existing shared parent directory, fixing workspace saves on Linux. Vault runtime directories remain private.
 
 - AC-2361: Agents can create and update 1Password and Bitwarden items when the provider's default-off write setting and account permissions allow it. Values come from private command output or internal generation; updates never delete items. Vault commands can use stdin, private files and multiple fields, verify credentials without output, and safely stage rotations with revision checks. Windows private storage now enforces verified owner-only permissions. Bitwarden 0.2.0 and 1Password 0.3.0 require Cockpit 0.184.0; 1Password installs op 2.23.0 or newer.

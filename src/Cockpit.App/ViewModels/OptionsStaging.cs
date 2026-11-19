@@ -28,6 +28,7 @@ internal static class OptionsStaging
         "GlobalFocusRailLayout",
         "GlobalSingleSessionLayout",
         "GlobalStackSessionsVertically",
+        "GpuPreferenceIndex",
         "IdleThresholdMinutes",
         "IncludeNightlyBuilds",
         "LocalNotificationsEnabled",

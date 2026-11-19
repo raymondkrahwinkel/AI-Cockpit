@@ -1,18 +1,21 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Rendering;
 
 namespace Cockpit.Infrastructure.Voice;
 
 // AC-68 slice 2: Identifies the host GPUs beyond "can a runtime load" — brand, whether one drives a monitor
 // (transcribing on the display GPU stutters the desktop), and VRAM. AC-1881: Vulkan is the GPU list, enriched by
 // DXGI (Windows, via LUID) or sysfs (Linux); every path degrades to fewer facts rather than throwing.
-internal static class GpuHardwareProbe
+public static class GpuHardwareProbe
 {
     private const uint DxgiAdapterFlagSoftware = 2;
-    private const int DxgiErrorNotFound = unchecked((int)0x887A0002);
+    private const int EnumAdapterByGpuPreferenceSlot = 29;
+    private const uint DxgiMinimumPower = 1;
+    private const uint DxgiHighPerformance = 2;
 
-    public static IReadOnlyList<GpuHardware> DetectAll()
+    internal static IReadOnlyList<GpuHardware> DetectAll()
     {
         try
         {
@@ -83,7 +86,20 @@ internal static class GpuHardwareProbe
     // ── Windows: DXGI ────────────────────────────────────────────────────────────────────────────────────────
 
     [SupportedOSPlatform("windows")]
-    private static IReadOnlyList<OsAdapter> _DetectWindows()
+    public static IReadOnlyList<long> WindowsAdapterLuids(GpuPreference preference)
+    {
+        try
+        {
+            return _DetectWindows(preference).Select(adapter => adapter.Luid.GetValueOrDefault()).ToArray();
+        }
+        catch (Exception exception) when (exception is COMException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            return [];
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static IReadOnlyList<OsAdapter> _DetectWindows(GpuPreference? preference = null)
     {
         var iid = typeof(IDXGIFactory1).GUID;
         if (CreateDXGIFactory1(ref iid, out var factoryPtr) != 0 || factoryPtr == IntPtr.Zero)
@@ -92,15 +108,33 @@ internal static class GpuHardwareProbe
         }
 
         var factory = (IDXGIFactory1)Marshal.GetObjectForIUnknown(factoryPtr);
-        Marshal.Release(factoryPtr);
 
+        var preferredFactory = IntPtr.Zero;
         var candidates = new List<OsAdapter>();
         try
         {
+            EnumAdapterByGpuPreference? enumeratePreferred = null;
+            var adapterInterface = typeof(IDXGIAdapter1).GUID;
+            if (preference is not null)
+            {
+                var factory6Interface = new Guid("c1b6694f-ff09-44a9-b03c-77900a0a1d17");
+                if (Marshal.QueryInterface(factoryPtr, in factory6Interface, out preferredFactory) != 0)
+                {
+                    return [];
+                }
+
+                var vtable = Marshal.ReadIntPtr(preferredFactory);
+                enumeratePreferred = Marshal.GetDelegateForFunctionPointer<EnumAdapterByGpuPreference>(
+                    Marshal.ReadIntPtr(vtable, EnumAdapterByGpuPreferenceSlot * IntPtr.Size));
+            }
+
+            var dxgiPreference = preference is GpuPreference.Integrated ? DxgiMinimumPower : DxgiHighPerformance;
             for (uint index = 0; ; index++)
             {
-                var hr = factory.EnumAdapters1(index, out var adapterPtr);
-                if (hr == DxgiErrorNotFound || hr != 0 || adapterPtr == IntPtr.Zero)
+                var hr = enumeratePreferred is null
+                    ? factory.EnumAdapters1(index, out var adapterPtr)
+                    : enumeratePreferred(preferredFactory, index, dxgiPreference, ref adapterInterface, out adapterPtr);
+                if (hr != 0 || adapterPtr == IntPtr.Zero)
                 {
                     break;
                 }
@@ -139,6 +173,11 @@ internal static class GpuHardwareProbe
         }
         finally
         {
+            if (preferredFactory != IntPtr.Zero)
+            {
+                Marshal.Release(preferredFactory);
+            }
+            Marshal.Release(factoryPtr);
             Marshal.ReleaseComObject(factory);
         }
 
@@ -147,6 +186,9 @@ internal static class GpuHardwareProbe
 
     [DllImport("dxgi.dll", PreserveSig = true)]
     private static extern int CreateDXGIFactory1(ref Guid riid, out IntPtr ppFactory);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int EnumAdapterByGpuPreference(IntPtr factory, uint index, uint preference, ref Guid iid, out IntPtr adapter);
 
     // Only the methods actually called are given real signatures; the earlier vtable slots are placeholders so
     // the COM interop lands EnumAdapters1 / EnumOutputs / GetDesc1 on the right offsets.

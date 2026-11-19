@@ -2620,14 +2620,9 @@
                 </StackPanel>
                 <DockPanel IsVisible="{Binding !IsRemoteWindow}">
                     <!-- AC-1829: what the window is still waiting for after the splash, so a skeleton is never unexplained. -->
-                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="8,0,8,0" VerticalAlignment="Center">
-                        <StackPanel.IsVisible>
-                            <MultiBinding Converter="{x:Static BoolConverters.Or}">
-                                <Binding Path="IsRestoringSessions"/>
-                                <Binding Path="IsLoadingProjects"/>
-                            </MultiBinding>
-                        </StackPanel.IsVisible>
-                        <materialIcons:MaterialIcon Classes="pulse" Kind="Circle" Width="8" Height="8"
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="8,0,8,0"
+                                VerticalAlignment="Center" IsVisible="{Binding IsLoadingWorkspace}">
+                        <materialIcons:MaterialIcon Classes.pulse="{Binding IsLoadingWorkspace}" Kind="Circle" Width="8" Height="8"
                                                     Foreground="{DynamicResource CockpitStatusBusyBrush}" VerticalAlignment="Center"/>
                         <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"
                                    Text="Restoring sessions…" IsVisible="{Binding IsRestoringSessions}"/>
