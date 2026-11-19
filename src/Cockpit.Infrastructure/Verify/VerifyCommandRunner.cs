@@ -3,6 +3,7 @@ using System.Text;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Verify;
+using Cockpit.Infrastructure.Rendering;
 
 namespace Cockpit.Infrastructure.Verify;
 
@@ -28,7 +29,22 @@ internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonServ
             StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,
         };
-        foreach (var argument in runner.Arguments)
+        var arguments = runner.Arguments.AsEnumerable();
+        if (OperatingSystem.IsWindows())
+        {
+            var deviceName = Environment.GetEnvironmentVariable(ChromiumGpuArguments.DeviceNameVariable);
+            var gpuArguments = ChromiumGpuArguments.For(deviceName);
+            startInfo.Environment[ChromiumGpuArguments.EnvironmentVariable] = string.Join(' ', gpuArguments);
+            var executable = Path.GetFileNameWithoutExtension(startInfo.FileName).ToLowerInvariant();
+            if (executable is "chrome" or "chromium" or "msedge" or "chrome-headless-shell")
+            {
+                var switches = runner.Arguments.TakeWhile(argument => argument != "--")
+                    .Where(argument => !_IsChromiumGpuSwitch(argument));
+                var positional = runner.Arguments.SkipWhile(argument => argument != "--");
+                arguments = gpuArguments.Concat(switches).Concat(positional);
+            }
+        }
+        foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -65,4 +81,8 @@ internal sealed class VerifyCommandRunner : IVerifyCommandRunner, ISingletonServ
         return new VerifyRunResult(exitCode, standardOutput, standardError, stopwatch.Elapsed, timedOut);
     }
 
+    private static bool _IsChromiumGpuSwitch(string argument) => argument.Split('=', 2)[0] is
+        "--enable-gpu" or "--disable-gpu" or "--disable-gpu-compositing" or "--use-gl" or "--use-angle"
+        or "--disable-software-rasterizer" or "--enable-unsafe-swiftshader"
+        or "--force_low_power_gpu" or "--force_high_performance_gpu" or "--use-adapter-luid";
 }

@@ -715,13 +715,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // AC-1829: while the saved sessions are still coming back this area shows skeletons, never "No sessions yet".
     public bool ShowSessionsSkeleton => IsRestoringSessions && !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
 
+    public bool IsLoadingWorkspace => IsRestoringSessions || IsLoadingProjects;
+
     // AC-1829: App holds these from the moment the window exists until the session restore and first project read land.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
     [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
+    [NotifyPropertyChangedFor(nameof(IsLoadingWorkspace))]
     private bool _isRestoringSessions;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoadingWorkspace))]
     private bool _isLoadingProjects;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
@@ -1925,14 +1929,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // ── AC-67: macOS render-backend selector (Auto / Metal / OpenGL / Software) ──────────────────────────────
     private readonly IRenderingSettingsStore? _renderingSettingsStore;
+    private readonly IGpuDeviceProvider? _gpuDeviceProvider;
 
     // The backend the app actually started on (what it is rendering with now), so a save can tell whether
     // the operator's choice differs and a restart is needed. Fixed for the session — only a restart re-reads it.
     private RenderBackendChoice _startupRenderBackend = RenderBackendChoice.Auto;
+    private static readonly GpuDeviceOption AutomaticGpuDevice = new("Automatisch", null);
+    private string? _startupGpuDeviceName;
 
     // Selected item in the Options render-backend dropdown (AC-67): Auto / Metal / OpenGL / Software.
     [ObservableProperty]
     private string _renderBackendSelection = "Auto";
+
+    [ObservableProperty]
+    private GpuDeviceOption _selectedGpuDevice = AutomaticGpuDevice;
+
+    [ObservableProperty]
+    private bool _gpuPreferenceNeedsRestart;
+
+    [ObservableProperty]
+    private string _gpuDeviceFallback = string.Empty;
 
     // True once a saved render-backend choice differs from what this process started on — reveals "Restart now".
     [ObservableProperty]
@@ -1943,6 +1959,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The render-backend choices offered by the Options dropdown.
     public IReadOnlyList<string> RenderBackendChoices { get; } = ["Auto", "Metal", "OpenGL", "Software"];
+
+    public ObservableCollection<GpuDeviceOption> GpuDevices { get; } = [AutomaticGpuDevice];
+
+    public bool ShowGpuPreference => IsWindowsPlatform && !IsRemoteWindow && _gpuDeviceProvider is not null;
 
     // True on macOS, where the render backend is a real choice; gates the setting's visibility.
     public bool IsMacOsPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
@@ -1978,7 +1998,44 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _startupRenderBackend = settings.Backend;
         RenderBackendSelection = RenderBackendLabel(settings.Backend);
         RenderBackendNeedsRestart = false;
+        await _LoadGpuDevicesAsync(settings.GpuDeviceName);
     }
+
+    private async Task _RefreshGpuDevicesAsync()
+    {
+        if (ShowGpuPreference && _renderingSettingsStore is not null)
+        {
+            var settings = await _renderingSettingsStore.LoadAsync();
+            await _LoadGpuDevicesAsync(settings.GpuDeviceName);
+        }
+    }
+
+    private async Task _LoadGpuDevicesAsync(string deviceName)
+    {
+        if (!ShowGpuPreference || _gpuDeviceProvider is not { } provider)
+        {
+            return;
+        }
+
+        _startupGpuDeviceName ??= Program.StartupGpuDeviceName ?? deviceName;
+        var names = await Task.Run(provider.GetDeviceNames);
+        GpuDevices.Clear();
+        GpuDevices.Add(AutomaticGpuDevice);
+        foreach (var name in names)
+        {
+            GpuDevices.Add(new GpuDeviceOption(name, name));
+        }
+
+        var selected = _FindGpuDevice(deviceName) ?? AutomaticGpuDevice;
+        SelectedGpuDevice = selected;
+        GpuDeviceFallback = deviceName.Length > 0 && selected.DeviceName is null
+            ? $"‘{deviceName}’ is niet beschikbaar. Cockpit gebruikt Automatisch."
+            : string.Empty;
+        GpuPreferenceNeedsRestart = selected.DeviceName != _FindGpuDevice(_startupGpuDeviceName)?.DeviceName;
+    }
+
+    private GpuDeviceOption? _FindGpuDevice(string? name) =>
+        GpuDevices.FirstOrDefault(device => string.Equals(device.DeviceName, name, StringComparison.OrdinalIgnoreCase));
 
     // Persists the render-backend choice (AC-67). Avalonia fixes the backend once at startup, so a save that
     // changes it from what this process started on flags `RenderBackendNeedsRestart` to offer a restart.
@@ -1991,7 +2048,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var choice = RenderBackendFromLabel(RenderBackendSelection);
-        await _renderingSettingsStore.SaveAsync(new RenderingSettings { Backend = choice });
+        var deviceName = ShowGpuPreference
+            ? SelectedGpuDevice?.DeviceName ?? string.Empty
+            : (await _renderingSettingsStore.LoadAsync()).GpuDeviceName;
+        if (ShowGpuPreference && deviceName.Length > 0)
+        {
+            await _LoadGpuDevicesAsync(deviceName);
+            deviceName = SelectedGpuDevice?.DeviceName ?? string.Empty;
+        }
+        await _renderingSettingsStore.SaveAsync(new RenderingSettings { Backend = choice, GpuDeviceName = deviceName });
+        GpuPreferenceNeedsRestart = SelectedGpuDevice?.DeviceName != _FindGpuDevice(_startupGpuDeviceName)?.DeviceName;
         RenderBackendNeedsRestart = choice != _startupRenderBackend;
         RenderingSettingsStatus = "Saved";
     }
@@ -3723,7 +3789,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsStore? heavyRunSettingsStore = null,
         Cockpit.Core.HeavyRuns.IHeavyRunSettingsRefresh? heavyRunSettingsRefresh = null,
         IEnumerable<Cockpit.Core.Abstractions.Mentions.IMentionSource>? mentionSources = null,
-        bool deferOptionsLoad = false)
+        bool deferOptionsLoad = false,
+        IGpuDeviceProvider? gpuDeviceProvider = null)
     {
         MentionSources = mentionSources;
         _heavyRunSettingsStore = heavyRunSettingsStore;
@@ -3968,6 +4035,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Read fresh on every refresh rather than captured, because the desk follows the operator's selection.
         AgentLineInspector.Desk = _SelectedSessionDesk;
         _renderingSettingsStore = renderingSettingsStore;
+        _gpuDeviceProvider = gpuDeviceProvider;
         _transcriptionAdvisor = transcriptionAdvisor;
         _transcriptionCalibrator = transcriptionCalibrator;
         _transcriptionCalibrationStore = transcriptionCalibrationStore;
@@ -7534,6 +7602,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         BeginOptionsEdit();
         var shown = present(this, category);
         await Task.WhenAll(
+            _LoadOptionsPageAsync("general", _RefreshGpuDevicesAsync),
             _LoadOptionsPageAsync("voice", _RefreshAudioDevicesAsync),
             _LoadOptionsPageAsync("profiles", () => Profiles?.LoadAsync() ?? Task.CompletedTask),
             _LoadOptionsPageAsync("mcp-servers", () => McpServers?.LoadAsync() ?? Task.CompletedTask),
@@ -7550,7 +7619,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await shown;
     }
 
-    private static readonly string[] _OptionsPagesLoadedAfterOpen = ["voice", "profiles", "mcp-servers", "swarm"];
+    private static readonly string[] _OptionsPagesLoadedAfterOpen = ["general", "voice", "profiles", "mcp-servers", "swarm"];
 
     private bool _optionsOpenPresented;
 
@@ -7913,7 +7982,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
         _optionsSavingCategory = "shortcuts";
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
-        _optionsSavingCategory = "appearance";
+        _optionsSavingCategory = ShowGpuPreference ? "general" : "appearance";
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
     }
 
@@ -8462,6 +8531,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OrchestratorMcpEnabled = true;
 
         RenderBackendSelection = RenderBackendLabel(new RenderingSettings().Backend);
+        SelectedGpuDevice = AutomaticGpuDevice;
+        GpuDeviceFallback = string.Empty;
         WorktreeRoot = new WorktreeSettings().Root ?? string.Empty;
         CloneRoot = new CloneSettings().Root ?? string.Empty;
 

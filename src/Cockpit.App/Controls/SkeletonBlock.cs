@@ -3,6 +3,7 @@ using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 
 namespace Cockpit.App.Controls;
 
@@ -17,6 +18,7 @@ public sealed class SkeletonBlock : Border
 
     private readonly Border _sweep;
     private readonly TranslateTransform _travel = new();
+    private Visual[] _visibilityChain = [];
     private CancellationTokenSource? _running;
 
     public SkeletonBlock()
@@ -57,15 +59,51 @@ public sealed class SkeletonBlock : Border
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _running = new CancellationTokenSource();
-        _ = _SweepAsync(_running.Token);
+        _visibilityChain = this.GetSelfAndVisualAncestors().ToArray();
+        foreach (var visual in _visibilityChain)
+        {
+            visual.PropertyChanged += _OnVisibilityChanged;
+        }
+        _UpdateSweep();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _running?.Cancel();
-        _running = null;
+        foreach (var visual in _visibilityChain)
+        {
+            visual.PropertyChanged -= _OnVisibilityChanged;
+        }
+        _visibilityChain = [];
+        _StopSweep();
         base.OnDetachedFromVisualTree(e);
+    }
+
+    private void _OnVisibilityChanged(object? sender, AvaloniaPropertyChangedEventArgs change)
+    {
+        if (change.Property == IsVisibleProperty)
+        {
+            _UpdateSweep();
+        }
+    }
+
+    private void _UpdateSweep()
+    {
+        if (!IsEffectivelyVisible)
+        {
+            _StopSweep();
+        }
+        else if (_running is null)
+        {
+            _running = new CancellationTokenSource();
+            _ = _SweepAsync(_running.Token);
+        }
+    }
+
+    private void _StopSweep()
+    {
+        _running?.Cancel();
+        _running?.Dispose();
+        _running = null;
     }
 
     private async Task _SweepAsync(CancellationToken token)
