@@ -384,6 +384,7 @@ public class MobileProtocolVectorTests
             Assert.Empty(LatestPending().EnumerateArray());
             gateway.PendingQuestions.Returns([question]);
             gateway.RowChanged += Raise.Event<EventHandler<AssistantChannelRow>>(gateway, question);
+            // AC-2381: an open card never locks the composer; free text is a normal message.
             Say(first, "stream-1", "1");
         }
 
@@ -391,6 +392,7 @@ public class MobileProtocolVectorTests
         {
             "assistantWrongKey" or "assistantBeforeReady" => 0,
             "assistantImages" => 4,
+            "assistantOpenQuestion" => 2,
             _ => 1,
         };
         await gateway.Received(expected).SendAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
