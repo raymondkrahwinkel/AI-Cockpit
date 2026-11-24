@@ -298,11 +298,6 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         {
             result = AssistantChannelSendResult.Refused("The message is empty.");
         }
-        else if (_OpenQuestion() is not null || _gateway.PendingQuestions.Count > 0)
-        {
-            // A chat message or dictated text must never implicitly answer an operator card.
-            result = AssistantChannelSendResult.Refused("Answer the question card first.");
-        }
         else
         {
             try
@@ -401,13 +396,6 @@ internal sealed partial class MobileAssistantChannel : IDisposable
                 return;
             }
 
-            // The host clears its waiting question on the operator's next message, wherever it came from; so does this.
-            if (row.Kind == AssistantChannelRowKind.UserText && _question is { } waiting)
-            {
-                answered = waiting.Id;
-                _question = null;
-            }
-
             if (row is { Kind: AssistantChannelRowKind.Question, IsUpdate: true, Questions.Count: 0 }
                 && _question?.Id == (row.CorrelationId ?? row.Id.ToString("n")))
             {
@@ -438,14 +426,6 @@ internal sealed partial class MobileAssistantChannel : IDisposable
         if (row.Kind == AssistantChannelRowKind.Question || answered is not null || asked is not null)
         {
             _SendPending();
-        }
-    }
-
-    private (string Id, string Text)? _OpenQuestion()
-    {
-        lock (_gate)
-        {
-            return _question;
         }
     }
 
