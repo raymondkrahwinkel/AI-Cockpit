@@ -22,6 +22,8 @@ public sealed record RemoteProfile(
     string? ConfigJson = null,
     JsonElement? Profile = null)
 {
+    public string? ProviderId { get; init; }
+
     public bool UsesPersonalLogin { get; init; } = true;
 
     [JsonIgnore]
