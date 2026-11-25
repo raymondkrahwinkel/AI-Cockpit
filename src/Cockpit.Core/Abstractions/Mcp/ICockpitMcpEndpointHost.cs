@@ -15,6 +15,10 @@ public interface ICockpitMcpEndpointHost
     /// <returns>False when the name was already mounted, so the caller does not own that endpoint.</returns>
     Task<bool> MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default);
 
+    /// <summary>Mounts a plugin endpoint with the identity assigned by its host.</summary>
+    Task<bool> MountPluginEndpointAsync(string pluginId, string serverName, object tools, Func<bool>? isEnabled, bool isInternal) =>
+        throw new NotSupportedException("This host cannot mount plugin-owned MCP endpoints.");
+
     /// <summary>Marks a mounted endpoint as gone: its tools answer <paramref name="reason"/> as an error and sessions stop being offered it (AC-2024).</summary>
     void Retire(string serverName, string reason);
 

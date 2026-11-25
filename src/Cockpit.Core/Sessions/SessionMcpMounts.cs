@@ -29,6 +29,14 @@ public sealed class SessionMcpMounts : ISingletonService
 
     public SessionMcpConnectionReport? ConnectionReport(string paneId) => _connections.GetValueOrDefault(paneId);
 
+    public void RestrictPluginOwnedServers(string paneId, string pluginId, IReadOnlySet<string> names)
+    {
+        var owned = (pluginId, names.ToFrozenSet(StringComparer.OrdinalIgnoreCase));
+        _mounted.AddOrUpdate(paneId,
+            _ => new SessionMcpSet(null, Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase)) { PluginOwnedServers = owned },
+            (_, current) => current with { PluginOwnedServers = owned });
+    }
+
     public void RestrictDelegation(string paneId, IReadOnlySet<string> ceiling)
     {
         var names = ceiling.ToFrozenSet(StringComparer.OrdinalIgnoreCase);

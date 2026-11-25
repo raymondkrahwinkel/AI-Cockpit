@@ -24,7 +24,8 @@ public sealed class SessionLauncher(
     ISessionStartObserver? startObserver = null,
     ProfileSessionLimit? limit = null,
     IConversationIndex? conversations = null,
-    ISessionTranscriptStore? transcripts = null) : ISessionLauncher
+    ISessionTranscriptStore? transcripts = null,
+    SessionMcpMounts? mcpMounts = null) : ISessionLauncher
 {
     private bool _closed;
     private readonly ConditionalWeakTable<ISessionHandle, string> _pluginOwners = new();
@@ -133,6 +134,10 @@ public sealed class SessionLauncher(
                         await composer.BrainAsync(request).ConfigureAwait(false)),
                     admitted.WorktreeBranch is not null),
             };
+            if (request.StartingPluginId is { } startingPluginId && request.PluginOwnedMcpNames is { } ownedNames)
+            {
+                mcpMounts?.RestrictPluginOwnedServers(paneId, startingPluginId, ownedNames);
+            }
             // AC-2162: establish profile/place before a fast provider reports its conversation id.
             if (stateRecorder is not null)
             {

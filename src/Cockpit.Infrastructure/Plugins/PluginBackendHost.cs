@@ -1175,7 +1175,7 @@ internal class PluginBackendHost(
     public async Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false)
     {
         if (services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
-            && await endpointHost.MountAsync(serverName, tools, isEnabled, isInternal).ConfigureAwait(false))
+            && await endpointHost.MountPluginEndpointAsync(pluginId, serverName, tools, isEnabled, isInternal).ConfigureAwait(false))
         {
             Runtime.Add(() => endpointHost.Retire(serverName, $"plugin {pluginName} is uitgeschakeld"));
         }

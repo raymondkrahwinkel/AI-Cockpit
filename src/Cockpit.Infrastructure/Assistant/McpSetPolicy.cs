@@ -27,7 +27,8 @@ internal sealed class McpSetPolicy(IMcpServerCatalog? catalog, IMcpOAuthTokenSto
     }
 
     internal async Task<string?> RefusalAsync(IReadOnlyList<McpServerConfig> registry, IReadOnlyList<string> names,
-        bool add = true, IReadOnlySet<string>? delegationCeiling = null, CancellationToken cancellationToken = default)
+        bool add = true, IReadOnlySet<string>? delegationCeiling = null, CancellationToken cancellationToken = default,
+        string? owningPluginId = null)
     {
         foreach (var name in names)
         {
@@ -41,7 +42,8 @@ internal sealed class McpSetPolicy(IMcpServerCatalog? catalog, IMcpOAuthTokenSto
                 continue;
             }
             var reason = server is null ? "unknown"
-                : server.Internal ? "internal servers cannot be requested"
+                : server.Internal && !(server.CockpitHosted && owningPluginId is not null && server.ContributingPluginId == owningPluginId)
+                    ? "internal servers cannot be requested"
                 : !server.Enabled ? "globally disabled"
                 : delegationCeiling is not null && !delegationCeiling.Contains(server.Name) ? "outside the delegation profile ceiling"
                 : null;

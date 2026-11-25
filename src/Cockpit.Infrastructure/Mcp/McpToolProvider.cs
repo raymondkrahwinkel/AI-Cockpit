@@ -76,7 +76,9 @@ internal sealed partial class McpToolProvider(
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection);
         // Local models host the built-in defaults (#26) overlaid by the registry (a registry entry, including
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
+        var set = paneId is null ? null : _mounts?.Set(paneId);
         var enabledServers = _WithBrainQuery(_EffectiveServers(sessionRegistry).Where(server => server.Enabled
+            && (set?.AllowsServer(server) ?? true)
             && (enabledServerNames is null || effectiveSelection?.Contains(server.Name) == true || server.AlwaysMounted)), paneId);
 
         // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
@@ -141,7 +143,7 @@ internal sealed partial class McpToolProvider(
         var set = _mounts?.Set(paneId);
         if (set is null) { return []; }
         var registry = await _catalog.GetServersForSessionAsync(set.Context?.Project?.Id, set.PreserveSelection ? new ExactMcpServerSelection(set.ServerNames) : set.ServerNames, ct);
-        var selected = _WithBrainQuery(registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name)), paneId);
+        var selected = _WithBrainQuery(registry.Where(server => server.Enabled && set.ServerNames.Contains(server.Name) && set.AllowsServer(server)), paneId);
         return set.Context?.ConfineRoot is { } root ? _ConfinedServers(selected, root) : selected;
     }
 

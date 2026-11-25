@@ -158,7 +158,8 @@ public class AssistantSpawnProjectIsolationTests
         var shared = Substitute.For<ICockpitActions>();
         var plugin = new PluginScopedActions("owner", "Owner", shared, provider);
         var other = new PluginScopedActions("other", "Other", shared, provider);
-        var request = new PluginSessionStartRequest("work", ProjectId: managedProject.Id, DeskId: deskId, McpServers: ["project-server"]);
+        var request = new PluginSessionStartRequest("work", ProjectId: managedProject.Id, DeskId: deskId, McpServers: ["project-server", "owner-endpoint"]);
+        Assert.Contains("outside", (await plugin.StartSessionAsync(request with { McpServers = ["other-endpoint"] })).Error);
         Assert.Contains("outside", (await plugin.StartSessionAsync(request with { McpServers = ["other-project-server"] })).Error);
         var paneId = Assert.IsType<string>((await plugin.StartSessionAsync(request)).PaneId);
         Assert.False(await other.CloseSessionAsync(paneId));
@@ -329,6 +330,8 @@ public class AssistantSpawnProjectIsolationTests
                 new() { Name = "cockpit-session", AlwaysMounted = true },
                 new() { Name = "cockpit-elevated", Internal = true },
                 new() { Name = "cockpit-assistant", Internal = true },
+                new() { Name = "owner-endpoint", CockpitHosted = true, Internal = true, ContributingPluginId = "owner" },
+                new() { Name = "other-endpoint", CockpitHosted = true, Internal = true, ContributingPluginId = "other" },
                 new() { Name = "off-server", Enabled = false },
                 new() { Name = "oauth", Auth = McpServerAuth.OAuth },
                 new() { Name = "cockpit-orchestrator" },

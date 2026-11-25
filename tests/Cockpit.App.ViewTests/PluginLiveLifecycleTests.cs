@@ -72,7 +72,7 @@ public sealed class PluginLiveLifecycleTests
 
         var cockpit = new CockpitViewModel();
         var mcpEndpoints = Substitute.For<ICockpitMcpEndpointHost>();
-        mcpEndpoints.MountAsync("", new object(), null, false).ReturnsForAnyArgs(true);
+        mcpEndpoints.MountPluginEndpointAsync(PluginId, "everything-endpoint", Arg.Any<object>(), null, false).Returns(true);
         var provider = _Registries(cockpit, mcpEndpoints);
         var workspaces = new WorkspacesViewModel(
             null, provider.GetRequiredService<IWidgetRegistry>(), null, provider.GetRequiredService<IWorkspaceTypeRegistry>());

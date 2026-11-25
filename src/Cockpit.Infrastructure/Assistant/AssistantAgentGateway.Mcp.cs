@@ -12,12 +12,12 @@ namespace Cockpit.Infrastructure.Assistant;
 
 internal sealed partial class AssistantAgentGateway
 {
-    private async Task<(IReadOnlyList<string> Selection, string? Refusal)> _PluginMcpSelectionAsync(
-        string pluginId, Project? project, SessionProfile profile, IReadOnlyList<string>? requested, CancellationToken cancellationToken)
+    private async Task<(IReadOnlyList<string> Selection, IReadOnlySet<string>? PluginOwnedNames, string? Refusal)> _PluginMcpSelectionAsync(
+        string pluginId, Project? project, SessionProfile profile, IReadOnlyList<string> requested, CancellationToken cancellationToken)
     {
         if (mcpServers is null)
         {
-            return ([], "The MCP catalog is unavailable.");
+            return ([], null, "The MCP catalog is unavailable.");
         }
 
         var scoped = await mcpServers.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
@@ -26,31 +26,32 @@ internal sealed partial class AssistantAgentGateway
             .Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var profileNames = (profile.EnabledMcpServerNames ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var brain = _BrainServer(project, profile);
-        var names = new ExactMcpServerSelection(requested is not null ? requested : project is null ? profileNames : projectNames);
+        var names = new ExactMcpServerSelection(requested);
         if (brain is not null)
         {
             names.Add(brain);
         }
 
-        if (requested is null)
-        {
-            return ([.. names], null);
-        }
-
         var available = await mcpServers.GetServersForSessionAsync(project?.Id, names, cancellationToken).ConfigureAwait(false);
+        HashSet<string> pluginOwnedNames = new(StringComparer.OrdinalIgnoreCase);
         foreach (var name in names)
         {
-            if (projectNames.Contains(name) || profileNames.Contains(name) || names.Comparer.Equals(name, brain)
-                || available.Any(server => names.Comparer.Equals(server.Name, name) && server.ContributingPluginId == pluginId))
+            var server = available.FirstOrDefault(server => names.Comparer.Equals(server.Name, name));
+            var configured = projectNames.Contains(name) || profileNames.Contains(name) || names.Comparer.Equals(name, brain);
+            if (server?.ContributingPluginId == pluginId && (!configured || server.Internal))
             {
+                pluginOwnedNames.Add(name);
                 continue;
             }
-            return ([], $"MCP server '{name}' is outside this plugin's session allowance.");
+            if (!configured)
+            {
+                return ([], null, $"MCP server '{name}' is outside this plugin's session allowance.");
+            }
         }
 
         var refusal = await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(available, [.. names],
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        return ([.. names], refusal);
+            cancellationToken: cancellationToken, owningPluginId: pluginId).ConfigureAwait(false);
+        return ([.. names], pluginOwnedNames.Count == 0 ? null : pluginOwnedNames, refusal);
     }
 
     public async Task<SessionMcpSetResult> GetSessionMcpSetAsync(string paneId, CancellationToken cancellationToken = default)

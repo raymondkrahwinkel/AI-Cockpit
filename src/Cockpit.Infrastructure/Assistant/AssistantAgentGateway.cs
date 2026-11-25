@@ -192,15 +192,17 @@ internal sealed partial class AssistantAgentGateway(
         }
 
         IReadOnlyList<string> outsideProject = [];
+        IReadOnlySet<string>? pluginOwnedMcpNames = null;
         var mcpServerNames = request.McpServers;
-        if (pluginId is not null)
+        if (pluginId is not null && mcpServerNames is not null)
         {
-            var (selection, refusal) = await _PluginMcpSelectionAsync(pluginId, project, profile, mcpServerNames, cancellationToken).ConfigureAwait(false);
+            var (selection, ownedNames, refusal) = await _PluginMcpSelectionAsync(pluginId, project, profile, mcpServerNames, cancellationToken).ConfigureAwait(false);
             if (refusal is not null)
             {
                 return await _RefuseSpawnAsync(request, workspace.Name, refusal, cancellationToken).ConfigureAwait(false);
             }
             mcpServerNames = selection;
+            pluginOwnedMcpNames = ownedNames;
         }
         else if (mcpServerNames is not null && _BrainServer(project, profile) is { } brainServer
             && !mcpServerNames.Contains(brainServer, StringComparer.OrdinalIgnoreCase))
@@ -258,6 +260,7 @@ internal sealed partial class AssistantAgentGateway(
         {
             Role = knownRole?.Name,
             StartingPluginId = pluginId,
+            PluginOwnedMcpNames = pluginOwnedMcpNames,
             EnabledMcpServerNames = mcpServerNames is null ? null : new ExactMcpServerSelection(mcpServerNames) { AssistantManaged = request.Target.Caller == SpawnCaller.Assistant },
             McpServersOverride = mcpServerNames,
         }).ConfigureAwait(false);
