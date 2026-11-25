@@ -116,14 +116,16 @@ internal sealed class PluginTtySessionProviderAdapter(
             {
                 throw new InvalidOperationException("The session MCP services are unavailable.");
             }
-            if (mcpMounts.Set(paneId) is { PreserveSelection: true } desired)
+            var desired = mcpMounts.Set(paneId);
+            if (desired is { PreserveSelection: true })
             {
                 enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
             }
             var registry = mcpServerCatalog.GetServersForSessionAsync(projectId, enabledServerNames, budget).GetAwaiter().GetResult();
             var autoMounted = GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, budget).GetAwaiter().GetResult();
             var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
-            var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection).Where(McpConfigFile.IsAgentEligible).ToList();
+            var eligible = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection)
+                .Where(server => McpConfigFile.IsAgentEligible(server) && (desired?.AllowsServer(server) ?? true)).ToList();
             var confineRoot = context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory) == "true" ? workingDirectory : null;
             Task.Run(() => gateway.BindLaunchAsync(paneId, projectId, workingDirectory, confineRoot, agentName, enabledServerNames is ExactMcpServerSelection { AssistantManaged: true }, budget, context.BaseEnvironment.ToDictionary(pair => pair.Key, pair => (string?)pair.Value), context.Options.GetValueOrDefault(WellKnownPluginSessionOptions.Brain)), budget).GetAwaiter().GetResult();
             var names = eligible.Select(server => server.Name).ToList();

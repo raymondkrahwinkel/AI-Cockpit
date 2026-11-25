@@ -99,7 +99,7 @@ internal sealed partial class McpToolProvider
                         }
                         var registry = await _provider._catalog.GetServersForSessionAsync(_projectId, new ExactMcpServerSelection(set.ServerNames), ct);
                         var servers = _EffectiveServers(McpServerRegistryFilter.ApplySessionSelection(registry, new ExactMcpServerSelection(set.ServerNames)))
-                            .Where(server => server.Enabled && (server.AlwaysMounted || set.ServerNames.Contains(server.Name))).ToList();
+                            .Where(server => server.Enabled && set.AllowsServer(server) && (server.AlwaysMounted || set.ServerNames.Contains(server.Name))).ToList();
                         await UpdateServersAsync(confineRoot is null ? servers : _ConfinedServers(servers, confineRoot));
                     }
                     catch (Exception) when (!ct.IsCancellationRequested)
@@ -382,7 +382,7 @@ internal sealed partial class McpToolProvider
                         {
                             config = _ConfinedServers([config], root)[0];
                         }
-                        var outcome = config.Enabled
+                        var outcome = config.Enabled && (_paneId is null || (_provider._mounts?.Set(_paneId)?.AllowsServer(config) ?? true))
                             ? await _provider._ConnectServerAsync(config, PaneToken, deadline.Token, _agentName, gateway: true, paneId: _paneId)
                             : (Connection: (ServerConnection?)null, FailureReason: "Server disabled.");
                         client = outcome.Connection?.Client;

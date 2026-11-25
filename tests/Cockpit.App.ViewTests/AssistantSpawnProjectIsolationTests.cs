@@ -35,6 +35,9 @@ using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
@@ -121,8 +124,9 @@ public class AssistantSpawnProjectIsolationTests
             EnabledMcpServerNames = ["cockpit-coding", "cockpit-orchestrator", "cockpit-terminal"],
         };
         var managedProject = Project.Create("Managed");
-        var (management, _, changes, _) = Dispatcher.UIThread.Invoke(() => _Gateway(
-            managedProfile, managedProject, _WorktreeManagerThatIsolatesCleanly(), mcpMounts: mounts));
+        var services = new ServiceCollection();
+        var (management, _, changes, deskId) = Dispatcher.UIThread.Invoke(() => _Gateway(
+            managedProfile, managedProject, _WorktreeManagerThatIsolatesCleanly(), mcpMounts: mounts, pluginServices: services));
         mounts.Bind("managed", new SessionMcpContext(managedProject, Repository, null, "work", SessionMcpManager.Assistant));
         mounts.Grant("managed", ["cockpit-session"]);
         McpRequestContext.Set("ordinary-agent");
@@ -150,6 +154,26 @@ public class AssistantSpawnProjectIsolationTests
         Assert.False(mounts.IsMounted("managed", "other-project-server"));
         Assert.Contains(changes.Entries, entry => entry.Action == AssistantSpawnAction.McpRemove && entry.Caller == SpawnCaller.Operator && entry.Refusal is null);
         McpRequestContext.Set(null);
+        using var provider = services.BuildServiceProvider();
+        var shared = Substitute.For<ICockpitActions>();
+        var plugin = new PluginScopedActions("owner", "Owner", shared, provider);
+        var other = new PluginScopedActions("other", "Other", shared, provider);
+        var request = new PluginSessionStartRequest("work", ProjectId: managedProject.Id, DeskId: deskId, McpServers: ["project-server", "owner-endpoint"]);
+        Assert.Contains("outside", (await plugin.StartSessionAsync(request with { McpServers = ["other-endpoint"] })).Error);
+        Assert.Contains("outside", (await plugin.StartSessionAsync(request with { McpServers = ["other-project-server"] })).Error);
+        var paneId = Assert.IsType<string>((await plugin.StartSessionAsync(request)).PaneId);
+        mounts.Bind(paneId, new SessionMcpContext(managedProject, Repository, null, "work"));
+        mounts.Grant(paneId, ["project-server"]);
+        Assert.False((await other.AddSessionMcpServerAsync(paneId, "owner-endpoint")).Ok);
+        Assert.False((await other.GetSessionMcpSetAsync(paneId)).Ok);
+        Assert.Contains("outside", (await plugin.AddSessionMcpServerAsync(paneId, "other-project-server")).Error);
+        var checks = await plugin.CheckSessionMcpServersAsync("work", managedProject.Id, ["owner-endpoint", "other-project-server"]);
+        Assert.Equal(new[] { true, false }, checks.Select(check => check.Ok));
+        var added = await plugin.AddSessionMcpServerAsync(paneId, "owner-endpoint");
+        Assert.True(added.Ok, added.Error);
+        Assert.Contains((await plugin.GetSessionMcpSetAsync(paneId)).Servers, server => server.Name == "owner-endpoint");
+        Assert.False(await other.CloseSessionAsync(paneId));
+        Assert.True(await plugin.CloseSessionAsync(paneId));
     }
 
     [Fact]
@@ -292,7 +316,7 @@ public class AssistantSpawnProjectIsolationTests
         LiveSessionRegistry? liveSessions = null,
         SessionRegistry? sessionRegistry = null,
         Action<CockpitViewModel>? whileComposing = null,
-        SessionMcpMounts? mcpMounts = null)
+        SessionMcpMounts? mcpMounts = null, IServiceCollection? pluginServices = null)
     {
         var sessions = sessionRegistry ?? new SessionRegistry();
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
@@ -316,6 +340,8 @@ public class AssistantSpawnProjectIsolationTests
                 new() { Name = "cockpit-session", AlwaysMounted = true },
                 new() { Name = "cockpit-elevated", Internal = true },
                 new() { Name = "cockpit-assistant", Internal = true },
+                new() { Name = "owner-endpoint", CockpitHosted = true, Internal = true, ContributingPluginId = "owner" },
+                new() { Name = "other-endpoint", CockpitHosted = true, Internal = true, ContributingPluginId = "other" },
                 new() { Name = "off-server", Enabled = false },
                 new() { Name = "oauth", Auth = McpServerAuth.OAuth },
                 new() { Name = "cockpit-orchestrator" },
@@ -366,8 +392,8 @@ public class AssistantSpawnProjectIsolationTests
         composingFor = cockpit;
 
         var trail = new RecordingSpawnTrail();
-        return (
-            AssistantAgentGatewayGraph.Over(
+        var launcher = DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpCatalog);
+        var gateway = AssistantAgentGatewayGraph.Over(
                 cockpit,
                 sessions,
                 profileStore,
@@ -380,10 +406,9 @@ public class AssistantSpawnProjectIsolationTests
                 Substitute.For<IAssistantSessionHost>(),
                 worktreeManager,
                 mcpServerCatalog: mcpCatalog,
-                mcpMounts: mcpMounts),
-            cockpit,
-            trail,
-            desk.Id);
+                mcpMounts: mcpMounts, launcher: launcher);
+        pluginServices?.AddSingleton<ISessionLauncher>(launcher).AddSingleton<IAssistantAgentGateway>(gateway);
+        return (gateway, cockpit, trail, desk.Id);
     }
 
     private sealed class RecordingSpawnTrail : IAssistantSpawnAuditLog

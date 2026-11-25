@@ -105,6 +105,9 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     public async Task<Project?> FindProjectAsync(string projectId) =>
         (await _ReadSettingsAsync().ConfigureAwait(false)).Projects.FirstOrDefault(project => project.Id == projectId);
 
+    internal async Task<IReadOnlyList<Project>> ListLocalProjectsAsync() =>
+        (await _ReadSettingsAsync().ConfigureAwait(false)).Projects;
+
     public async Task<Project> AddNewProjectAsync(Project project)
     {
         var stored = await _WriteAsync(async settings =>

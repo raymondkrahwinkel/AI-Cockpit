@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Sessions;
+
 namespace Cockpit.Plugins.Abstractions;
 
 /// <summary>
@@ -28,6 +30,32 @@ public interface ICockpitActions
     /// </remarks>
     Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName) =>
         throw new NotSupportedException("This host cannot start sessions.");
+
+    /// <summary>Starts a session owned by this plugin, or returns the host's reason for refusing it.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0. Available on the host that runs the plugin backend.</remarks>
+    Task<PluginSessionStartResult> StartSessionAsync(PluginSessionStartRequest request) =>
+        throw new NotSupportedException("This host cannot start plugin-owned sessions.");
+
+    /// <summary>Closes a live session started by this plugin through the request-based start. Returns false if refused.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0. Ownership lasts for the live pane on the host running the plugin backend.</remarks>
+    Task<bool> CloseSessionAsync(string paneId) =>
+        throw new NotSupportedException("This host cannot close plugin-owned sessions.");
+
+    /// <summary>Adds one MCP server to a live session started by this plugin, without restarting it.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0. Connection confirmation can arrive after the selection changes.</remarks>
+    Task<PluginSessionMcpResult> AddSessionMcpServerAsync(string paneId, string serverName) =>
+        throw new NotSupportedException("This host cannot change MCP servers for plugin-owned sessions.");
+
+    /// <summary>Reads the current MCP selection and connection statuses for a live session started by this plugin.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0.</remarks>
+    Task<PluginSessionMcpResult> GetSessionMcpSetAsync(string paneId) =>
+        throw new NotSupportedException("This host cannot read MCP servers for plugin-owned sessions.");
+
+    /// <summary>Checks the named servers against the start policy without opening a session or connecting to the servers.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0. A null profile label uses the named project's default.</remarks>
+    Task<IReadOnlyList<PluginSessionMcpServerCheck>> CheckSessionMcpServersAsync(
+        string? profileLabel, string? projectId, IReadOnlyList<string> serverNames) =>
+        throw new NotSupportedException("This host cannot check MCP servers for plugin-owned sessions.");
 
     /// <summary>
     /// Hands work to another profile as a background task and waits for what it produces (#67, #69). The task

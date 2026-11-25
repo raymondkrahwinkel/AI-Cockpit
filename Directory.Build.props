@@ -465,7 +465,8 @@
     <!-- 0.180.1 (AC-2301): older transcript source pages (SDK 3.93.0); Depot requires this host version. -->
     <!-- 0.180.2 (AC-2318): animated Wispslate splash; no API change. -->
     <!-- 0.184.0 (AC-2361): provider-gated vault writes and revision-checked updates, SDK 3.97.0. -->
-    <VersionPrefix>0.184.0</VersionPrefix>
+    <!-- 0.185.0: plugin-owned session start, close and MCP management (SDK 3.98.0). -->
+    <VersionPrefix>0.185.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

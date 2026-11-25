@@ -113,6 +113,9 @@ internal sealed class CockpitMcpEndpointHost
     public Task<bool> MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default) =>
         _MountAsync(serverName, tools, isEnabled, isInternal, alwaysMounted, nodeOnly: false, cancellationToken);
 
+    public Task<bool> MountPluginEndpointAsync(string pluginId, string serverName, object tools, Func<bool>? isEnabled, bool isInternal) =>
+        _MountAsync(serverName, tools, isEnabled, isInternal, alwaysMounted: false, nodeOnly: false, CancellationToken.None, pluginId);
+
     // AC-2024: the undo of a plugin's mount. The listener stays, so a session that still holds the URL gets a tool
     // error naming the plugin instead of a refused connection; a later mount of the name replaces it.
     public void Retire(string serverName, string reason)
@@ -197,7 +200,8 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    private async Task<bool> _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal, bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken)
+    private async Task<bool> _MountAsync(string serverName, object tools, Func<bool>? isEnabled, bool isInternal,
+        bool alwaysMounted, bool nodeOnly, CancellationToken cancellationToken, string? contributingPluginId = null)
     {
         await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -391,7 +395,10 @@ internal sealed class CockpitMcpEndpointHost
 
             lock (_mountedLock)
             {
-                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly, app));
+                _mounted.Add(new MountedEndpoint(serverName, url, enabled, isInternal, alwaysMounted, nodeUrl, nodeOnly, app)
+                {
+                    ContributingPluginId = contributingPluginId,
+                });
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
@@ -431,6 +438,7 @@ internal sealed class CockpitMcpEndpointHost
                     CockpitHosted = true,
                     Internal = endpoint.Internal,
                     AlwaysMounted = endpoint.AlwaysMounted,
+                    ContributingPluginId = endpoint.ContributingPluginId,
                 }),
             ];
         }
@@ -678,5 +686,6 @@ internal sealed class CockpitMcpEndpointHost
     private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false, string? NodeUrl = null, bool NodeOnly = false, WebApplication App = null!)
     {
         public string? Retired { get; set; }
+        public string? ContributingPluginId { get; init; }
     }
 }

@@ -462,7 +462,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             {
                 throw new InvalidOperationException("The session MCP services are unavailable.");
             }
-            if (mcpMounts.Set(gatewayPane) is { PreserveSelection: true } desired)
+            var desired = mcpMounts.Set(gatewayPane);
+            if (desired is { PreserveSelection: true })
             {
                 enabledServerNames = new ExactMcpServerSelection(desired.ServerNames) { AssistantManaged = desired.Context?.Manager == SessionMcpManager.Assistant };
             }
@@ -470,7 +471,8 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             var autoMounted = await GitHubPullRequestsAutoMount.NamesAsync(worktreeManager, workingDirectory, cancellationToken).ConfigureAwait(false);
             var effectiveSelection = McpServerRegistryFilter.WithAutoMountedServers(enabledServerNames, registry, autoMounted);
             var names = McpServerRegistryFilter.ApplySessionSelection(registry, effectiveSelection)
-                .Where(McpConfigFile.IsAgentEligible).Select(server => server.Name).ToList();
+                .Where(server => McpConfigFile.IsAgentEligible(server) && (desired?.AllowsServer(server) ?? true))
+                .Select(server => server.Name).ToList();
             _minted = new MintedToken(gatewayPane, keyring.TokenFor(gatewayPane));
             mcpMounts.Grant(gatewayPane, names);
             await gateway.PrepareLaunchAsync(gatewayPane, cancellationToken).ConfigureAwait(false);

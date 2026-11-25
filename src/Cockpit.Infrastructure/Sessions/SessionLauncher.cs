@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Profiles;
@@ -22,9 +24,11 @@ public sealed class SessionLauncher(
     ISessionStartObserver? startObserver = null,
     ProfileSessionLimit? limit = null,
     IConversationIndex? conversations = null,
-    ISessionTranscriptStore? transcripts = null) : ISessionLauncher
+    ISessionTranscriptStore? transcripts = null,
+    SessionMcpMounts? mcpMounts = null) : ISessionLauncher
 {
     private bool _closed;
+    private readonly ConditionalWeakTable<ISessionHandle, string> _pluginOwners = new();
 
     public Task<T> RunExclusiveAsync<T>(Func<T> decision) => desks.RunExclusiveAsync(decision);
 
@@ -97,6 +101,11 @@ public sealed class SessionLauncher(
         {
             return new LaunchedSession(string.Empty, name, null, decision);
         }
+        if (request.StartingPluginId is not null && admitted.Notice is { } notice)
+        {
+            return new LaunchedSession(string.Empty, name, null,
+                new NeedsWorktreeDecision(request.WorkingDirectory, notice.Message));
+        }
 
         var hosted = waiting ?? await _HostAsync(request, paneId, name, kind, admitted).ConfigureAwait(false);
         if (hosted is null)
@@ -125,6 +134,10 @@ public sealed class SessionLauncher(
                         await composer.BrainAsync(request).ConfigureAwait(false)),
                     admitted.WorktreeBranch is not null),
             };
+            if (request.StartingPluginId is { } startingPluginId && request.PluginOwnedMcpNames is { } ownedNames)
+            {
+                mcpMounts?.RestrictPluginOwnedServers(paneId, startingPluginId, ownedNames);
+            }
             // AC-2162: establish profile/place before a fast provider reports its conversation id.
             if (stateRecorder is not null)
             {
@@ -160,6 +173,14 @@ public sealed class SessionLauncher(
         bool? promptDelivered = string.IsNullOrWhiteSpace(request.Prompt)
             ? null
             : await hosted.SubmitPromptWhenReadyAsync(request.Prompt).ConfigureAwait(false) ?? false;
+        if (request.StartingPluginId is { } pluginId)
+        {
+            if (!ReferenceEquals(registry.Find(paneId), hosted))
+            {
+                return null;
+            }
+            _pluginOwners.Add(hosted, pluginId);
+        }
         return new LaunchedSession(paneId, name, promptDelivered, UnisolatedNotice: admitted.Notice, RoleWarning: request.RoleWarning);
     }
 
@@ -240,17 +261,44 @@ public sealed class SessionLauncher(
             return;
         }
 
+        await _StopSessionAsync(hosted).ConfigureAwait(false);
+    }
+
+    internal async Task<bool> ClosePluginSessionAsync(string paneId, string pluginId)
+    {
+        return FindPluginSession(paneId, pluginId) is { } hosted && await _StopSessionAsync(hosted).ConfigureAwait(false);
+    }
+
+    internal IHostedSession? FindPluginSession(string paneId, string pluginId)
+    {
+        if (string.IsNullOrWhiteSpace(paneId) || string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
+            || registry.Find(paneId) is not IHostedSession { IsEmbedded: false } hosted
+            || !_pluginOwners.TryGetValue(hosted, out var owner) || !string.Equals(owner, pluginId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return hosted;
+    }
+
+    private async Task<bool> _StopSessionAsync(IHostedSession hosted)
+    {
         // A frontend's pane closes itself, record and worktree included; a backend host is the launcher's to clear.
         if (hosted is not (SessionHostHandle or BackendTtySession))
         {
             await hosting.StopAsync(hosted).ConfigureAwait(false);
-            return;
+            return true;
         }
 
-        registry.Unregister(paneId);
+        if (!registry.TryUnregister(hosted))
+        {
+            return false;
+        }
+
         await _RecordConversationAsync(hosted, closed: true).ConfigureAwait(false);
         await _TearDownAsync(hosted).ConfigureAwait(false);
-        await desks.RemovePaneAsync(hosted.WorkspaceId, paneId).ConfigureAwait(false);
+        await desks.RemovePaneAsync(hosted.WorkspaceId, hosted.PaneId).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<bool> SetSessionNameAsync(string paneId, string name)

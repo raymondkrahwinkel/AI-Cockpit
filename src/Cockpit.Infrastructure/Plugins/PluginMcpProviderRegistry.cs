@@ -12,9 +12,12 @@ public sealed class PluginMcpProviderRegistry(params IPluginMcpProvider[] provid
     }
 
     private readonly object _gate = new();
-    private readonly List<IPluginMcpProvider> _providers = [.. providers];
+    private readonly List<(IPluginMcpProvider Provider, string? PluginId)> _providers =
+        [.. providers.Select(provider => (provider, (string?)null))];
 
-    public IReadOnlyList<IPluginMcpProvider> Providers
+    public IReadOnlyList<IPluginMcpProvider> Providers => [.. Registrations.Select(entry => entry.Provider)];
+
+    internal IReadOnlyList<(IPluginMcpProvider Provider, string? PluginId)> Registrations
     {
         get
         {
@@ -25,13 +28,15 @@ public sealed class PluginMcpProviderRegistry(params IPluginMcpProvider[] provid
         }
     }
 
-    public void Register(IPluginMcpProvider provider)
+    public void Register(IPluginMcpProvider provider) => Register(provider, null);
+
+    internal void Register(IPluginMcpProvider provider, string? pluginId)
     {
         lock (_gate)
         {
-            if (!_providers.Any(existing => ReferenceEquals(existing, provider)))
+            if (!_providers.Any(existing => ReferenceEquals(existing.Provider, provider)))
             {
-                _providers.Add(provider);
+                _providers.Add((provider, pluginId));
             }
         }
     }
@@ -40,7 +45,7 @@ public sealed class PluginMcpProviderRegistry(params IPluginMcpProvider[] provid
     {
         lock (_gate)
         {
-            _providers.Remove(provider);
+            _providers.RemoveAll(entry => ReferenceEquals(entry.Provider, provider));
         }
     }
 }

@@ -259,7 +259,7 @@ public sealed class PluginManager(
             // Before Initialize, as the DI singleton it replaced was: the first-start sign-in (Depot) names its server then.
             if (plugin is IPluginMcpProvider provider)
             {
-                McpProviders.Register(provider);
+                McpProviders.Register(provider, candidate.FolderId);
             }
 
             _loaded.Add((candidate with { RequiresRestart = _RequiresRestart(candidate) }, plugin));
@@ -438,7 +438,7 @@ public sealed class PluginManager(
             }
             if (plugin is IPluginMcpProvider provider)
             {
-                McpProviders.Register(provider);
+                McpProviders.Register(provider, discovered.FolderId);
                 RuntimeFor(discovered.FolderId).Add(() => McpProviders.Remove(provider));
             }
             plugin.Initialize(host);

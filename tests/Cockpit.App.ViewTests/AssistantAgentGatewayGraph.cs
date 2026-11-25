@@ -36,10 +36,11 @@ internal static class AssistantAgentGatewayGraph
         ProjectCatalog? projects = null,
         IProviderModelIntelligence? providerIntelligence = null,
         TimeSpan? modelIntelligenceBudget = null,
-        Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null) =>
+        Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
+        SessionLauncher? launcher = null) =>
         new(
             sessions,
-            DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
+            launcher ?? DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
             projects ?? TestProjects.Catalog(sharedSources: sharedProjectSources),
             new ProjectComposerAdapter(new ProjectComposer(profiles, mcpServerCatalog)),
             watcher,
