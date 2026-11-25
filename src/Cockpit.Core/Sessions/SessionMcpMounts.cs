@@ -46,7 +46,10 @@ public sealed class SessionMcpMounts : ISingletonService
         Changed?.Invoke(paneId);
     }
 
-    public bool TryChange(string paneId, SessionMcpSet expected, string name, bool add)
+    public bool TryChange(string paneId, SessionMcpSet expected, string name, bool add) =>
+        TryChange(paneId, expected, name, add, owningPluginId: null);
+
+    public bool TryChange(string paneId, SessionMcpSet expected, string name, bool add, string? owningPluginId)
     {
         var names = expected.ServerNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (add)
@@ -57,7 +60,19 @@ public sealed class SessionMcpMounts : ISingletonService
         {
             names.Remove(name);
         }
-        if (!_mounted.TryUpdate(paneId, expected with { PreserveSelection = true, ServerNames = names.ToFrozenSet(StringComparer.OrdinalIgnoreCase) }, expected))
+        var owned = expected.PluginOwnedServers;
+        if (add && owningPluginId is not null)
+        {
+            var ownedNames = (owned?.Names ?? Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase))
+                .Append(name).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+            owned = (owningPluginId, ownedNames);
+        }
+        if (!_mounted.TryUpdate(paneId, expected with
+        {
+            PreserveSelection = true,
+            ServerNames = names.ToFrozenSet(StringComparer.OrdinalIgnoreCase),
+            PluginOwnedServers = owned,
+        }, expected))
         {
             return false;
         }

@@ -266,14 +266,19 @@ public sealed class SessionLauncher(
 
     internal async Task<bool> ClosePluginSessionAsync(string paneId, string pluginId)
     {
+        return FindPluginSession(paneId, pluginId) is { } hosted && await _StopSessionAsync(hosted).ConfigureAwait(false);
+    }
+
+    internal IHostedSession? FindPluginSession(string paneId, string pluginId)
+    {
         if (string.IsNullOrWhiteSpace(paneId) || string.Equals(paneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
             || registry.Find(paneId) is not IHostedSession { IsEmbedded: false } hosted
             || !_pluginOwners.TryGetValue(hosted, out var owner) || !string.Equals(owner, pluginId, StringComparison.Ordinal))
         {
-            return false;
+            return null;
         }
 
-        return await _StopSessionAsync(hosted).ConfigureAwait(false);
+        return hosted;
     }
 
     private async Task<bool> _StopSessionAsync(IHostedSession hosted)

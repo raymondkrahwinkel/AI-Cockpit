@@ -411,7 +411,8 @@ public static class CapabilityCatalog
             "Opens a session with a first prompt, running an agent with the operator's rights, and closes sessions owned by the plugin.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitActions.StartSessionAsync", "ICockpitActions.CloseSessionAsync"],
+            ["ICockpitActions.StartSessionAsync", "ICockpitActions.CloseSessionAsync", "ICockpitActions.AddSessionMcpServerAsync",
+                "ICockpitActions.GetSessionMcpSetAsync", "ICockpitActions.CheckSessionMcpServersAsync"],
             [new("profileLabel", "The profile the plugin may start a session on.")]),
 
         new(

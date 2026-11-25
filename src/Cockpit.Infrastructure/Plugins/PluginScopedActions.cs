@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
@@ -55,6 +56,24 @@ public sealed class PluginScopedActions(string pluginId, string pluginName, ICoc
     }
 
     public Task<bool> CloseSessionAsync(string paneId) => _LocalLauncher().ClosePluginSessionAsync(paneId, pluginId);
+
+    public Task<PluginSessionMcpResult> AddSessionMcpServerAsync(string paneId, string serverName) =>
+        _McpGateway().AddPluginSessionMcpServerAsync(pluginId, _LocalLauncher().FindPluginSession(paneId, pluginId), serverName);
+
+    public Task<PluginSessionMcpResult> GetSessionMcpSetAsync(string paneId) =>
+        _McpGateway().ReadPluginSessionMcpSetAsync(_LocalLauncher().FindPluginSession(paneId, pluginId));
+
+    public Task<IReadOnlyList<PluginSessionMcpServerCheck>> CheckSessionMcpServersAsync(
+        string? profileLabel, string? projectId, IReadOnlyList<string> serverNames)
+    {
+        _LocalLauncher();
+        ArgumentNullException.ThrowIfNull(serverNames);
+        return _McpGateway().CheckPluginMcpServersAsync(pluginId, profileLabel, projectId, serverNames.ToArray());
+    }
+
+    private AssistantAgentGateway _McpGateway() =>
+        services.GetService<IAssistantAgentGateway>() as AssistantAgentGateway
+        ?? throw new NotSupportedException("This host cannot manage MCP servers for plugin-owned sessions.");
 
     private SessionLauncher _LocalLauncher() =>
         services.GetService<ISessionLauncher>() as SessionLauncher

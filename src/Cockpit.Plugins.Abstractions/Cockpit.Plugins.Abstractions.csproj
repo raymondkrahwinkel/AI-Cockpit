@@ -693,7 +693,7 @@
     <!-- 3.93.0 (AC-2301): ICockpitSessionObserver.ReadTranscriptBeforeAsync (default null); requires host 0.180.1, contract stays 3. -->
     <!-- 3.95.0 (AC-2336): ICockpitHost.AddVaultProvider and the Vault namespace (default: a context that is never available); no plugin calls it yet, contract stays 3. -->
     <!-- 3.97.0 (AC-2361): optional vault writes, native-item revisions and guarded updates; requires host 0.184.0, contract stays 3. -->
-    <!-- 3.98.0: plugin-owned session start and close on ICockpitActions; requires host 0.185.0, contract stays 3. -->
+    <!-- 3.98.0: plugin-owned session start, close and MCP management on ICockpitActions; requires host 0.185.0, contract stays 3. -->
     <Version>3.98.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

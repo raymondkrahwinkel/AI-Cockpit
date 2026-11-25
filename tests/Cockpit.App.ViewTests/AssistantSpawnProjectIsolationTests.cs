@@ -162,6 +162,16 @@ public class AssistantSpawnProjectIsolationTests
         Assert.Contains("outside", (await plugin.StartSessionAsync(request with { McpServers = ["other-endpoint"] })).Error);
         Assert.Contains("outside", (await plugin.StartSessionAsync(request with { McpServers = ["other-project-server"] })).Error);
         var paneId = Assert.IsType<string>((await plugin.StartSessionAsync(request)).PaneId);
+        mounts.Bind(paneId, new SessionMcpContext(managedProject, Repository, null, "work"));
+        mounts.Grant(paneId, ["project-server"]);
+        Assert.False((await other.AddSessionMcpServerAsync(paneId, "owner-endpoint")).Ok);
+        Assert.False((await other.GetSessionMcpSetAsync(paneId)).Ok);
+        Assert.Contains("outside", (await plugin.AddSessionMcpServerAsync(paneId, "other-project-server")).Error);
+        var checks = await plugin.CheckSessionMcpServersAsync("work", managedProject.Id, ["owner-endpoint", "other-project-server"]);
+        Assert.Equal(new[] { true, false }, checks.Select(check => check.Ok));
+        var added = await plugin.AddSessionMcpServerAsync(paneId, "owner-endpoint");
+        Assert.True(added.Ok, added.Error);
+        Assert.Contains((await plugin.GetSessionMcpSetAsync(paneId)).Servers, server => server.Name == "owner-endpoint");
         Assert.False(await other.CloseSessionAsync(paneId));
         Assert.True(await plugin.CloseSessionAsync(paneId));
     }
