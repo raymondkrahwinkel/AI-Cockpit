@@ -4,14 +4,15 @@ namespace Cockpit.Core.Abstractions.Assistant;
 
 // AC-1013: Which desk a spawn lands on, inseparably from how that was decided (AC-545) — the assistant names its
 // target (no desk of its own, confirmed on screen), a coordinator's target is derived host-side from its own
-// verified pane, no workspace parameter on the wire. No public constructor; only the two named factories below.
+// verified pane, no workspace parameter on the wire. Only the named factories may create a target.
 public sealed record SpawnTarget
 {
-    private SpawnTarget(string workspaceId, SpawnCaller caller, string? callerPaneId)
+    private SpawnTarget(string workspaceId, SpawnCaller caller, string? callerPaneId, string? pluginId = null)
     {
         WorkspaceId = workspaceId;
         Caller = caller;
         CallerPaneId = callerPaneId;
+        PluginId = pluginId;
     }
 
     // The desk the session is to appear on. Always a real workspace id — neither door mints one.
@@ -23,11 +24,17 @@ public sealed record SpawnTarget
     // The verified pane of a host-derived caller, or null for the assistant — which has no pane, and whose target is therefore not derived from one.
     public string? CallerPaneId { get; }
 
+    public string? PluginId { get; }
+
     // The assistant's rule: the workspace was *named* by the caller, because the assistant has no desk of
     // its own to infer one from. Reachable only behind the assistant's own pane check and the visual consent gate —
     // naming a target is exactly what makes confirming it necessary.
     public static SpawnTarget NamedByTheAssistant(string workspaceId) =>
         new(workspaceId, SpawnCaller.Assistant, callerPaneId: null);
+
+    // The host's plugin-scoped actions supply the identity; the SDK request carries only the desk choice.
+    public static SpawnTarget NamedByAPlugin(string workspaceId, string pluginId) =>
+        new(workspaceId, SpawnCaller.Plugin, callerPaneId: null, pluginId);
 
     // AC-1013: A coordinator's rule (AC-436), unused seam written down now so the next implementer starts from
     // "derive it" rather than "validate what was passed" — workspaceId/callerPaneId are never caller-supplied.
@@ -55,4 +62,6 @@ public enum SpawnCaller
     Controller,
 
     Operator,
+
+    Plugin,
 }

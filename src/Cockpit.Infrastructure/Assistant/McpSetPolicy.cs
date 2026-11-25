@@ -23,6 +23,12 @@ internal sealed class McpSetPolicy(IMcpServerCatalog? catalog, IMcpOAuthTokenSto
             return "The MCP catalog is unavailable.";
         }
         var registry = await catalog.GetServersForSessionAsync(projectId, new ExactMcpServerSelection(names), cancellationToken).ConfigureAwait(false);
+        return await RefusalAsync(registry, names, add, delegationCeiling, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<string?> RefusalAsync(IReadOnlyList<McpServerConfig> registry, IReadOnlyList<string> names,
+        bool add = true, IReadOnlySet<string>? delegationCeiling = null, CancellationToken cancellationToken = default)
+    {
         foreach (var name in names)
         {
             var server = registry.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));

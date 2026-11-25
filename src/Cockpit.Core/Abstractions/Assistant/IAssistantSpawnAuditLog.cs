@@ -36,7 +36,10 @@ public sealed record AssistantSpawnAuditEntry(
     string? ProjectId = null,
     IReadOnlyList<string>? McpServers = null,
     IReadOnlyList<string>? McpServersOutsideProject = null,
-    string? Role = null);
+    string? Role = null)
+{
+    public string? CallerPluginId { get; init; }
+}
 
 // What a trail entry records having been asked for.
 public enum AssistantSpawnAction

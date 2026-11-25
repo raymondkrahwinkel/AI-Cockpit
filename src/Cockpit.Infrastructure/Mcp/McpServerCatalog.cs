@@ -51,17 +51,17 @@ internal sealed class McpServerCatalog(
         // AC-500/AC-504: projectId and memory schemes reach each provider directly, so a plugin can contribute
         // a project-only server. AC-736/AC-766: `schemeless` is the same answer without those schemes, so
         // scheme-gated servers can be told apart; an unscoped query has no project, so nothing is marked linked.
-        var providers = pluginProviders.Providers;
+        var providers = pluginProviders.Registrations;
         var schemeless = project is null || projectMemorySchemes.Count == 0
             ? null
             : providers
-                .SelectMany(provider => _ServersOf(provider, projectId, []))
+                .SelectMany(entry => _ServersOf(entry.Provider, projectId, []))
                 .Select(contribution => contribution.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var pluginServers = providers
-            .SelectMany(provider => _ServersOf(provider, projectId, projectMemorySchemes))
-            .Select(PluginMcpMapping.ToServerConfig)
+            .SelectMany(entry => _ServersOf(entry.Provider, projectId, projectMemorySchemes)
+                .Select(contribution => PluginMcpMapping.ToServerConfig(contribution) with { ContributingPluginId = entry.PluginId }))
             .Select(server => schemeless?.Contains(server.Name) == false ? server with { ProjectLinked = true } : server)
             .ToList();
 

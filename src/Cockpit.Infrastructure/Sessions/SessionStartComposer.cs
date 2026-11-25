@@ -58,8 +58,9 @@ public sealed class SessionStartComposer(
             profile: profile,
             globalWorkingDirectory: CockpitBuild.DefaultWorkingDirectory,
             memorySources: memorySources?.Sources.ToMemorySources());
-        var lookupDirectory = string.IsNullOrWhiteSpace(request.WorkingDirectory) ? profileOnly.WorkingDirectory : request.WorkingDirectory;
-        var projectId = request.ProjectId is { Length: > 0 } given ? given : await ProjectIdForDirectoryAsync(lookupDirectory).ConfigureAwait(false);
+        var projectId = request.ProjectId is { Length: > 0 } || request.StartingPluginId is not null
+            ? request.ProjectId
+            : await _ProjectIdForStartAsync(request.WorkingDirectory, profileOnly.WorkingDirectory).ConfigureAwait(false);
         var project = projectId is null ? null : await FindProjectAsync(projectId).ConfigureAwait(false);
         var composed = project is null ? null : await ComposeAsync(project, profile, cancellationToken).ConfigureAwait(false);
         var kind = request.Kind ?? composed?.Kind ?? (TtyRoute.IsDefault(profile, ttyProviders) ? PaneSessionKind.Tty : PaneSessionKind.Sdk);
@@ -202,6 +203,13 @@ public sealed class SessionStartComposer(
 
     public async Task<Project?> FindProjectAsync(string projectId) =>
         (await projects.LoadAsync().ConfigureAwait(false)).Projects.FirstOrDefault(project => project.Id == projectId);
+
+    internal Task<string?> ProjectIdForStartAsync(string? directory, SessionProfile profile) =>
+        _ProjectIdForStartAsync(directory, SessionStartDefaults.Resolve(null, profile,
+            globalWorkingDirectory: CockpitBuild.DefaultWorkingDirectory).WorkingDirectory);
+
+    private Task<string?> _ProjectIdForStartAsync(string? directory, string? defaultDirectory) =>
+        ProjectIdForDirectoryAsync(string.IsNullOrWhiteSpace(directory) ? defaultDirectory : directory);
 
     // The folder as requested, never the worktree a start derives from it: a run's own worktree belongs to no project,
     // the repository it was cut from does (AC-320). An unreadable list or registry costs that answer, not the start.

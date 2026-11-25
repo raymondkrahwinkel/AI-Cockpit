@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Sessions;
+
 namespace Cockpit.Plugins.Abstractions;
 
 /// <summary>
@@ -28,6 +30,16 @@ public interface ICockpitActions
     /// </remarks>
     Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName) =>
         throw new NotSupportedException("This host cannot start sessions.");
+
+    /// <summary>Starts a session owned by this plugin, or returns the host's reason for refusing it.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0. Available on the host that runs the plugin backend.</remarks>
+    Task<PluginSessionStartResult> StartSessionAsync(PluginSessionStartRequest request) =>
+        throw new NotSupportedException("This host cannot start plugin-owned sessions.");
+
+    /// <summary>Closes a live session started by this plugin through the request-based start. Returns false if refused.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.185.0. Ownership lasts for the live pane on the host running the plugin backend.</remarks>
+    Task<bool> CloseSessionAsync(string paneId) =>
+        throw new NotSupportedException("This host cannot close plugin-owned sessions.");
 
     /// <summary>
     /// Hands work to another profile as a background task and waits for what it produces (#67, #69). The task

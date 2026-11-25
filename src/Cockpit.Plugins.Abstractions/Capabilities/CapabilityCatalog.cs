@@ -408,10 +408,10 @@ public static class CapabilityCatalog
         new(
             "sessions.start",
             "Starting sessions",
-            "Opens a session on a named profile with a first prompt, running an agent with the operator's rights.",
+            "Opens a session with a first prompt, running an agent with the operator's rights, and closes sessions owned by the plugin.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitActions.StartSessionAsync"],
+            ["ICockpitActions.StartSessionAsync", "ICockpitActions.CloseSessionAsync"],
             [new("profileLabel", "The profile the plugin may start a session on.")]),
 
         new(

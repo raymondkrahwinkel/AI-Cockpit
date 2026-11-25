@@ -117,6 +117,9 @@ public sealed record SessionLaunchRequest(
 
     public string? ProjectJobId { get; init; }
 
+    // Stamped by the host's plugin spawn door, never supplied by a plugin request.
+    public string? StartingPluginId { get; init; }
+
     // The profile's and project's own words; the launcher folds the standing instruction after them (AC-544).
     public string? SystemPrompt { get; init; }
 

@@ -70,6 +70,20 @@ public sealed class SessionRegistry : ISessionRegistration, ISingletonService
         }
     }
 
+    internal bool TryUnregister(ISessionHandle expected)
+    {
+        lock (_gate)
+        {
+            if (_handles.RemoveAll(handle => ReferenceEquals(handle, expected)) == 0)
+            {
+                return false;
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     // AC-1374: kept off `_handles` on purpose — the assistant must never appear in `All`, only be reachable by
     // whoever already knows to ask for it by name.
     public void RegisterAssistant(ISessionHandle handle)

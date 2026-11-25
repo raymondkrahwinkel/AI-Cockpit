@@ -50,7 +50,8 @@ internal sealed partial class AssistantAgentGateway(
     Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
     SessionRoleResolver? roles = null,
     Cockpit.Infrastructure.Plugins.IProjectMemorySourceRegistry? memorySources = null,
-    IAssistantSettingsStore? assistantSettings = null) : IAssistantAgentGateway, ISingletonService
+    IAssistantSettingsStore? assistantSettings = null,
+    SessionStartComposer? sessionStartComposer = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -74,6 +75,8 @@ internal sealed partial class AssistantAgentGateway(
 
     private async Task<AgentSpawnResult> _SpawnAsync(AgentSpawnRequest request, CancellationToken cancellationToken)
     {
+        var pluginId = request.Target.PluginId;
+
         // Read before anything else: this is file-backed and the only genuinely slow step in the whole call.
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
 
@@ -83,7 +86,9 @@ internal sealed partial class AssistantAgentGateway(
         if (workspace is null)
         {
             return await _RefuseSpawnAsync(request, workspaceName: null,
-                $"There is no workspace with id '{request.Target.WorkspaceId}'. List the workspaces and name one of those.",
+                pluginId is not null && request.Target.WorkspaceId.Length == 0
+                    ? "There is no Sessions desk available."
+                    : $"There is no workspace with id '{request.Target.WorkspaceId}'. List the workspaces and name one of those.",
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -104,8 +109,15 @@ internal sealed partial class AssistantAgentGateway(
             project = await launcher.FindProjectByIdAsync(requestedProjectId).ConfigureAwait(false);
             if (project is null)
             {
+                var reason = $"There is no project with id '{requestedProjectId}'. Call list_projects and name one of those.";
+                if (pluginId is not null)
+                {
+                    var available = await projects.ListLocalProjectsAsync().ConfigureAwait(false);
+                    var names = available.Count == 0 ? "none are configured" : string.Join(", ", available.Select(item => $"'{item.Name}' ({item.Id})"));
+                    reason = $"There is no project with id '{requestedProjectId}'. Available projects: {names}.";
+                }
                 return await _RefuseSpawnAsync(request, workspace.Name,
-                    $"There is no project with id '{requestedProjectId}'. Call list_projects and name one of those.",
+                    reason,
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -132,6 +144,12 @@ internal sealed partial class AssistantAgentGateway(
             return await _RefuseSpawnAsync(request, workspace.Name,
                 $"There is no profile called '{profileLabel}'. The profiles this cockpit knows are: {labels}.",
                 cancellationToken).ConfigureAwait(false);
+        }
+
+        if (pluginId is not null && project is null && sessionStartComposer is not null
+            && await sessionStartComposer.ProjectIdForStartAsync(request.WorkingDirectory, profile).ConfigureAwait(false) is { } inferredProjectId)
+        {
+            project = await launcher.FindProjectByIdAsync(inferredProjectId).ConfigureAwait(false);
         }
 
         var (requestedKind, kindRefusal) = _ParseKind(request.Kind);
@@ -175,13 +193,22 @@ internal sealed partial class AssistantAgentGateway(
 
         IReadOnlyList<string> outsideProject = [];
         var mcpServerNames = request.McpServers;
-        if (mcpServerNames is not null && _BrainServer(project, profile) is { } brainServer
+        if (pluginId is not null)
+        {
+            var (selection, refusal) = await _PluginMcpSelectionAsync(pluginId, project, profile, mcpServerNames, cancellationToken).ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                return await _RefuseSpawnAsync(request, workspace.Name, refusal, cancellationToken).ConfigureAwait(false);
+            }
+            mcpServerNames = selection;
+        }
+        else if (mcpServerNames is not null && _BrainServer(project, profile) is { } brainServer
             && !mcpServerNames.Contains(brainServer, StringComparer.OrdinalIgnoreCase))
         {
             mcpServerNames = [.. mcpServerNames, brainServer];
         }
 
-        if (mcpServerNames is { } requestedServers)
+        if (pluginId is null && mcpServerNames is { } requestedServers)
         {
             var refusal = await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(
                 project?.Id, requestedServers, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -230,6 +257,7 @@ internal sealed partial class AssistantAgentGateway(
             StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)
         {
             Role = knownRole?.Name,
+            StartingPluginId = pluginId,
             EnabledMcpServerNames = mcpServerNames is null ? null : new ExactMcpServerSelection(mcpServerNames) { AssistantManaged = request.Target.Caller == SpawnCaller.Assistant },
             McpServersOverride = mcpServerNames,
         }).ConfigureAwait(false);
@@ -254,7 +282,7 @@ internal sealed partial class AssistantAgentGateway(
                 "The cockpit could not start a session just now.", cancellationToken).ConfigureAwait(false);
         }
 
-        // AC-2005: the assistant's own spawns carry the persisted stamp above; an agent's or the controller's only this.
+        // AC-2005: every non-assistant spawn also counts toward the live agent roster.
         if (request.Target.Caller != SpawnCaller.Assistant)
         {
             agentCoordinator?.MarkStartedByAnAgent(pane.PaneId);
@@ -275,7 +303,7 @@ internal sealed partial class AssistantAgentGateway(
             ProjectId: project?.Id,
             McpServers: request.McpServers,
             McpServersOutsideProject: outsideProject,
-            Role: knownRole?.Name ?? role), cancellationToken).ConfigureAwait(false);
+            Role: knownRole?.Name ?? role) { CallerPluginId = pluginId }, cancellationToken).ConfigureAwait(false);
 
         var mcpReport = mcpMounts?.ConnectionReport(pane.PaneId);
         return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label) with
@@ -285,7 +313,9 @@ internal sealed partial class AssistantAgentGateway(
             RoleHint = roleList.Roles.Count == 0 && roleList.Outcome != RoleSourceOutcome.Unavailable
                 ? "This brain has no agents (roles) yet; offer the operator to build one together with fitting skills."
                 : null,
-            McpServers = mcpReport?.ConnectedServerNames,
+            McpServers = mcpReport?.ConnectedServerNames ?? (pluginId is null
+                ? null
+                : mcpMounts?.Set(pane.PaneId)?.ServerNames.ToArray() ?? mcpServerNames),
             McpServersConfirmed = mcpReport is not null,
         };
     }
@@ -737,7 +767,7 @@ internal sealed partial class AssistantAgentGateway(
             reason,
             ProjectId: request.ProjectId,
             McpServers: request.McpServers,
-            Role: request.Role), cancellationToken).ConfigureAwait(false);
+            Role: request.Role) { CallerPluginId = request.Target.PluginId }, cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Refused(reason);
     }

@@ -91,6 +91,9 @@ public sealed record McpServerConfig
     // editor's checklist is project-agnostic, so the operator never had a row on which to tick it. Never set for a registry server.
     public bool ProjectLinked { get; init; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? ContributingPluginId { get; init; }
+
     // Overrides the record's generated `ToString()`, which would otherwise print `ApiKey` in the
     // clear anywhere this lands in a log line or an exception message (Iron Law #8) — the same guard
     // `Cockpit.Plugins.Abstractions.Sessions.PluginMcpServer` carries for the credential it holds.

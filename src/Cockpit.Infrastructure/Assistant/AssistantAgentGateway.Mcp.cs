@@ -12,6 +12,47 @@ namespace Cockpit.Infrastructure.Assistant;
 
 internal sealed partial class AssistantAgentGateway
 {
+    private async Task<(IReadOnlyList<string> Selection, string? Refusal)> _PluginMcpSelectionAsync(
+        string pluginId, Project? project, SessionProfile profile, IReadOnlyList<string>? requested, CancellationToken cancellationToken)
+    {
+        if (mcpServers is null)
+        {
+            return ([], "The MCP catalog is unavailable.");
+        }
+
+        var scoped = await mcpServers.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
+        var projectNames = McpServerRegistryFilter.OfferedToOperator(scoped)
+            .Where(server => project?.McpOverlay.IsSelectedByDefault(server) == true)
+            .Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var profileNames = (profile.EnabledMcpServerNames ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var brain = _BrainServer(project, profile);
+        var names = new ExactMcpServerSelection(requested is not null ? requested : project is null ? profileNames : projectNames);
+        if (brain is not null)
+        {
+            names.Add(brain);
+        }
+
+        if (requested is null)
+        {
+            return ([.. names], null);
+        }
+
+        var available = await mcpServers.GetServersForSessionAsync(project?.Id, names, cancellationToken).ConfigureAwait(false);
+        foreach (var name in names)
+        {
+            if (projectNames.Contains(name) || profileNames.Contains(name) || names.Comparer.Equals(name, brain)
+                || available.Any(server => names.Comparer.Equals(server.Name, name) && server.ContributingPluginId == pluginId))
+            {
+                continue;
+            }
+            return ([], $"MCP server '{name}' is outside this plugin's session allowance.");
+        }
+
+        var refusal = await new McpSetPolicy(mcpServers, oauthTokens).RefusalAsync(available, [.. names],
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return ([.. names], refusal);
+    }
+
     public async Task<SessionMcpSetResult> GetSessionMcpSetAsync(string paneId, CancellationToken cancellationToken = default)
     {
         if (NodeSessionAddress.Split(paneId) is not null || mcpMounts?.Set(paneId) is not { Context: { } context } set)
