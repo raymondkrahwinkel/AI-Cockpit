@@ -720,6 +720,9 @@ internal static class ProfileEndpoints
             _TakesConfig(profile) is { } plugin ? Redacted(plugin.ConfigJson) : null,
             RemoteProfileWire.ToJson(Masked(profile, editorKeys ?? declared)))
         {
+            ProviderId = profile.ProviderConfig is PluginProviderConfig provider
+                ? provider.ProviderId
+                : profile.Provider.ToString(),
             UsesPersonalLogin = NodeCallerSessionPolicy.UsesPersonalLogin(profile, logins),
         };
     }

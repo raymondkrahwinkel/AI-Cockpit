@@ -708,6 +708,9 @@ internal class PluginBackendHost(
                 var effort = _DeclaredEffortOption(registry, profile);
                 return new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
                 {
+                    ProviderId = profile.ProviderConfig is Core.Profiles.PluginProviderConfig provider
+                        ? provider.ProviderId
+                        : profile.Provider.ToString(),
                     // AC-256: asks the provider for its models instead of keeping the host's own copy of the
                     // Claude aliases, which had drifted out of cheapest-first order. Falls back to the catalogue
                     // only when there is no registration to ask (unloaded provider plugin, legacy typed config).

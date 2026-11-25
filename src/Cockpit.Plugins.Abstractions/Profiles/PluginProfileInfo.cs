@@ -24,6 +24,13 @@ namespace Cockpit.Plugins.Abstractions.Profiles;
 public sealed record PluginProfileInfo(string Label, string Provider, string ConfigDirectory)
 {
     /// <summary>
+    /// The provider's stable registration ID (for example, <c>claude</c> or <c>cli-agent-provider.codex</c>)
+    /// or the built-in provider name (for example, <c>LmStudio</c> or <c>Ollama</c>).
+    /// <see langword="null"/> if the host does not supply the identifier, such as on an older remote server.
+    /// </summary>
+    public string? ProviderId { get; init; }
+
+    /// <summary>
     /// The models this profile lets a consumer pick from, where its provider offers a choice — for a picker like
     /// Autopilot's CEO-model field. Empty when the profile pins its own model or offers no static list.
     /// </summary>

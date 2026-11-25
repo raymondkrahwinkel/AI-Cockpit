@@ -154,6 +154,7 @@ public class PluginBackendHostTests
         Assert.True(new PluginProfileInfo("unknown", "Plugin", "").UsesPersonalLogin);
         var oldWire = JsonSerializer.SerializeToNode(ProfileEndpoints.ToWire(personal, [], []))?.AsObject()
             ?? throw new InvalidOperationException("The profile was not serialized.");
+        Assert.Equal("echo", oldWire[nameof(RemoteProfile.ProviderId)]?.GetValue<string>());
         oldWire.Remove(nameof(RemoteProfile.UsesPersonalLogin));
         Assert.True(oldWire.Deserialize<RemoteProfile>()?.UsesPersonalLogin);
 

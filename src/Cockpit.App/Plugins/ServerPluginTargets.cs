@@ -59,6 +59,7 @@ internal static class ServerPluginTargets
     public static async Task<IReadOnlyList<PluginProfileInfo>> ProfilesAsync(IServerProfiles profiles) =>
         [.. (await profiles.ListAsync()).Select(profile => new PluginProfileInfo(profile.Label, profile.Provider, "")
         {
+            ProviderId = profile.ProviderId,
             ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
             EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
             UsesPersonalLogin = profile.UsesPersonalLogin,
