@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pluginupdates kunnen direct worden gepubliceerd als de beschikbare host voldoet en de minimaal vereiste hostversie niet is verhoogd.
+
 - The 1Password vault lists SSH private key references for use as OpenSSH files in vault commands.
 
 - AC-2369: Options › Algemeen biedt Automatisch en de gedetecteerde GPU’s op naam. De keuze geldt voor Cockpit en voor door Cockpit gestarte agentbrowsers. Een ontbrekende GPU valt zichtbaar terug op Automatisch. Laadanimaties stoppen zodra hun placeholders verborgen zijn.

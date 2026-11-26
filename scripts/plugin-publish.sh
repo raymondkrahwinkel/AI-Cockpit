@@ -37,6 +37,7 @@ resolve_plugin() {
 }
 
 gate_host() {
+  local published_min_host
   WAIT=false
   if [ -z "$MIN_HOST" ]; then
     echo "Plugin declares no minHostVersion — nothing to gate on."
@@ -71,6 +72,15 @@ gate_host() {
   # A nightly's base version can satisfy the number before it contains the required host change.
   if [ -n "$stable" ] && [ "$(printf '%s\n%s\n' "$stable" "$MIN_HOST" | sort -V | head -1)" = "$MIN_HOST" ]; then
     echo "A stable release ($stable) satisfies minHostVersion — no nightly containment check needed."
+    return 0
+  fi
+
+  published_min_host="$(jqr -r --arg id "$PLUGIN" '
+    .plugins[]? | select(.id == $id) | .latestVersion as $latest
+    | .versions[]? | select(.version == $latest) | .minHostVersion // empty
+  ' store/index.json)" || return 1
+  if [ -n "$published_min_host" ] && [ "$(printf '%s\n%s\n' "$MIN_HOST" "$published_min_host" | sort -V | head -1)" = "$MIN_HOST" ]; then
+    echo "Skipping nightly containment check for $PLUGIN: published host $available satisfies minHostVersion $MIN_HOST, and the latest published plugin version already required $published_min_host."
     return 0
   fi
 
