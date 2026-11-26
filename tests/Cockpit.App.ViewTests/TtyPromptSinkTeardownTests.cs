@@ -45,7 +45,7 @@ public class TtyPromptSinkTeardownTests
 
         // And the caller is told no rather than yes: held, not delivered, so nothing announces a turn that went
         // into a closed process.
-        Assert.False(Dispatcher.UIThread.Invoke(() => session.SubmitPromptWhenReady("run the tests")));
+        Assert.Null(await Dispatcher.UIThread.InvokeAsync(() => session.SubmitPromptWhenReadyAsync("run the tests")));
         Assert.Empty(wroteToPty);
     }
 }

@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -16,20 +17,46 @@ namespace Cockpit.App.ViewTests;
 public class SessionRegistryFeedTests
 {
     [Fact]
-    public async Task ClosingAPane_TakesItOutOfTheRegistry_AndLeavesTheOthers()
+    public async Task ClosingAPane_RemovesItWhileTheConversationIndexIsBlocked()
     {
         var sessions = new SessionRegistry();
+        var index = Substitute.For<IConversationIndex>();
+        var indexGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeStaging = new TaskCompletionSource<ConversationRecord>(TaskCreationOptions.RunContinuationsAsynchronously);
+        index.StageCloseAsync(Arg.Any<ConversationRecord>()).Returns(call =>
+        {
+            closeStaging.TrySetResult(call.Arg<ConversationRecord>());
+            return indexGate.Task;
+        });
         var (cockpit, closing, staying) = Dispatcher.UIThread.Invoke(() =>
         {
-            var cockpit = new CockpitViewModel(sessionRegistry: sessions);
-            return (cockpit, cockpit.Sessions[0], cockpit.Sessions[1]);
+            var cockpit = new CockpitViewModel(null, null, null, null, null, null, null, null, null, null, null, null,
+                sessionRegistry: sessions, conversationIndex: index);
+            var closing = new SessionViewModel { HasPersistedPane = true };
+            var staying = new SessionViewModel();
+            cockpit.Sessions.Add(closing);
+            cockpit.Sessions.Add(staying);
+            return (cockpit, closing, staying);
         });
         Assert.NotNull(sessions.Find(closing.PaneId));
 
-        await Dispatcher.UIThread.InvokeAsync(() => cockpit.CloseSessionCommand.ExecuteAsync(closing));
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => cockpit.CloseSessionCommand.ExecuteAsync(closing))
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Null(sessions.Find(closing.PaneId));
+            Assert.NotNull(sessions.Find(staying.PaneId));
+            Assert.NotNull((await closeStaging.Task.WaitAsync(TimeSpan.FromSeconds(2))).ClosedAt);
+            await Dispatcher.UIThread.InvokeAsync(() => cockpit.CloseSessionCommand.ExecuteAsync(closing))
+                .WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            indexGate.TrySetResult();
+            await Dispatcher.UIThread.InvokeAsync(async () => await cockpit.DisposeAsync()).WaitAsync(TimeSpan.FromSeconds(2));
+        }
 
-        Assert.Null(sessions.Find(closing.PaneId));
-        Assert.NotNull(sessions.Find(staying.PaneId));
+        _ = index.Received(1).StageCloseAsync(Arg.Any<ConversationRecord>());
     }
 
     // CLAUDE.md, SDK↔TTY: the statusline, reading a transcript back and pushing text plus Enter belong on both routes.

@@ -71,6 +71,14 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
     // Sends a request and awaits its correlated reply's `result`; throws `CodexAppServerException` on a JSON-RPC `error`.
     public async Task<JsonElement> SendRequestAsync(string method, object? @params, CancellationToken cancellationToken = default)
     {
+        Task<JsonElement> reply = await WriteRequestAsync(method, @params, cancellationToken).ConfigureAwait(false);
+        return await reply.ConfigureAwait(false);
+    }
+
+    // A caller can await the write independently of a long-running request's reply.
+    public async Task<Task<JsonElement>> WriteRequestAsync(string method, object? @params, CancellationToken cancellationToken)
+    {
+        CancellationToken connectionLifetime = _readCancellation.Token;
         var id = Interlocked.Increment(ref _nextId);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = completion;
@@ -78,10 +86,22 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
         try
         {
             await _WriteMessageAsync(new { id, method, @params }, cancellationToken).ConfigureAwait(false);
-            using (cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken)))
-            {
-                return await completion.Task.ConfigureAwait(false);
-            }
+            return _AwaitReplyAsync(id, completion, cancellationToken, connectionLifetime);
+        }
+        catch
+        {
+            _pending.TryRemove(id, out _);
+            throw;
+        }
+    }
+
+    private async Task<JsonElement> _AwaitReplyAsync(long id, TaskCompletionSource<JsonElement> completion, CancellationToken cancellationToken, CancellationToken connectionLifetime)
+    {
+        using CancellationTokenRegistration registration = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        using CancellationTokenRegistration closing = connectionLifetime.Register(() => completion.TrySetCanceled(connectionLifetime));
+        try
+        {
+            return await completion.Task.ConfigureAwait(false);
         }
         finally
         {

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -85,6 +86,8 @@ internal sealed class SessionRuntime : ISessionRuntime
     private ProvisionPolicy? _policy;
     private CancellationTokenSource? _lifetime;
     private Task? _pump;
+    private volatile bool _stopping;
+    private volatile bool _providerStreamEnded;
 
     // The OS ceiling around this session's process tree, while it has one (AC-661).
     private IDisposable? _memoryCap;
@@ -300,7 +303,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     public IReadOnlyList<SessionLiveOption> LiveOptions => _driver?.LiveOptions ?? [];
 
     // AC-693: the pump ends when the driver's stream does, so a death out of band shows here, not only at DisposeAsync.
-    public bool IsRunning => _pump is { IsCompleted: false };
+    public bool IsRunning => !_stopping && !_providerStreamEnded && _pump is { IsCompleted: false };
 
     public ProvisionPolicy? Policy => _policy;
 
@@ -383,7 +386,12 @@ internal sealed class SessionRuntime : ISessionRuntime
             throw new InvalidOperationException("This model does not support image input.");
         }
 
-        return _driver?.SendUserMessageAsync(text, images, cancellationToken) ?? Task.CompletedTask;
+        if (!IsRunning || _driver is not { } driver)
+        {
+            throw new InvalidOperationException("This session's provider is no longer running.");
+        }
+
+        return driver.SendUserMessageAsync(text, images, cancellationToken);
     }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
@@ -487,6 +495,7 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public async ValueTask DisposeAsync()
     {
+        _stopping = true;
         lock (_visionLock)
         {
             ++_visionRevision;
@@ -506,10 +515,9 @@ internal sealed class SessionRuntime : ISessionRuntime
             {
                 await _driver.InterruptAsync().WaitAsync(InterruptGrace);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                // Best-effort: a session that is already gone, or that did not answer in time, must not make
-                // closing it throw or wait longer.
+                _LogTeardownFailure("interrupt", exception);
             }
         }
 
@@ -524,9 +532,9 @@ internal sealed class SessionRuntime : ISessionRuntime
             {
                 await Task.WhenAll(_pump ?? Task.CompletedTask, _visionRead);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                // Teardown is best-effort: a failed provider stream must not retain the driver or cap.
+                _LogTeardownFailure("event pump and vision", exception);
             }
 
             _pump = null;
@@ -534,17 +542,19 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         if (_driver is not null)
         {
+            long started = Stopwatch.GetTimestamp();
             try
             {
                 await _driver.DisposeAsync();
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                // Best-effort: a failed driver must not retain the remaining session resources.
+                _LogTeardownFailure("provider dispose", exception);
             }
             finally
             {
                 _driver = null;
+                _logger?.LogInformation("Pane {PaneId} provider dispose finished after {ElapsedMs} ms.", _paneId, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             }
         }
 
@@ -552,9 +562,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             _processAnchor?.Dispose();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // Best-effort teardown continues with the memory limiter.
+            _LogTeardownFailure("process anchor dispose", exception);
         }
         finally
         {
@@ -566,9 +576,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             _memoryCap?.Dispose();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // Best-effort teardown continues with the lifetime.
+            _LogTeardownFailure("memory cap dispose", exception);
         }
         finally
         {
@@ -579,15 +589,18 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             _lifetime?.Dispose();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // Best-effort teardown has no remaining resources to retain.
+            _LogTeardownFailure("lifetime dispose", exception);
         }
         finally
         {
             _lifetime = null;
         }
     }
+
+    private void _LogTeardownFailure(string step, Exception exception) =>
+        _logger?.LogWarning("Pane {PaneId} {Step} failed ({ErrorType}).", _paneId, step, exception.GetType().Name);
 
     private async Task<ProvisionPolicy?> _ReadPolicyAsync(CancellationToken cancellationToken) =>
         _orgPolicy is null ? null : await _orgPolicy.ReadAsync(cancellationToken);
@@ -651,52 +664,64 @@ internal sealed class SessionRuntime : ISessionRuntime
                 _Publish(evt);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _stopping)
         {
             // Expected on shutdown.
             return;
         }
         catch (Exception exception)
         {
-            _Publish(new SessionError
+            _providerStreamEnded = true;
+            if (!_stopping && !cancellationToken.IsCancellationRequested)
             {
-                SessionId = _lastSessionId,
-                Message = $"This session's provider stream ended in an error: {exception.Message}",
-            });
+                _Publish(new SessionError
+                {
+                    SessionId = _lastSessionId,
+                    Message = $"This session's provider stream ended in an error: {exception.Message}",
+                    IsTerminal = true,
+                });
+            }
             return;
         }
 
-        await _ReportOomdKillAsync(cancellationToken);
+        _providerStreamEnded = true;
+        if (!_stopping && !cancellationToken.IsCancellationRequested)
+        {
+            string? oomdMessage = await _OomdKillMessageAsync(cancellationToken);
+            if (!_stopping && !cancellationToken.IsCancellationRequested)
+            {
+                _Publish(new SessionError
+                {
+                    SessionId = _lastSessionId,
+                    Message = oomdMessage ?? "This session's provider stopped unexpectedly.",
+                    IsTerminal = true,
+                });
+            }
+        }
     }
 
     // AC-1060: the stream ended on its own. `systemd-oomd` kills the whole cgroup, so there is no exit code and
     // no last line to read — its journal naming this session's group is the only fact that says what happened.
-    private async Task _ReportOomdKillAsync(CancellationToken cancellationToken)
+    private async Task<string?> _OomdKillMessageAsync(CancellationToken cancellationToken)
     {
         // Silence unless there is evidence: a session the operator closed also ends here when its process goes
         // before the lifetime is cancelled, and a guessed cause is what criterion 2 exists to avoid.
         if (cancellationToken.IsCancellationRequested || _cgroupName is not { } group)
         {
-            return;
+            return null;
         }
 
         if (await LinuxOomdJournal.FindKillAsync(group) is not { } kill)
         {
-            return;
+            return null;
         }
 
         var because = kill.Pressure.Length > 0
             ? $" — memory pressure in the slice it sits in was {kill.Pressure}"
             : string.Empty;
 
-        _Publish(new SessionError
-        {
-            // The conversation this row belongs to, as the driver last reported it — the kill itself carries no
-            // session id, and a row without one is attributed to no conversation at all.
-            SessionId = _lastSessionId,
-            Message = "This session was killed by systemd-oomd, not by anything in the session or in Cockpit. "
-                + $"Its whole cgroup ({kill.CgroupName}) went at once{because}.",
-        });
+        return "This session was killed by systemd-oomd, not by anything in the session or in Cockpit. "
+            + $"Its whole cgroup ({kill.CgroupName}) went at once{because}.";
     }
 
     private void _Publish(SessionEvent evt)

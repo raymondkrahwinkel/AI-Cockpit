@@ -250,40 +250,36 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     // True once the prompt went out or waits behind the turn in flight; false when it was refused or its send failed.
-    public async Task<bool> SendPromptAsync(string prompt)
-    {
-        var queued = new QueuedPrompt(prompt, []);
-        var failed = false;
-        void OnFailed(QueuedPrompt failedPrompt, Exception exception) => failed |= ReferenceEquals(failedPrompt, queued);
+    public async Task<bool> SendPromptAsync(string prompt) =>
+        await _SubmitPromptAsync(prompt).ConfigureAwait(false) != PromptSubmission.Failed;
 
-        _host.TurnFailedToStart += OnFailed;
-        try
+    public Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
+
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
+        (await _SubmitPromptAsync(prompt).ConfigureAwait(false)) switch
         {
-            Task sending;
-            lock (_gate)
-            {
-                if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null
-                    || _host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
-                {
-                    return false;
-                }
+            PromptSubmission.Sent => true,
+            PromptSubmission.Queued => false,
+            _ => null,
+        };
 
-                sending = _host.SubmitForTheAgentAsync(queued);
+    private Task<PromptSubmission> _SubmitPromptAsync(string prompt)
+    {
+        Task<PromptSubmission> sending;
+        lock (_gate)
+        {
+            if (_host.Runtime is not { IsRunning: true } || _host.TurnsHeldBecause is not null
+                || _host.LiveState.Status == SessionStatus.NeedsAttention || _rows.Exists(row => row.IsPendingPermission))
+            {
+                return Task.FromResult(PromptSubmission.Failed);
             }
 
-            _RaiseHeldSignals();
-            await sending.ConfigureAwait(false);
-            return !failed;
+            sending = _host.SubmitForTheAgentAsync(new QueuedPrompt(prompt, []));
         }
-        finally
-        {
-            _host.TurnFailedToStart -= OnFailed;
-        }
-    }
 
-    // This handle holds no startup brief: null reports a refusal, never a held or delivered task.
-    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
-        await SendPromptAsync(prompt).ConfigureAwait(false) ? true : null;
+        _RaiseHeldSignals();
+        return sending;
+    }
 
     public Task SetWorktreeBranchAsync(string? branch)
     {

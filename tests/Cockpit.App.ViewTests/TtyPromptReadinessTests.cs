@@ -35,7 +35,7 @@ public class TtyPromptReadinessTests
             Assert.False(await viewModel.SendPromptAsync("must not answer trust"));
             Assert.Equal(SessionStatus.NeedsAttention, viewModel.SessionStatus);
 
-            var deliveredNow = viewModel.SubmitPromptWhenReady("review the migration");
+            var deliveredNow = await viewModel.SubmitPromptWhenReadyAsync("review the migration");
 
             Assert.False(deliveredNow);
             Assert.True(viewModel.HasPromptWaitingToBeDelivered);
@@ -66,7 +66,7 @@ public class TtyPromptReadinessTests
         HeadlessAvalonia.RunAsync(async () =>
         {
             var (view, viewModel, pty) = _NewLaunchedView();
-            viewModel.SubmitPromptWhenReady("review the migration");
+            await viewModel.SubmitPromptWhenReadyAsync("review the migration");
 
             _SetFirstPtyOutputAt(view, DateTime.UtcNow - TimeSpan.FromSeconds(secondsSinceFirstOutput));
             _InvokeCheckReadiness(view);
@@ -82,7 +82,7 @@ public class TtyPromptReadinessTests
         HeadlessAvalonia.RunAsync(async () =>
         {
             var (view, viewModel, pty) = _NewLaunchedView();
-            viewModel.SubmitPromptWhenReady("review the migration");
+            await viewModel.SubmitPromptWhenReadyAsync("review the migration");
 
             _AnnounceBracketedPaste(view);
             _Terminal(view).Write(Encoding.UTF8.GetBytes("Do you trust the contents of this directory?\r\n› 1. Yes, continue"));

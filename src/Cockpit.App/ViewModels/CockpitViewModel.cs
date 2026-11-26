@@ -143,6 +143,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionStateCache? _sessionStateRecorder;
     private readonly ISessionStateStore? _sessionStateStore;
     private readonly IConversationIndex? _conversationIndex;
+    private Task _conversationCloseStaging = Task.CompletedTask;
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
@@ -6751,9 +6752,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Hold the prompt until the started pane is ready, then submit it as the first turn. Target by pane id so a
         // concurrently opened session cannot catch the prompt.
-        if (paneId is not null && !string.IsNullOrWhiteSpace(prompt))
+        if (!string.IsNullOrWhiteSpace(prompt) && Sessions.FirstOrDefault(session => session.PaneId == paneId) is { } pane)
         {
-            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.SubmitPromptWhenReady(prompt);
+            await pane.SubmitPromptWhenReadyAsync(prompt);
         }
 
         return name;
@@ -7162,7 +7163,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // A landed pane closes as the operator's close does; one that never landed lets go of what was made for it.
     internal async Task StopHostedAsync(SessionPanelHandle handle)
     {
-        if (handle.Pane is { } pane && Sessions.Contains(pane))
+        if (handle.Pane is { } pane && (pane.IsClosing || Sessions.Contains(pane)))
         {
             await CloseSessionAsync(pane);
             return;
@@ -10071,12 +10072,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task CloseSessionAsync(SessionPanelViewModel session)
     {
         var index = Sessions.IndexOf(session);
-        if (index < 0)
+        if (index < 0 || session.IsClosing)
         {
             return;
         }
 
-        await RecordConversationAsync(session, closed: true);
+        session.IsClosing = true;
+        string paneId = session.PaneId;
+        ConversationRecord? close = _ConversationRecord(session, closed: true);
 
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnSessionCloseRequested;
@@ -10095,34 +10098,45 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Sessions.RemoveAt(index);
 
-        // AC-410: a pane persisted at AddSession time (an AI session, started or merely restored) must stop
-        // offering to come back once it is deliberately closed. A plain terminal never set HasPersistedPane, so
-        // this is a no-op for it rather than a workspace write nothing asked for.
-        if (session.HasPersistedPane)
-        {
-            _ = Workspaces.RemovePaneAsync(session.WorkspaceId, session.PaneId);
-        }
-
         // AC-410: the plan and the resolved working directory are only ever read again by _StartRestoredSessionAsync
         // for this pane's own RestoreDecided — a closed pane raises neither again, so holding these past close
         // would only grow the two dictionaries for the life of the app.
         _restorePlans.Remove(session.PaneId);
         _restoreWorkingDirectories.Remove(session.PaneId);
 
-        // Best-effort, for the same reason the worktree release below is: the panel is already out of the collection,
-        // so a dispose that throws must not take the host-side teardown with it.
-        try
+        if (ReferenceEquals(SelectedSession, session))
         {
-            await session.DisposeAsync();
-        }
-        catch (Exception)
-        {
-            // The panel is already gone from the UI; what still matters is the teardown below.
+            SelectedSession = Sessions.Count == 0
+                ? null
+                : Sessions[Math.Min(index, Sessions.Count - 1)];
         }
 
-        // AC-834: the diagram (AC-810) and whiteboard (AC-823) registries are the same shape and were never released
-        // here at all, so their "agent connected" bar outlived the agent — a coupling nobody could disconnect held the
-        // surface against every other session (IsCoupledByAnother) for the life of the app (AC-34).
+        if (ReferenceEquals(SimpleSelectedSession, session))
+        {
+            SimpleSelectedSession = null;
+        }
+
+        if (Sessions.Count == 0)
+        {
+            IsZoomed = false;
+        }
+
+        Task dispose = _TearDownPaneStepAsync(paneId, "pane dispose", () => session.DisposeAsync().AsTask());
+        if (close is not null && _conversationIndex is { } conversationIndex)
+        {
+            Task previous = _conversationCloseStaging;
+            _conversationCloseStaging = Task.Run(async () =>
+            {
+                await previous.ConfigureAwait(false);
+                await _TearDownPaneStepAsync(paneId, "conversation close staging", () => conversationIndex.StageCloseAsync(close)).ConfigureAwait(false);
+            });
+        }
+
+        Task workspaceRemove = session.HasPersistedPane
+            ? _TearDownPaneStepAsync(session.PaneId, "workspace remove", () => Workspaces.RemovePaneAsync(session.WorkspaceId, session.PaneId))
+            : Task.CompletedTask;
+        await dispose;
+
         _terminals?.SessionEnded(session.PaneId);
         _diagrams?.SessionEnded(session.PaneId);
         _whiteboards?.SessionEnded(session.PaneId);
@@ -10140,56 +10154,53 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // worktree_create MCP tool never sets it, and used to outlive its own pane's close because of that gap (AC-85).
         if (_worktreeManager is not null)
         {
-            try
-            {
-                await _worktreeManager.ReleaseAsync(session.PaneId);
-            }
-            catch (Exception)
-            {
-                // Left for the startup reconcile.
-            }
+            await _TearDownPaneStepAsync(session.PaneId, "worktree release", () => _worktreeManager.ReleaseAsync(session.PaneId));
 
             // A closed session's worktree was just removed or retained; keep the status-bar counter current.
-            _ = Worktrees.RefreshCountAsync();
+            await _TearDownPaneStepAsync(session.PaneId, "worktree count refresh", Worktrees.RefreshCountAsync);
         }
 
-        if (ReferenceEquals(SelectedSession, session))
-        {
-            SelectedSession = Sessions.Count == 0
-                ? null
-                : Sessions[Math.Min(index, Sessions.Count - 1)];
-        }
+        await workspaceRemove;
+    }
 
-        // AC-1304 criterion 1(a): the Simple stand's own selection, which nothing cleared — closing the conversation
-        // it drew left the column pointing at a session that no longer exists. Null, not the neighbour the panels
-        // stand falls back to: this stand then draws the assistant, or the start screen — the second of its doors.
-        if (ReferenceEquals(SimpleSelectedSession, session))
+    private async Task _TearDownPaneStepAsync(string paneId, string step, Func<Task> action)
+    {
+        long started = Stopwatch.GetTimestamp();
+        try
         {
-            SimpleSelectedSession = null;
+            await action().ConfigureAwait(false);
         }
-
-        if (Sessions.Count == 0)
+        catch (Exception exception)
         {
-            IsZoomed = false;
+            _logger?.LogWarning("Pane {PaneId} {Step} failed ({ErrorType}).", paneId, step, exception.GetType().Name);
+        }
+        finally
+        {
+            _logger?.LogInformation("Pane {PaneId} {Step} finished after {ElapsedMs} ms.", paneId, step, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }
 
     // AC-1531: what the pane knows of its conversation; profile, provider, place and conversation id the index takes from
     // the session-state recorder. A plain terminal never persisted a pane, and a pane on a server is not this machine's.
     // The transcript path is spelled out here because its owner (`SessionTranscriptLog.LogPath`) is internal to Infrastructure.
-    private Task RecordConversationAsync(SessionPanelViewModel session, bool closed)
+    private Task RecordConversationAsync(SessionPanelViewModel session, bool closed) =>
+        _conversationIndex is { } index && _ConversationRecord(session, closed) is { } record
+            ? index.RecordAsync(record)
+            : Task.CompletedTask;
+
+    private ConversationRecord? _ConversationRecord(SessionPanelViewModel session, bool closed)
     {
         if (_conversationIndex is null || !session.HasPersistedPane || session.IsRemote)
         {
-            return Task.CompletedTask;
+            return null;
         }
 
         var now = DateTimeOffset.UtcNow;
-        return _conversationIndex.RecordAsync(new ConversationRecord(
+        return new ConversationRecord(
             session.PaneId, session.Title, session.ProjectId, session.WorkingDirectory, session.ActiveProfileLabel, null, null,
             SessionConversationIdState.Unknown, now, now, session.SessionStatus.ToString(), closed ? now : null, session.StartedByTheAssistant,
             IsAssistant: false,
-            session is SessionViewModel ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl") : null));
+            session is SessionViewModel ? Path.Combine(CockpitBuild.StateRoot, "transcripts", session.PaneId + ".jsonl") : null);
     }
 
     // AC-1531: a conversation from the index back on screen — the open pane or the assistant selected, otherwise a new pane
@@ -11077,6 +11088,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.Clear();
         _lastStatus.Clear();
 
+        await _conversationCloseStaging;
         Cockpit.App.Logging.LifecycleLog.Write("Cockpit teardown complete.");
     }
 

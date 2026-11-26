@@ -194,7 +194,7 @@ public interface ISessionControl : IAsyncDisposable
     /// Queues <paramref name="prompt"/> behind a turn in flight, unless the session takes input mid-turn (AC-739);
     /// otherwise sends it now. A send that fails is reported through <see cref="TurnFailedToStart"/>.
     /// </summary>
-    Task SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false);
+    Task<PromptSubmission> SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false);
 
     /// <summary>
     /// Sends <paramref name="prompt"/> now, where nothing can await it; disposal waits for it instead.

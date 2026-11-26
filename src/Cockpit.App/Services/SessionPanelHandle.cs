@@ -196,9 +196,9 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     // One dispatcher callback for the check and the hand-over: a pane still coming up holds exactly one brief, and a
     // second one arriving between the two would otherwise be held and misread as belonging to this call.
     public Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
-        UiThreadCall.RunAsync(() =>
+        UiThreadCall.RunAsync(async () =>
         {
-            if (_pane is not { } pane)
+            if (!_IsLive() || _pane is not { } pane)
             {
                 return (bool?)null;
             }
@@ -206,7 +206,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
             {
                 return (bool?)null;
             }
-            return pane.HasPromptWaitingToBeDelivered ? (bool?)null : pane.SubmitPromptWhenReady(prompt);
+            return await pane.SubmitPromptWhenReadyAsync(prompt);
         });
 
     public Task SetWorktreeBranchAsync(string? branch) => UiThreadCall.RunAsync(() => _pane is { } pane ? pane.WorktreeBranch = branch : null);
@@ -244,19 +244,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(pane => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(async () =>
-    {
-        if (!_IsLive() || _pane is not { } pane || !_CanReceiveTask(pane))
-        {
-            return false;
-        }
-        if (pane is TtyViewModel tty)
-        {
-            return await tty.SendPromptAsync(text);
-        }
-        pane.InjectAndSubmit(text);
-        return true;
-    });
+    public async Task<bool> InjectAndSubmitAsync(string text) => await SubmitPromptWhenReadyAsync(text) is not null;
 
     public bool AcceptsImages => _pane is SessionViewModel { CanPasteImages: true };
 

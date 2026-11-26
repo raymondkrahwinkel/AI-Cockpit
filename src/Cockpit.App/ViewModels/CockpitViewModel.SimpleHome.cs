@@ -65,7 +65,7 @@ public partial class CockpitViewModel
             (started as SessionViewModel)?.AddPastedImage(image);
         }
 
-        started.SubmitPromptWhenReady(prompt);
+        await started.SubmitPromptWhenReadyAsync(prompt);
         SimpleSelectedSession = started;
         return started;
     }

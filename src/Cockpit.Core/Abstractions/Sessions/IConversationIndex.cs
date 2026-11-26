@@ -6,6 +6,8 @@ public interface IConversationIndex
 {
     Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default);
 
+    Task StageCloseAsync(ConversationRecord record) => RecordAsync(record);
+
     Task<IReadOnlyList<ConversationRecord>> LoadAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<ConversationSearchResult>> SearchAsync(
