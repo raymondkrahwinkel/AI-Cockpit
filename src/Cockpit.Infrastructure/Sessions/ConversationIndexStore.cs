@@ -13,14 +13,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1531: one row per conversation that outlives its pane — `conversations.jsonl`, append-only, the last row per pane
-// wins, and nothing compacts it. The pane supplies what it shows (title, project, status, closed); profile, provider,
-// place and conversation id are the session-state recorder's facts, so the index takes them from there.
+// The last valid row per pane is authoritative. The pane supplies what it shows, and the session-state
+// recorder supplies the profile, provider, working directory and conversation ID.
 internal sealed class ConversationIndexStore : IConversationIndex, ISingletonService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { Converters = { new JsonStringEnumConverter() } };
     private static readonly TimeSpan CloseRetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CloseGateWait = TimeSpan.FromSeconds(30);
+    private const int CompactionInterval = 128;
     private readonly string _path;
     private readonly IProjectStore? _projects;
     private readonly SessionTranscriptLog? _transcripts;
@@ -32,6 +32,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
     private readonly string _pendingCloses;
     private readonly ConcurrentDictionary<string, SessionStateRecord> _sessionFacts = new(StringComparer.Ordinal);
     private Dictionary<string, ConversationRecord>? _latest;
+    private long _lineCount;
 
     public ConversationIndexStore(SessionStateRecorder recorder, IProjectStore projects, SessionTranscriptLog transcripts, ILogger<ConversationIndexStore> logger)
         : this(CockpitConfigPath.Conversations, logger, projects, transcripts) => recorder.Recorded += RecordSessionState;
@@ -238,7 +239,8 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             {
                 throw new IOException("The conversation index could not be loaded.");
             }
-            if (compose(latest.GetValueOrDefault(paneId)) is not { } record)
+            ConversationRecord? existing = latest.GetValueOrDefault(paneId);
+            if (compose(existing) is not { } record || _IsSameRecord(record, existing))
             {
                 return;
             }
@@ -251,6 +253,10 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             await _AppendAsync(record, isStagedClose, cancellationToken).ConfigureAwait(false);
 
             latest[paneId] = record;
+            if (_latest is not null && ++_lineCount % CompactionInterval == 0)
+            {
+                _CompactIfNeeded(latest);
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -265,6 +271,13 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             _gate.Release();
         }
     }
+
+    // DateTimeOffset equality alone ignores offsets, which the index persists.
+    private static bool _IsSameRecord(ConversationRecord record, ConversationRecord? existing) =>
+        existing is not null && record == existing
+        && record.StartedAt.Offset == existing.StartedAt.Offset
+        && record.LastActivityAt.Offset == existing.LastActivityAt.Offset
+        && record.ClosedAt?.Offset == existing.ClosedAt?.Offset;
 
     private async Task _AppendAsync(ConversationRecord record, bool isStagedClose, CancellationToken cancellationToken)
     {
@@ -317,10 +330,12 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             return _latest = latest;
         }
 
+        long lineCount = 0;
         try
         {
-            foreach (var line in await File.ReadAllLinesAsync(_path, cancellationToken).ConfigureAwait(false))
+            await foreach (string line in File.ReadLinesAsync(_path, cancellationToken).ConfigureAwait(false))
             {
+                lineCount++;
                 try
                 {
                     if (JsonSerializer.Deserialize<ConversationRecord>(line, SerializerOptions) is { PaneId.Length: > 0 } record)
@@ -333,12 +348,43 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                 }
             }
 
-            return _latest = latest;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning("Could not read the conversation index ({ErrorType}).", exception.GetType().Name);
-            return latest;
+            return [];
+        }
+
+        _lineCount = lineCount;
+        _CompactIfNeeded(latest);
+        return _latest = latest;
+    }
+
+    // Under _gate, compact only when at least half the rows can go and the savings justify a rewrite.
+    private void _CompactIfNeeded(Dictionary<string, ConversationRecord> latest)
+    {
+        if (latest.Count == 0 || _lineCount - latest.Count < Math.Max(CompactionInterval, latest.Count))
+        {
+            return;
+        }
+
+        try
+        {
+            CockpitConfigPath.ReplaceAtomicallyPrivate(_path, stream =>
+            {
+                using var writer = new StreamWriter(stream, leaveOpen: true);
+                // Preserve the order of the first appearance of each pane for equal activity times.
+                foreach (ConversationRecord record in latest.Values)
+                {
+                    writer.WriteLine(JsonSerializer.Serialize(record, SerializerOptions));
+                }
+            });
+
+            _lineCount = latest.Count;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning("Could not compact the conversation index ({ErrorType}).", exception.GetType().Name);
         }
     }
 
