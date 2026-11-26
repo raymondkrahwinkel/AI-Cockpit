@@ -318,6 +318,7 @@ public interface ICockpitHost
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; } // default []
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
+    Task<PluginProfileModelCatalog> GetProfileModelCatalogAsync(string profileLabel, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync();   // default returns []
     Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken = default); // default null
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
@@ -1153,6 +1154,20 @@ var claudeConfigDirs = profiles
     .Where(profile => profile.Provider == "ClaudeCli" && profile.ConfigDirectory.Length > 0)
     .Select(profile => profile.ConfigDirectory);
 ```
+
+### `GetProfileModelCatalogAsync(string profileLabel, CancellationToken cancellationToken)`
+
+Reads the models and per-model effort values available under a label from `GetProfilesAsync()`. Codex uses the
+profile's app-server model list. LM Studio and Ollama use the profile's configured model endpoint and report
+unknown effort coverage. Other providers can publish a catalog through `SessionProviderRegistration.ReadModelCatalogAsync`
+or declare option values. A configured model remains a profile setting.
+
+`PluginProfileModelCatalog.Status` applies to the model list and each `PluginProfileModel.EffortStatus` applies
+to that model's efforts. `Known` with an empty list means the provider offers no values. `Unknown` means
+availability could not be verified, including after a provider failure or timeout. The caller can cancel the lookup.
+
+Requires SDK 3.99.0 and `"minHostVersion": "0.186.0"` in the calling plugin's manifest. The provider hook has
+the same minimum host version. The SDK contract stays at `"abstractionsVersion": 3`.
 
 ### `Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()` {#taskireadonlylistpluginprojectinfo-getprojectsasync}
 The cockpit's **projects** (AC-1737, Abstractions 3.23.0, host 0.112.0), as `PluginProjectInfo(string Id, string Name)`,

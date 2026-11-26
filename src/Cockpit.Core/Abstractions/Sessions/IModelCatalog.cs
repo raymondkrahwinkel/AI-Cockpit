@@ -13,6 +13,10 @@ public interface IModelCatalog
     /// </summary>
     Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Returns the reported model ids, or null when their availability could not be verified.</summary>
+    Task<IReadOnlyList<string>?> ReadModelsAsync(string baseUrl, string? apiKey = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>?>(null);
+
     /// <summary>
     /// Returns whether <paramref name="baseUrl">'s <c>/v1/models</c> responds successfully within <paramref name="timeout"/>.
     /// </summary>

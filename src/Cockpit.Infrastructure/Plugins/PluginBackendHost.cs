@@ -731,6 +731,73 @@ internal class PluginBackendHost(
             .ToList();
     }
 
+    public async Task<PluginProfileModelCatalog> GetProfileModelCatalogAsync(
+        string profileLabel, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(ModelIntelligence.ModelPictureReader.ProviderBudget);
+
+        try
+        {
+            var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync(budget.Token)
+                .WaitAsync(budget.Token).ConfigureAwait(false);
+            var profile = profiles.FirstOrDefault(candidate =>
+                string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
+
+            switch (profile?.ProviderConfig)
+            {
+                case Core.Profiles.LmStudioConfig lmStudio:
+                    return await _ReadLocalModelCatalogAsync(lmStudio.BaseUrl, lmStudio.ApiKey, budget.Token).ConfigureAwait(false);
+                case Core.Profiles.OllamaConfig ollama:
+                    return await _ReadLocalModelCatalogAsync(ollama.BaseUrl, null, budget.Token).ConfigureAwait(false);
+                case Core.Profiles.PluginProviderConfig plugin:
+                    var registry = services.GetRequiredService<IPluginProviderRegistry>();
+                    if (registry.Resolve(plugin.ProviderId) is { } registration)
+                    {
+                        if (registration.ReadModelCatalogAsync is { } readCatalog)
+                        {
+                            return await readCatalog(plugin.ConfigJson, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);
+                        }
+
+                        var declared = registration.Capabilities.DeclaredOptions;
+                        var models = declared.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Model)
+                            ?.KnownValues?.Select(value => value.Value).ToArray()
+                            ?? (registration.Options.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Model)
+                                ?.Choices is { Count: > 0 } choices ? choices : null);
+                        var efforts = declared.FirstOrDefault(option => option.Key == WellKnownPluginSessionOptions.Effort)
+                            ?.KnownValues?.Select(value => value.Value).ToArray();
+                        return _BuildModelCatalog(models, efforts);
+                    }
+                    break;
+                case Core.Profiles.ClaudeConfig:
+                    return _BuildModelCatalog(
+                        LegacyClaudeModels.Count > 0 ? LegacyClaudeModels : null,
+                        LegacyClaudeEfforts.Count > 0 ? LegacyClaudeEfforts : null);
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _Logger()?.LogDebug("Could not read the profile model catalog: {Reason}.", exception.GetType().Name);
+        }
+
+        return PluginProfileModelCatalog.Unknown;
+    }
+
+    private async Task<PluginProfileModelCatalog> _ReadLocalModelCatalogAsync(
+        string baseUrl, string? apiKey, CancellationToken cancellationToken)
+    {
+        var catalog = services.GetRequiredService<IModelCatalog>();
+        var models = await catalog.ReadModelsAsync(baseUrl, apiKey, cancellationToken)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        return _BuildModelCatalog(models, null);
+    }
+
+    private static PluginProfileModelCatalog _BuildModelCatalog(IReadOnlyList<string>? models, IReadOnlyList<string>? efforts) =>
+        models is null ? PluginProfileModelCatalog.Unknown : new(
+            PluginCatalogStatus.Known,
+            models.Select(id => new PluginProfileModel(id, efforts is null ? PluginCatalogStatus.Unknown : PluginCatalogStatus.Known, efforts ?? [])).ToArray());
+
     // The profile's model launch option, if its provider declares one, found via the well-known `Model`
     // key. Reads only statically declared options, not `ResolveOptionsAsync` — that hits a CLI, and this
     // runs on every plan emission and step start, where a stall would be felt.

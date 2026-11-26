@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Profiles;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 
@@ -32,35 +33,55 @@ public class CodexModelCatalogTests
     private static async Task _ParsesEachModelsOwnSupportedReasoningEffortsAsync()
     {
         var fake = new FakeCliSubprocess();
-        var listTask = CodexModelCatalog.ListAsync(() => fake, _DefaultConfig(), "codex", CancellationToken.None);
+        var listTask = CodexModelCatalog.ListAsync(() => fake, _DefaultConfig(), "codex", CancellationToken.None, readAllPages: true);
 
         await _RespondAsync(fake, "initialize", "{}");
         await _RespondAsync(fake, "model/list", """
             {"data":[
-                {"id":"gpt-5.6-sol","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"ultra"}]},
-                {"id":"gpt-5.5","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}
-            ]}
+                {"id":"gpt-5.6-sol","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"ultra"}]}
+            ],"nextCursor":"remaining"}
             """);
+        await _RespondAsync(fake, "model/list", """
+            {"data":[
+                {"id":"gpt-5.5","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]},
+                {"id":"older-model"},
+                {"id":"fixed-effort-model","supportedReasoningEfforts":[]}
+            ]}
+            """, cursor: "remaining");
         var listing = await listTask;
 
         Assert.Equal(new[] { "low", "medium", "ultra" }, listing.ReasoningEffortsFor("gpt-5.6-sol"));
         Assert.Equal(new[] { "low", "high" }, listing.ReasoningEffortsFor("gpt-5.5"));
         // A model the listing has nothing for reports no efforts, rather than borrowing another model's set.
         Assert.Empty(listing.ReasoningEffortsFor("unknown-model"));
+
+        var catalog = listing.ToProfileCatalog();
+        Assert.Equal(PluginCatalogStatus.Known, catalog.Status);
+        Assert.Equal(new[] { "gpt-5.6-sol", "gpt-5.5", "older-model", "fixed-effort-model" }, catalog.Models.Select(model => model.Id));
+        Assert.Collection(catalog.Models,
+            model => Assert.Equal(new[] { "low", "medium", "ultra" }, model.Efforts),
+            model => Assert.Equal(new[] { "low", "high" }, model.Efforts),
+            model => Assert.Equal(PluginCatalogStatus.Unknown, model.EffortStatus),
+            model =>
+            {
+                Assert.Equal(PluginCatalogStatus.Known, model.EffortStatus);
+                Assert.Empty(model.Efforts);
+            });
     }
 
-    private static async Task _RespondAsync(FakeCliSubprocess fake, string method, string resultJson)
+    private static async Task _RespondAsync(FakeCliSubprocess fake, string method, string resultJson, string? cursor = null)
     {
-        var request = await _WaitForRequestAsync(fake, method);
+        var request = await _WaitForRequestAsync(fake, method, cursor);
         var id = request.GetProperty("id").GetInt64();
         await fake.PushStdoutAsync($$$"""{"id":{{{id}}},"result":{{{resultJson}}}}""");
     }
 
-    private static async Task<JsonElement> _WaitForRequestAsync(FakeCliSubprocess fake, string method)
+    private static async Task<JsonElement> _WaitForRequestAsync(FakeCliSubprocess fake, string method, string? cursor = null)
     {
         for (var attempt = 0; attempt < 200; attempt++)
         {
-            var line = fake.WrittenLines.LastOrDefault(written => written.Contains($"\"method\":\"{method}\""));
+            var line = fake.WrittenLines.LastOrDefault(written => written.Contains($"\"method\":\"{method}\"")
+                && (cursor is null || written.Contains($"\"cursor\":\"{cursor}\"")));
             if (line is not null)
             {
                 return JsonDocument.Parse(line).RootElement;

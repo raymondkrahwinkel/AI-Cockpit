@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Profiles;
+
 namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
@@ -65,6 +67,13 @@ public sealed record SessionProviderRegistration(
     /// or any failure it keeps the declared options.
     /// </remarks>
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>>? ResolveOptionsAsync { get; init; }
+
+    /// <summary>
+    /// Optionally reads this profile's model catalog from its opaque config JSON without starting a session.
+    /// Honour the cancellation token and report unknown coverage where the provider cannot enumerate values.
+    /// Requires host 0.186.0.
+    /// </summary>
+    public Func<string, CancellationToken, Task<PluginProfileModelCatalog>>? ReadModelCatalogAsync { get; init; }
 
     /// <summary>
     /// An optional, session-less read of what this provider knows about its models right now: prices, windows, limits
