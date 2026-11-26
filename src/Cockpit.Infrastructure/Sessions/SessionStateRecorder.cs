@@ -35,7 +35,8 @@ public sealed class SessionStateRecorder : ISessionStateCache, ISingletonService
         conversationTracker.Changed += _OnConversationChanged;
         if (mounts is not null)
         {
-            mounts.Changed += paneId =>
+            // Connection reports can arrive repeatedly without changing any state we persist.
+            mounts.SelectionChanged += paneId =>
             {
                 if (gatewayState?.IsEnabled == true)
                 {
