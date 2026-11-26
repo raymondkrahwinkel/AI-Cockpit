@@ -253,8 +253,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     public async Task<bool> SendPromptAsync(string prompt) =>
         await _SubmitPromptAsync(prompt).ConfigureAwait(false) != PromptSubmission.Failed;
 
-    public async Task<bool> InjectAndSubmitAsync(string text) =>
-        await _SubmitPromptAsync(text).ConfigureAwait(false) == PromptSubmission.Sent;
+    public Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
 
     public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt) =>
         (await _SubmitPromptAsync(prompt).ConfigureAwait(false)) switch

@@ -244,14 +244,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public Task<bool> SetNameAsync(string name) => _WhileLiveAsync(pane => pane.SetNameDirectly(name));
 
-    public Task<bool> InjectAndSubmitAsync(string text) => UiThreadCall.RunAsync(async () =>
-    {
-        if (!_IsLive() || _pane is not { } pane || !_CanReceiveTask(pane))
-        {
-            return false;
-        }
-        return await pane.SubmitInjectedPromptAsync(text) == PromptSubmission.Sent;
-    });
+    public async Task<bool> InjectAndSubmitAsync(string text) => await SubmitPromptWhenReadyAsync(text) is not null;
 
     public bool AcceptsImages => _pane is SessionViewModel { CanPasteImages: true };
 

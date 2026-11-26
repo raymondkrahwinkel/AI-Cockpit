@@ -78,6 +78,7 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
     // A caller can await the write independently of a long-running request's reply.
     public async Task<Task<JsonElement>> WriteRequestAsync(string method, object? @params, CancellationToken cancellationToken)
     {
+        CancellationToken connectionLifetime = _readCancellation.Token;
         var id = Interlocked.Increment(ref _nextId);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = completion;
@@ -85,7 +86,7 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
         try
         {
             await _WriteMessageAsync(new { id, method, @params }, cancellationToken).ConfigureAwait(false);
-            return _AwaitReplyAsync(id, completion, cancellationToken);
+            return _AwaitReplyAsync(id, completion, cancellationToken, connectionLifetime);
         }
         catch
         {
@@ -94,9 +95,10 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
         }
     }
 
-    private async Task<JsonElement> _AwaitReplyAsync(long id, TaskCompletionSource<JsonElement> completion, CancellationToken cancellationToken)
+    private async Task<JsonElement> _AwaitReplyAsync(long id, TaskCompletionSource<JsonElement> completion, CancellationToken cancellationToken, CancellationToken connectionLifetime)
     {
         using CancellationTokenRegistration registration = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        using CancellationTokenRegistration closing = connectionLifetime.Register(() => completion.TrySetCanceled(connectionLifetime));
         try
         {
             return await completion.Task.ConfigureAwait(false);

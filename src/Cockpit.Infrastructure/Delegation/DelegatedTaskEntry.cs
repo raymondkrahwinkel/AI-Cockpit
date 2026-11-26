@@ -81,6 +81,7 @@ internal sealed class DelegatedTaskEntry
     public DateTimeOffset? FinishedAt { get; private set; }
 
     public int TurnCount { get; set; }
+    public bool HasReceivedTurnResult { get; set; }
 
     // Tool calls requested in the current turn — reset at each turn boundary, so the false-success guard judges each turn on its own (AC-100).
     public int ToolCallsRequested { get; set; }

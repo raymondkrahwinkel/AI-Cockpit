@@ -27,7 +27,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
     private readonly ILogger<ConversationIndexStore> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Lock _closeDrainLock = new();
-    private Task _closeDrain = Task.CompletedTask;
+    private Task? _closeDrain;
     private bool _closeDrainRequested;
     private readonly string _pendingCloses;
     private readonly ConcurrentDictionary<string, SessionStateRecord> _sessionFacts = new(StringComparer.Ordinal);
@@ -49,9 +49,16 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
     public Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>
         _WriteAsync(record.PaneId, existing => _Merge(record, existing), cancellationToken);
 
-    private ConversationRecord? _Merge(ConversationRecord record, ConversationRecord? existing)
+    private ConversationRecord? _Merge(ConversationRecord record, ConversationRecord? existing, bool isStagedClose = false)
     {
-        if (existing?.ClosedAt is { } closedAt && (record.ClosedAt is null || record.ClosedAt <= closedAt))
+        if (record.ClosedAt is { } incomingClose)
+        {
+            if (existing?.ClosedAt >= incomingClose || (isStagedClose && existing?.LastActivityAt > incomingClose))
+            {
+                return null;
+            }
+        }
+        else if (existing?.ClosedAt is { } existingClose && record.LastActivityAt <= existingClose)
         {
             return null;
         }
@@ -106,27 +113,20 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
     {
         lock (_closeDrainLock)
         {
-            if (_closeDrainRequested)
-            {
-                return;
-            }
-
             _closeDrainRequested = true;
-            Task previous = _closeDrain;
-            _closeDrain = Task.Run(() => _DrainClosesAsync(previous));
+            _closeDrain ??= Task.Run(_DrainClosesAsync);
         }
     }
 
-    private async Task _DrainClosesAsync(Task previous)
+    private async Task _DrainClosesAsync()
     {
-        await previous.ConfigureAwait(false);
-        lock (_closeDrainLock)
-        {
-            _closeDrainRequested = false;
-        }
-
         while (true)
         {
+            lock (_closeDrainLock)
+            {
+                _closeDrainRequested = false;
+            }
+
             try
             {
                 foreach (string path in Directory.EnumerateFiles(_pendingCloses, "*.json").Order(StringComparer.Ordinal))
@@ -134,16 +134,29 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                     string json = await File.ReadAllTextAsync(path).ConfigureAwait(false);
                     ConversationRecord record = JsonSerializer.Deserialize<ConversationRecord>(json, SerializerOptions)
                         ?? throw new JsonException("Missing staged close record.");
-                    await _WriteAsync(record.PaneId, existing => _Merge(record, existing), CancellationToken.None, isStagedClose: true).ConfigureAwait(false);
+                    await _WriteAsync(record.PaneId, existing => _Merge(record, existing, isStagedClose: true),
+                        CancellationToken.None, isStagedClose: true).ConfigureAwait(false);
                     File.Delete(path);
                 }
-
-                return;
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or TimeoutException)
             {
                 _logger.LogWarning("Could not drain staged conversation closes ({ErrorType}); retrying.", exception.GetType().Name);
                 await Task.Delay(CloseRetryDelay).ConfigureAwait(false);
+                continue;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning("Staged conversation close drain stopped ({ErrorType}). Pending closes are retained.", exception.GetType().Name);
+            }
+
+            lock (_closeDrainLock)
+            {
+                if (!_closeDrainRequested)
+                {
+                    _closeDrain = null;
+                    return;
+                }
             }
         }
     }

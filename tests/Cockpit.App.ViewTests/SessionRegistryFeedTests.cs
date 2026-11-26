@@ -47,11 +47,16 @@ public class SessionRegistryFeedTests
             Assert.Null(sessions.Find(closing.PaneId));
             Assert.NotNull(sessions.Find(staying.PaneId));
             Assert.NotNull((await closeStaging.Task.WaitAsync(TimeSpan.FromSeconds(2))).ClosedAt);
+            await Dispatcher.UIThread.InvokeAsync(() => cockpit.CloseSessionCommand.ExecuteAsync(closing))
+                .WaitAsync(TimeSpan.FromSeconds(2));
         }
         finally
         {
             indexGate.TrySetResult();
+            await Dispatcher.UIThread.InvokeAsync(async () => await cockpit.DisposeAsync()).WaitAsync(TimeSpan.FromSeconds(2));
         }
+
+        _ = index.Received(1).StageCloseAsync(Arg.Any<ConversationRecord>());
     }
 
     // CLAUDE.md, SDK↔TTY: the statusline, reading a transcript back and pushing text plus Enter belong on both routes.

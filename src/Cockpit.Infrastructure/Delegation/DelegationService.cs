@@ -549,6 +549,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         entry.IdleCancellation?.Dispose();
         entry.IdleCancellation = null;
 
+        entry.HasReceivedTurnResult = false;
         entry.Status = DelegatedTaskStatus.Running;
         TasksChanged?.Invoke();
         await entry.Runtime.SendUserMessageAsync(text, cancellationToken: cancellationToken);
@@ -1049,6 +1050,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
 
             case TurnCompleted turn:
                 entry.TurnCount++;
+                entry.HasReceivedTurnResult = true;
 
                 // False-success guard (AC-100/AC-110): the local-model driver reports a turn "success" whenever the
                 // HTTP stream ends cleanly, even if every tool call was denied or errored and nothing landed. Such
@@ -1085,7 +1087,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // Deliberately no worktree release here, unlike every other ending path. A SessionError is not proof
             // the session is over — some are notices from a session running fine (an events gap, a system-prompt
             // failure) — and releasing on one could delete a live sub-agent's working directory. Left for reconcile.
-            case SessionError error:
+            case SessionError error when !error.IsTerminal || (!entry.IsFinished && !entry.HasReceivedTurnResult):
                 entry.Finish(DelegatedTaskStatus.Failed, result: null, error: error.Message);
                 TasksChanged?.Invoke();
                 _ = _Audit(DelegationAuditAction.Failed, entry.Profile.Label, entry.TaskId, request: null, error.Message, entry);

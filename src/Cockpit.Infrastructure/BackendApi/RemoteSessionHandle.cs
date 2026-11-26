@@ -542,7 +542,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
 
     public async Task<bool> SendPromptAsync(string prompt) => await SubmitPromptWhenReadyAsync(prompt).ConfigureAwait(false) is not null;
 
-    public async Task<bool> InjectAndSubmitAsync(string text) => await SubmitPromptWhenReadyAsync(text).ConfigureAwait(false) is true;
+    public Task<bool> InjectAndSubmitAsync(string text) => SendPromptAsync(text);
 
     public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt)
     {
