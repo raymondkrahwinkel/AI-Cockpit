@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2387: Plugin SDK 3.99.0 lists available models and per-model efforts for a Cockpit profile, including Codex and LM Studio. It distinguishes an unknown catalog from a verified empty list. The API requires Cockpit 0.186.0.
+
 - Windows vault commands can use private files with standard readers such as OpenSSH, Python and npm. Cockpit stores them in LocalAppData and cleans up abandoned files at startup.
 
 - Pluginupdates kunnen direct worden gepubliceerd als de beschikbare host voldoet en de minimaal vereiste hostversie niet is verhoogd.

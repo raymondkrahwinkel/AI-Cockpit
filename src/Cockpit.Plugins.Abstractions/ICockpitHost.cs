@@ -741,6 +741,17 @@ public interface ICockpitHost
     /// </remarks>
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
 
+    /// <summary>Reads the available models and per-model efforts for the named local-to-this-host profile.</summary>
+    /// <remarks>
+    /// The label comes from <see cref="GetProfilesAsync"/>. A missing profile, unavailable provider or
+    /// unverified listing returns <see cref="PluginProfileModelCatalog.Unknown"/>. Set <c>minHostVersion</c> to 0.186.0.
+    /// </remarks>
+    Task<PluginProfileModelCatalog> GetProfileModelCatalogAsync(string profileLabel, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(PluginProfileModelCatalog.Unknown);
+    }
+
     /// <summary>
     /// The cockpit's projects (AC-1737), in the operator's order, including the ones with no folder. Read fresh on
     /// every call. On a server, that server's projects.

@@ -77,6 +77,9 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             IsLoggedIn = configJson => CodexLoginStatus.IsLoggedIn(configJson, host.ResolveManagedCliPath),
             CredentialKind = CodexLoginStatus.CredentialKind,
             StartLogin = (configJson, ct) => CodexLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
+            ReadModelCatalogAsync = async (configJson, cancellationToken) =>
+                (await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken, readAllPages: true)
+                    .ConfigureAwait(false)).ToProfileCatalog(),
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
                 var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);
@@ -131,14 +134,15 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
     }
 
     // Reads the models this profile's codex offers (increment 2 step C) — shared by the SDK and TTY option resolvers.
-    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, Func<string, string?>? managedResolver, CancellationToken cancellationToken)
+    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, Func<string, string?>? managedResolver,
+        CancellationToken cancellationToken, bool readAllPages = false)
     {
         var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
         // Resolve with the managed copy too, so a codex installed only via the managed installer (not on PATH) still
         // lists its models — otherwise the New-session Model dropdown falls back to free text even though the session
         // itself would spawn the managed binary fine.
         var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
-        return await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
+        return await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken, readAllPages).ConfigureAwait(false);
     }
 
     private static async Task<PluginModelIntelligence> _ReadModelIntelligenceAsync(string configJson, Func<string, string?>? managedResolver, Action<PluginModelObservation> recordObservation, CancellationToken cancellationToken)

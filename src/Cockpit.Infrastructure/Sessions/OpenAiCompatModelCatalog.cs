@@ -16,9 +16,42 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
 {
     public async Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey = null, CancellationToken cancellationToken = default)
     {
+        try
+        {
+            var entries = await _ReadModelEntriesAsync(baseUrl, apiKey, cancellationToken).ConfigureAwait(false);
+            return _ModelIds(entries);
+        }
+        catch (OperationCanceledException ex)
+        {
+            logger.LogWarning(ex, "Could not list models.");
+            return [];
+        }
+    }
+
+    public async Task<IReadOnlyList<string>?> ReadModelsAsync(string baseUrl, string? apiKey = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var entries = await _ReadModelEntriesAsync(baseUrl, apiKey, cancellationToken).ConfigureAwait(false);
+        if (entries is null)
+        {
+            return null;
+        }
+
+        var ids = _ModelIds(entries);
+        return ids.Count == entries.Count ? ids : null;
+    }
+
+    private static IReadOnlyList<string> _ModelIds(List<ModelEntry?>? entries) => entries?
+        .Select(entry => entry?.Id)
+        .OfType<string>()
+        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .ToList() ?? [];
+
+    private async Task<List<ModelEntry?>?> _ReadModelEntriesAsync(string baseUrl, string? apiKey, CancellationToken cancellationToken)
+    {
         if (!_HasHttpBaseUrl(baseUrl))
         {
-            return [];
+            return null;
         }
 
         try
@@ -29,15 +62,13 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
             response.EnsureSuccessStatusCode();
 
             var body = await response.Content.ReadFromJsonAsync<ModelListResponse>(cancellationToken).ConfigureAwait(false);
-            return body?.Data?
-                .Select(entry => entry.Id)
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .ToList() ?? [];
+            return body?.Data;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException
+            || ex is OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Could not list models.");
-            return [];
+            return null;
         }
     }
 
@@ -82,7 +113,7 @@ internal sealed class OpenAiCompatModelCatalog(HttpClient httpClient, ILogger<Op
     private sealed class ModelListResponse
     {
         [JsonPropertyName("data")]
-        public List<ModelEntry>? Data { get; set; }
+        public List<ModelEntry?>? Data { get; set; }
     }
 
     private sealed class ModelEntry

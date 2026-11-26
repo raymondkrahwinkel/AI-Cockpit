@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Profiles;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
@@ -16,7 +17,8 @@ internal static class CodexModelCatalog
         Func<ICliSubprocess> subprocessFactory,
         CliAgentConfig config,
         string executablePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool readAllPages = false)
     {
         await using var connection = new CodexAppServerConnection(subprocessFactory());
         connection.Start(executablePath, _WorkingDirectory(config), config.BuildEnvironmentVariables());
@@ -25,7 +27,45 @@ internal static class CodexModelCatalog
         await connection.SendNotificationAsync("initialized", null, cancellationToken).ConfigureAwait(false);
         var result = await connection.SendRequestAsync("model/list", new { }, cancellationToken).ConfigureAwait(false);
 
-        return ParseListing(result);
+        var listing = ParseListing(result);
+        var cursor = readAllPages && listing.IsKnown ? _StringProperty(result, "nextCursor") : null;
+        if (string.IsNullOrEmpty(cursor))
+        {
+            return listing;
+        }
+
+        var ids = listing.Ids.ToList();
+        var defaultId = listing.DefaultId;
+        var efforts = listing.ReasoningEffortsById?.ToDictionary() ?? new Dictionary<string, IReadOnlyList<string>>();
+        var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+        while (cursor is { Length: > 0 })
+        {
+            if (!seenCursors.Add(cursor))
+            {
+                return CodexModelListing.Empty;
+            }
+
+            result = await connection.SendRequestAsync("model/list", new { cursor }, cancellationToken).ConfigureAwait(false);
+            var page = ParseListing(result);
+            if (!page.IsKnown)
+            {
+                return CodexModelListing.Empty;
+            }
+
+            ids.AddRange(page.Ids);
+            defaultId ??= page.DefaultId;
+            foreach (var id in page.Ids)
+            {
+                if (page.ReasoningEffortsById?.TryGetValue(id, out var values) is true)
+                {
+                    efforts[id] = values;
+                }
+            }
+
+            cursor = _StringProperty(result, "nextCursor");
+        }
+
+        return new(ids, defaultId, efforts);
     }
 
     private static string _WorkingDirectory(CliAgentConfig config) =>
@@ -43,11 +83,17 @@ internal static class CodexModelCatalog
 
         var ids = new List<string>();
         string? defaultId = null;
+        var isKnown = true;
         var reasoningEffortsById = new Dictionary<string, IReadOnlyList<string>>();
         foreach (var entry in data.EnumerateArray())
         {
-            if (entry.ValueKind != JsonValueKind.Object
-                || (entry.TryGetProperty("hidden", out var hidden) && hidden.ValueKind == JsonValueKind.True))
+            if (entry.ValueKind != JsonValueKind.Object)
+            {
+                isKnown = false;
+                continue;
+            }
+
+            if (entry.TryGetProperty("hidden", out var hidden) && hidden.ValueKind == JsonValueKind.True)
             {
                 continue;
             }
@@ -55,6 +101,7 @@ internal static class CodexModelCatalog
             var id = _StringProperty(entry, "id") ?? _StringProperty(entry, "model");
             if (string.IsNullOrWhiteSpace(id))
             {
+                isKnown = false;
                 continue;
             }
 
@@ -64,32 +111,35 @@ internal static class CodexModelCatalog
                 defaultId = id;
             }
 
-            reasoningEffortsById[id] = _ParseReasoningEfforts(entry);
+            if (_ParseReasoningEfforts(entry) is { } efforts)
+            {
+                reasoningEffortsById[id] = efforts;
+            }
         }
 
-        return new CodexModelListing(ids, defaultId, reasoningEffortsById);
+        return new CodexModelListing(ids, defaultId, reasoningEffortsById) { IsKnown = isKnown };
     }
 
     // `supportedReasoningEfforts` (AC-1101): each model reports its own reasoning-effort presets, not a fixed set
     // shared by all — sol/terra offer "ultra", luna and 5.5 do not. Reading it per model, instead of a hardcoded
     // list, is what lets the effort control filter to what the selected model actually supports.
-    private static IReadOnlyList<string> _ParseReasoningEfforts(JsonElement entry)
+    private static IReadOnlyList<string>? _ParseReasoningEfforts(JsonElement entry)
     {
         if (!entry.TryGetProperty("supportedReasoningEfforts", out var efforts) || efforts.ValueKind != JsonValueKind.Array)
         {
-            return [];
+            return null;
         }
 
         var values = new List<string>();
         foreach (var preset in efforts.EnumerateArray())
         {
-            if (_StringProperty(preset, "reasoningEffort") is { Length: > 0 } effort)
+            if (preset.ValueKind == JsonValueKind.Object && _StringProperty(preset, "reasoningEffort") is { Length: > 0 } effort)
             {
                 values.Add(effort);
             }
         }
 
-        return values;
+        return values.Count > 0 || efforts.GetArrayLength() == 0 ? values : null;
     }
 
     private static string? _StringProperty(JsonElement parent, string name) =>
@@ -100,7 +150,17 @@ internal static class CodexModelCatalog
 // model id) — empty when the listing could not be read.
 internal sealed record CodexModelListing(IReadOnlyList<string> Ids, string? DefaultId, IReadOnlyDictionary<string, IReadOnlyList<string>>? ReasoningEffortsById = null)
 {
-    public static CodexModelListing Empty { get; } = new([], null);
+    public static CodexModelListing Empty { get; } = new([], null) { IsKnown = false };
+
+    public bool IsKnown { get; init; } = true;
+
+    public PluginProfileModelCatalog ToProfileCatalog() =>
+        !IsKnown ? PluginProfileModelCatalog.Unknown : new(
+            PluginCatalogStatus.Known,
+            Ids.Distinct(StringComparer.Ordinal).Select(id =>
+                ReasoningEffortsById?.TryGetValue(id, out var efforts) is true
+                    ? new PluginProfileModel(id, PluginCatalogStatus.Known, efforts)
+                    : new PluginProfileModel(id, PluginCatalogStatus.Unknown, [])).ToArray());
 
     // The reasoning-effort presets the given model reports, or empty when the listing carries none for it (an
     // unlisted model, a Codex build too old to report the field) — the caller treats that the same as "no live
