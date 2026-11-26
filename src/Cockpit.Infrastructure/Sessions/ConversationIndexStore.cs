@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -18,22 +19,44 @@ namespace Cockpit.Infrastructure.Sessions;
 internal sealed class ConversationIndexStore : IConversationIndex, ISingletonService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { Converters = { new JsonStringEnumConverter() } };
+    private static readonly TimeSpan CloseRetryDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CloseGateWait = TimeSpan.FromSeconds(30);
     private readonly string _path;
     private readonly IProjectStore? _projects;
     private readonly SessionTranscriptLog? _transcripts;
     private readonly ILogger<ConversationIndexStore> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Lock _closeDrainLock = new();
+    private Task _closeDrain = Task.CompletedTask;
+    private bool _closeDrainRequested;
+    private readonly string _pendingCloses;
     private readonly ConcurrentDictionary<string, SessionStateRecord> _sessionFacts = new(StringComparer.Ordinal);
     private Dictionary<string, ConversationRecord>? _latest;
 
     public ConversationIndexStore(SessionStateRecorder recorder, IProjectStore projects, SessionTranscriptLog transcripts, ILogger<ConversationIndexStore> logger)
         : this(CockpitConfigPath.Conversations, logger, projects, transcripts) => recorder.Recorded += RecordSessionState;
 
-    internal ConversationIndexStore(string path, ILogger<ConversationIndexStore> logger, IProjectStore? projects = null, SessionTranscriptLog? transcripts = null) =>
+    internal ConversationIndexStore(string path, ILogger<ConversationIndexStore> logger, IProjectStore? projects = null, SessionTranscriptLog? transcripts = null)
+    {
         (_path, _logger, _projects, _transcripts) = (path, logger, projects, transcripts);
+        _pendingCloses = path + ".pending-closes";
+        if (Directory.Exists(_pendingCloses))
+        {
+            _RequestCloseDrain();
+        }
+    }
 
     public Task RecordAsync(ConversationRecord record, CancellationToken cancellationToken = default) =>
-        _WriteAsync(record.PaneId, existing => _WithSessionFacts(record with
+        _WriteAsync(record.PaneId, existing => _Merge(record, existing), cancellationToken);
+
+    private ConversationRecord? _Merge(ConversationRecord record, ConversationRecord? existing)
+    {
+        if (existing?.ClosedAt is { } closedAt && (record.ClosedAt is null || record.ClosedAt <= closedAt))
+        {
+            return null;
+        }
+
+        return _WithSessionFacts(record with
         {
             StartedAt = existing?.StartedAt ?? record.StartedAt,
             ProfileId = record.ProfileId ?? existing?.ProfileId,
@@ -43,7 +66,87 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             ConversationState = record.ConversationState == SessionConversationIdState.Unknown && existing is not null
                 ? existing.ConversationState
                 : record.ConversationState,
-        }), cancellationToken);
+        });
+    }
+
+    // Keep the close independently of the index gate and of the next process's shutdown budget.
+    public async Task StageCloseAsync(ConversationRecord record)
+    {
+        if (record.ClosedAt is not { } closedAt)
+        {
+            throw new ArgumentException("A staged close needs a close time.", nameof(record));
+        }
+
+        string destination = Path.Combine(_pendingCloses, FormattableString.Invariant($"{closedAt.UtcTicks:D19}-{Guid.NewGuid():N}.json"));
+        string temporary = destination + ".tmp";
+        while (true)
+        {
+            try
+            {
+                CockpitConfigPath.EnsurePrivateDirectory(_pendingCloses);
+                await using (var stream = new FileStream(temporary, _WriteOptions(FileMode.Create)))
+                {
+                    await JsonSerializer.SerializeAsync(stream, _WithSessionFacts(record), SerializerOptions).ConfigureAwait(false);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                File.Move(temporary, destination);
+                _RequestCloseDrain();
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning("Could not stage conversation close for pane {PaneId} ({ErrorType}); retrying.", record.PaneId, exception.GetType().Name);
+                await Task.Delay(CloseRetryDelay).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private void _RequestCloseDrain()
+    {
+        lock (_closeDrainLock)
+        {
+            if (_closeDrainRequested)
+            {
+                return;
+            }
+
+            _closeDrainRequested = true;
+            Task previous = _closeDrain;
+            _closeDrain = Task.Run(() => _DrainClosesAsync(previous));
+        }
+    }
+
+    private async Task _DrainClosesAsync(Task previous)
+    {
+        await previous.ConfigureAwait(false);
+        lock (_closeDrainLock)
+        {
+            _closeDrainRequested = false;
+        }
+
+        while (true)
+        {
+            try
+            {
+                foreach (string path in Directory.EnumerateFiles(_pendingCloses, "*.json").Order(StringComparer.Ordinal))
+                {
+                    string json = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+                    ConversationRecord record = JsonSerializer.Deserialize<ConversationRecord>(json, SerializerOptions)
+                        ?? throw new JsonException("Missing staged close record.");
+                    await _WriteAsync(record.PaneId, existing => _Merge(record, existing), CancellationToken.None, isStagedClose: true).ConfigureAwait(false);
+                    File.Delete(path);
+                }
+
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or TimeoutException)
+            {
+                _logger.LogWarning("Could not drain staged conversation closes ({ErrorType}); retrying.", exception.GetType().Name);
+                await Task.Delay(CloseRetryDelay).ConfigureAwait(false);
+            }
+        }
+    }
 
     // A pane the index has no row for yet only gets one from the pane itself; the assistant has no pane that would.
     internal void RecordSessionState(SessionStateRecord state)
@@ -94,12 +197,34 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
         return results;
     }
 
-    private async Task _WriteAsync(string paneId, Func<ConversationRecord?, ConversationRecord?> compose, CancellationToken cancellationToken)
+    private async Task _WriteAsync(string paneId, Func<ConversationRecord?, ConversationRecord?> compose, CancellationToken cancellationToken, bool isStagedClose = false)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        long started = Stopwatch.GetTimestamp();
+        if (isStagedClose)
+        {
+            if (!await _gate.WaitAsync(CloseGateWait, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.LogWarning("Conversation index gate still busy for pane {PaneId} after {ElapsedMs} ms; close remains staged.",
+                    paneId, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                throw new TimeoutException("The conversation index is busy.");
+            }
+        }
+        else
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
         try
         {
+            if (isStagedClose)
+            {
+                _logger.LogInformation("Conversation index gate acquired for pane {PaneId} after {ElapsedMs} ms.", paneId, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            }
+
             var latest = await _LatestAsync(cancellationToken).ConfigureAwait(false);
+            if (isStagedClose && _latest is null)
+            {
+                throw new IOException("The conversation index could not be loaded.");
+            }
             if (compose(latest.GetValueOrDefault(paneId)) is not { } record)
             {
                 return;
@@ -110,27 +235,59 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                 CockpitConfigPath.EnsurePrivateDirectory(directory);
             }
 
-            var options = new FileStreamOptions { Mode = FileMode.Append, Access = FileAccess.Write, Share = FileShare.Read };
-            if (!OperatingSystem.IsWindows())
-            {
-                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-            }
-
-            await using (var stream = new FileStream(_path, options))
-            {
-                await stream.WriteAsync(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(record, SerializerOptions) + Environment.NewLine), cancellationToken).ConfigureAwait(false);
-            }
+            await _AppendAsync(record, isStagedClose, cancellationToken).ConfigureAwait(false);
 
             latest[paneId] = record;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            _logger.LogWarning(exception, "Could not append to the conversation index at {Path}.", _path);
+            _logger.LogWarning("Could not write conversation index for pane {PaneId} ({ErrorType}).", paneId, exception.GetType().Name);
+            if (isStagedClose)
+            {
+                throw;
+            }
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private async Task _AppendAsync(ConversationRecord record, bool isStagedClose, CancellationToken cancellationToken)
+    {
+        FileStreamOptions options = _WriteOptions(isStagedClose ? FileMode.OpenOrCreate : FileMode.Append);
+        if (isStagedClose)
+        {
+            options.Access = FileAccess.ReadWrite;
+        }
+
+        await using var stream = new FileStream(_path, options);
+        // A prior interrupted append may have left a partial row. Keep it separate from the pending close.
+        if (isStagedClose && stream.Length > 0)
+        {
+            stream.Seek(-1, SeekOrigin.End);
+            if (stream.ReadByte() != '\n')
+            {
+                stream.WriteByte((byte)'\n');
+            }
+        }
+
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(record, SerializerOptions) + Environment.NewLine), cancellationToken).ConfigureAwait(false);
+        if (isStagedClose)
+        {
+            stream.Flush(flushToDisk: true);
+        }
+    }
+
+    private static FileStreamOptions _WriteOptions(FileMode mode)
+    {
+        var options = new FileStreamOptions { Mode = mode, Access = FileAccess.Write, Share = FileShare.Read };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        return options;
     }
 
     // Read once and then kept, so a write is an append rather than a reread; a failed read is not kept, so the next call retries.
@@ -167,7 +324,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(exception, "Could not read the conversation index at {Path}.", _path);
+            _logger.LogWarning("Could not read the conversation index ({ErrorType}).", exception.GetType().Name);
             return latest;
         }
     }

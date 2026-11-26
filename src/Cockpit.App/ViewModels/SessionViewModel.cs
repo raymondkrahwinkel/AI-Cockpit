@@ -39,8 +39,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1376/1449: the backend half of this pane — runtime, turn gate and queue, the send funnel and the clocks. This
     // view model draws what it reports and hands it what the operator does.
     private readonly ISessionControl _control;
-    private QueuedPrompt? _submittingPrompt;
-    private bool _submissionFailed;
+    private readonly HashSet<QueuedPrompt> _submittingPrompts = new(ReferenceEqualityComparer.Instance);
 
     // True only while `ReplayRecordedTranscriptAsync` is repainting rows that came out of the log — recording them
     // straight back would append a second version of every row on every restart.
@@ -1692,18 +1691,18 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : $"Reconnecting to {RemoteServer}…";
     }
 
-    private async Task _SendToServerAsync()
+    private async Task<PromptSubmission> _SendToServerAsync(bool reportDelivery)
     {
         if (_remoteControl is null || !IsLinkUp || (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0))
         {
-            return;
+            return PromptSubmission.Failed;
         }
 
         if (PendingAttachments.Count > 0)
         {
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, $"Images cannot be sent to a session on {RemoteServer}. Remove them and send again."));
-            return;
+            return PromptSubmission.Failed;
         }
 
         var text = InputText;
@@ -1713,7 +1712,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         PendingReplyTo = null;
         try
         {
-            await _remoteControl.SendPromptAsync(BuildOutgoingText(sent, replyTo)).ConfigureAwait(true);
+            string outgoing = BuildOutgoingText(sent, replyTo);
+            if (reportDelivery && _remoteHandle is { } handle)
+            {
+                bool? delivered = await handle.SubmitPromptWhenReadyAsync(outgoing);
+                return delivered switch
+                {
+                    true => PromptSubmission.Sent,
+                    false => PromptSubmission.Queued,
+                    null => throw new InvalidOperationException("The session refused this message."),
+                };
+            }
+
+            await _remoteControl.SendPromptAsync(outgoing);
+            return PromptSubmission.Queued;
         }
         catch (Exception exception)
         {
@@ -1725,6 +1737,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, $"Not sent to {RemoteServer}: {exception.Message}"));
+            return PromptSubmission.Failed;
         }
     }
 
@@ -2501,17 +2514,32 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     [RelayCommand]
-    private async Task SendAsync()
+    private async Task SendAsync() => await _SendComposerAsync(reportDelivery: false);
+
+    internal override async Task<PromptSubmission> SubmitInjectedPromptAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || IsClosing || IsReadingChild || !SendCommand.CanExecute(null))
+        {
+            return PromptSubmission.Failed;
+        }
+
+        string draft = InputText;
+        InputText = text;
+        Task<PromptSubmission> sending = _SendComposerAsync(reportDelivery: true);
+        InputText = draft;
+        return await sending;
+    }
+
+    private async Task<PromptSubmission> _SendComposerAsync(bool reportDelivery)
     {
         if (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0)
         {
-            return;
+            return PromptSubmission.Failed;
         }
 
         if (RemoteServer is not null)
         {
-            await _SendToServerAsync();
-            return;
+            return await _SendToServerAsync(reportDelivery);
         }
 
         // Sending before the session has started reaches the CLI process before its I/O is wired and surfaces a raw
@@ -2520,19 +2548,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, "The session has not started yet — nothing was sent."));
-            return;
+            return PromptSubmission.Failed;
         }
 
         if (PendingAttachments.Count > 0 && !CanPasteImages)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, "This model does not support image input; the attachments were kept."));
-            return;
+            return PromptSubmission.Failed;
         }
 
         if (PendingAttachments.Count > ImageInputLimits.MaxCount || PendingAttachments.Sum(image => (long)image.PngBytes.Length) > ImageInputLimits.MaxBytes)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, "At most 10 images and 20 MB can be sent; the attachments were kept."));
-            return;
+            return PromptSubmission.Failed;
         }
 
         var text = InputText;
@@ -2543,14 +2571,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         var attachments = PendingAttachments.ToArray();
         var prompt = new QueuedPrompt(MentionPicker.ExpandMentions(text), images, replyTo?.Id);
-        _submittingPrompt = prompt;
-        _submissionFailed = false;
+        _submittingPrompts.Add(prompt);
         try
         {
-            await _control.SubmitAsync(prompt, Capabilities.SupportsMidTurnInput);
-            if (_submissionFailed)
+            PromptSubmission submission = await _control.SubmitAsync(prompt, Capabilities.SupportsMidTurnInput);
+            if (submission == PromptSubmission.Failed)
             {
-                return;
+                return submission;
             }
 
             if (InputText == text)
@@ -2565,14 +2592,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 PendingReplyTo = null;
             }
+            return submission;
         }
         catch (Exception ex)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, SendFailureMessage(ex, _control.IsRunning)));
+            return PromptSubmission.Failed;
         }
         finally
         {
-            _submittingPrompt = null;
+            _submittingPrompts.Remove(prompt);
         }
     }
 
@@ -2664,11 +2693,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private void _OnTurnFailedToStart(QueuedPrompt prompt, Exception exception)
     {
         ClearCurrentTurnImages();
-        if (ReferenceEquals(prompt, _submittingPrompt))
-        {
-            _submissionFailed = true;
-        }
-        else
+        if (!_submittingPrompts.Contains(prompt))
         {
             foreach (var image in prompt.Images)
             {
@@ -3304,6 +3329,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         SetActiveRuns(state.ActiveRuns);
         SessionStatus = state.Status;
+        if (state.Status == SessionStatus.Failed && !IsSessionReady)
+        {
+            OnPropertyChanged(nameof(IsSessionReady));
+            OnPropertyChanged(nameof(CanTakeAPrompt));
+        }
         LiveState = state;
         LiveStateChanged?.Invoke(state);
     }

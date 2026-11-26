@@ -906,7 +906,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             {
                 return Task.FromResult(false);
             }
-            SubmitPromptWhenReady(prompt);
+            HoldPrompt(prompt);
             return Task.FromResult(true);
         }
         if (!CanTakeAPrompt || PromptSink is not { } sink)
@@ -923,6 +923,22 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         SessionStatus = _statusTracker.OnActivity(SessionActivity.Busy, DateTimeOffset.UtcNow);
 
         return Task.FromResult(true);
+    }
+
+    internal override async Task<PromptSubmission> SubmitInjectedPromptAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return PromptSubmission.Failed;
+        }
+
+        bool canSendNow = CanTakeAPrompt;
+        if (!await SendPromptAsync(text))
+        {
+            return PromptSubmission.Failed;
+        }
+
+        return canSendNow ? PromptSubmission.Sent : PromptSubmission.Queued;
     }
 
     private const char Escape = '\u001b';

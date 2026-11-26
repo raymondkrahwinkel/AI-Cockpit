@@ -103,6 +103,10 @@ internal sealed class SessionLiveStateFold
             case SessionError error:
                 _ClearActiveToolCalls();
                 _ClearBackgroundTasks();
+                if (error.IsTerminal)
+                {
+                    _needsAttention = false;
+                }
                 _lastTurnFailed = true;
                 return (new SessionTurnEnd(
                     IsError: true,

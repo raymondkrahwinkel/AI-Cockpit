@@ -221,6 +221,7 @@ public sealed record SessionError : SessionEvent
 {
     public required string Message { get; init; }
     public Exception? Exception { get; init; }
+    public bool IsTerminal { get; init; }
 
     // AC-720: which kind of failure this is, so the transcript can render blocking/temporary/informational
     // rows instead of identical plain text. Defaults to Unknown — a driver that has not been taught to

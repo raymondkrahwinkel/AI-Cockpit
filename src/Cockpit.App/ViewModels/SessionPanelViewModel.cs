@@ -1850,41 +1850,42 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnVoiceSubmitRequested();
     }
 
-    // The brief handed to `SubmitPromptWhenReady` before this session could take one, kept until it can. At most one: a session is spawned with a single opening brief, and a second would be a second turn, not a longer one.
+    internal virtual Task<PromptSubmission> SubmitInjectedPromptAsync(string text) =>
+        Task.FromResult(PromptSubmission.Failed);
+
     private string? _promptHeldUntilReady;
 
-    // True while a brief is waiting for this session to become able to take it — see `SubmitPromptWhenReady`, whose two
-    // `false` results (held, and refused because one is already held) this is what tells apart.
     public bool HasPromptWaitingToBeDelivered => _promptHeldUntilReady is not null;
 
-    // Returns `true` when it went out on the spot and `false` when it is being held or was refused — never that it was
-    // delivered when it was not (AC-234, AC-395).
-    public bool SubmitPromptWhenReady(string prompt)
+    // True means sent, false means held or queued, and null means the pane refused the prompt.
+    public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt)
     {
-        if (string.IsNullOrWhiteSpace(prompt))
+        if (string.IsNullOrWhiteSpace(prompt) || IsClosing || _disposed || HasPromptWaitingToBeDelivered)
         {
-            return false;
+            return null;
         }
 
         if (CanTakeAPrompt)
         {
-            InjectAndSubmit(prompt);
-            return true;
+            return (await SubmitInjectedPromptAsync(prompt)) switch
+            {
+                PromptSubmission.Sent => true,
+                PromptSubmission.Queued => false,
+                _ => null,
+            };
         }
 
-        // Refused rather than overwritten — see the remarks. Both falses mean "not delivered"; which one it is,
-        // HasPromptWaitingToBeDelivered answers, and the caller that cares asks it before calling.
-        if (_promptHeldUntilReady is not null)
+        if (SessionStatus == SessionStatus.Failed)
         {
-            return false;
+            return null;
         }
 
-        _promptHeldUntilReady = prompt;
+        HoldPrompt(prompt);
         return false;
     }
 
-    // Sends the brief `SubmitPromptWhenReady` is holding, if there is one and this session can now take
-    // it. Called by each session kind at the single point where its own `CanTakeAPrompt` turns true.
+    protected void HoldPrompt(string prompt) => _promptHeldUntilReady = prompt;
+
     protected void DeliverHeldPrompt()
     {
         if (_promptHeldUntilReady is not { } held || !CanTakeAPrompt)
@@ -2060,6 +2061,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // and one resolved into a scope of its own takes that scope with it here instead (AC-787).
     private IAsyncDisposable? _lifetimeScope;
     private bool _disposed;
+    internal bool IsClosing { get; set; }
 
     public void OwnLifetimeScope(IAsyncDisposable scope) => _lifetimeScope = scope;
 

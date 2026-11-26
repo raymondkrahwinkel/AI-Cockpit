@@ -397,16 +397,18 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
         _ = _SendQueueCommandAndReportAsync("clear", null);
     }
 
-    public async Task SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false)
+    public async Task<PromptSubmission> SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false)
     {
         TurnStarting?.Invoke(prompt);
         try
         {
             await _SendQueueCommandAsync("submit", prompt, takesMidTurnInput).ConfigureAwait(false);
+            return PromptSubmission.Queued;
         }
         catch (Exception exception)
         {
             TurnFailedToStart?.Invoke(prompt, exception);
+            return PromptSubmission.Failed;
         }
     }
 
@@ -539,6 +541,8 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl, ISess
     }
 
     public async Task<bool> SendPromptAsync(string prompt) => await SubmitPromptWhenReadyAsync(prompt).ConfigureAwait(false) is not null;
+
+    public async Task<bool> InjectAndSubmitAsync(string text) => await SubmitPromptWhenReadyAsync(text).ConfigureAwait(false) is true;
 
     public async Task<bool?> SubmitPromptWhenReadyAsync(string prompt)
     {

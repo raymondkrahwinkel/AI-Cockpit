@@ -490,20 +490,27 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     public event Action<SessionOperatorAction>? OperatorActed;
 
     // Queues behind a turn in flight, unless the runtime takes input mid-turn (AC-739); otherwise sends now.
-    public Task SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false)
+    public Task<PromptSubmission> SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false)
     {
         OperatorActed?.Invoke(SessionOperatorAction.MessageSent);
         return _SubmitAsync(prompt, takesMidTurnInput);
     }
 
-    public Task SubmitForTheAgentAsync(QueuedPrompt prompt) => _SubmitAsync(prompt, takesMidTurnInput: false);
+    public Task<PromptSubmission> SubmitForTheAgentAsync(QueuedPrompt prompt) => _SubmitAsync(prompt, takesMidTurnInput: false);
 
-    private Task _SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput)
+    Task ISessionControl.SubmitForTheAgentAsync(QueuedPrompt prompt) => SubmitForTheAgentAsync(prompt);
+
+    private Task<PromptSubmission> _SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput)
     {
+        if (!IsRunning)
+        {
+            return Task.FromResult(PromptSubmission.Failed);
+        }
+
         if (IsBusy && (!takesMidTurnInput || _readOnlyTurn is not null))
         {
             Queue.Add(prompt);
-            return Task.CompletedTask;
+            return Task.FromResult(PromptSubmission.Queued);
         }
 
         return DispatchAsync(prompt);
@@ -513,17 +520,17 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     public void DispatchInBackground(QueuedPrompt prompt) => _Track(DispatchAsync(prompt));
 
     // Sends one turn now. A send that throws is reported through `TurnFailedToStart`, never out of here.
-    public async Task DispatchAsync(QueuedPrompt prompt)
+    public async Task<PromptSubmission> DispatchAsync(QueuedPrompt prompt)
     {
         if (_readOnlyTurn is { } reserved && !ReferenceEquals(reserved.Prompt, prompt))
         {
             Queue.Add(prompt);
-            return;
+            return PromptSubmission.Queued;
         }
 
-        if (Runtime is not { } runtime)
+        if (Runtime is not { IsRunning: true } runtime)
         {
-            return;
+            return PromptSubmission.Failed;
         }
 
         // The consumer may set IsBusy itself inside these handlers, where its own bookkeeping wants it; setting it
@@ -541,6 +548,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
         try
         {
             await _SendWithWaitingMessagesAsync(runtime, OutgoingText(prompt), prompt.Images);
+            return PromptSubmission.Sent;
         }
         catch (Exception ex)
         {
@@ -552,6 +560,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
             }
 
             IsBusy = false;
+            return PromptSubmission.Failed;
         }
     }
 
@@ -560,7 +569,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
         ? SubmitForTheAgentAsync(new QueuedPrompt(prompt, []))
         : Runtime is { } runtime
             ? _SendWithWaitingMessagesAsync(runtime, prompt, images: null)
-            : Task.CompletedTask;
+            : Task.FromException(new InvalidOperationException("This session's provider is no longer running."));
 
     // The one place a turn is handed to the runtime, so that turn-start delivery (AC-394) cannot be reached by one send
     // path and missed by another — `SessionHostSendPathTests` holds it to that.
@@ -607,7 +616,7 @@ public sealed partial class SessionHost : ISessionTurnGate, ISessionTranscript, 
     // session busy before its first await, so the status settles at once.
     private void _DispatchNextQueued()
     {
-        if (Queue.Count == 0 || TurnsHeldBecause is not null)
+        if (Queue.Count == 0 || !IsRunning || TurnsHeldBecause is not null)
         {
             return;
         }
