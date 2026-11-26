@@ -210,7 +210,7 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli, Func<bool> allowAg
         foreach (var (id, title) in items.Take(ItemLimit))
         {
             var json = await cli.RunAsync(connection.Token, ["item", "get", id, "--vault", connection.VaultId, "--format", "json"], cancellationToken).ConfigureAwait(false);
-            result.AddRange(TextFields(title, json));
+            result.AddRange(TextFields(title, json, connection.VaultId, id));
         }
 
         return result;
@@ -299,8 +299,8 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli, Func<bool> allowAg
             && (string.Equals(segments[0], connection.VaultName, StringComparison.OrdinalIgnoreCase) || segments[0] == connection.VaultId);
     }
 
-    // Text-field references and labels only; values stay inside the provider.
-    internal static IEnumerable<VaultItem> TextFields(string title, string itemJson)
+    // Field references and labels only; values stay inside the provider.
+    internal static IEnumerable<VaultItem> TextFields(string title, string itemJson, string vaultId, string itemId)
     {
         using var document = JsonDocument.Parse(itemJson);
         if (!document.RootElement.TryGetProperty("fields", out var fields) || fields.ValueKind != JsonValueKind.Array)
@@ -308,14 +308,29 @@ internal sealed class OnePasswordProvider(OnePasswordCli cli, Func<bool> allowAg
             return [];
         }
 
+        bool sshItem = document.RootElement.TryGetProperty("category", out var category)
+            && category.ValueKind == JsonValueKind.String && category.ValueEquals("SSH_KEY");
         var found = new List<VaultItem>();
         foreach (var field in fields.EnumerateArray())
         {
-            var textField = field.TryGetProperty("type", out var type) && type.GetString() is "CONCEALED" or "STRING";
-            if (textField && field.TryGetProperty("reference", out var reference) && reference.GetString() is { Length: > 0 } text)
+            string? fieldType = field.TryGetProperty("type", out var type) ? type.GetString() : null;
+            bool sshKey = sshItem && fieldType == "SSHKEY" && field.TryGetProperty("id", out var id) && id.GetString() == "private_key";
+            if (!sshKey && fieldType is not ("CONCEALED" or "STRING"))
+            {
+                continue;
+            }
+
+            string? reference = field.TryGetProperty("reference", out var referenceElement) ? referenceElement.GetString() : null;
+            if (sshKey)
+            {
+                string fieldReference = string.IsNullOrEmpty(reference) ? $"op://{vaultId}/{itemId}/private_key" : reference.Split('?', 2)[0];
+                reference = fieldReference + "?ssh-format=openssh";
+            }
+
+            if (reference is { Length: > 0 })
             {
                 var label = field.TryGetProperty("label", out var labelElement) ? labelElement.GetString() : null;
-                found.Add(new VaultItem(text, string.IsNullOrEmpty(label) ? title : $"{title} · {label}"));
+                found.Add(new VaultItem(reference, string.IsNullOrEmpty(label) ? title : $"{title} · {label}"));
             }
         }
 
