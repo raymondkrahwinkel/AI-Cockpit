@@ -250,7 +250,16 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                 CockpitConfigPath.EnsurePrivateDirectory(directory);
             }
 
-            await _AppendAsync(record, isStagedClose, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _AppendAsync(record, isStagedClose, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // A failed append may have reached the file. Reload before another merge or compaction.
+                _latest = null;
+                throw;
+            }
 
             latest[paneId] = record;
             if (_latest is not null && ++_lineCount % CompactionInterval == 0)
@@ -281,15 +290,11 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
 
     private async Task _AppendAsync(ConversationRecord record, bool isStagedClose, CancellationToken cancellationToken)
     {
-        FileStreamOptions options = _WriteOptions(isStagedClose ? FileMode.OpenOrCreate : FileMode.Append);
-        if (isStagedClose)
-        {
-            options.Access = FileAccess.ReadWrite;
-        }
-
+        FileStreamOptions options = _WriteOptions(FileMode.OpenOrCreate);
+        options.Access = FileAccess.ReadWrite;
         await using var stream = new FileStream(_path, options);
-        // A prior interrupted append may have left a partial row. Keep it separate from the pending close.
-        if (isStagedClose && stream.Length > 0)
+        // A prior interrupted append may have left a partial row. Keep the next record separate.
+        if (stream.Length > 0)
         {
             stream.Seek(-1, SeekOrigin.End);
             if (stream.ReadByte() != '\n')
@@ -347,7 +352,6 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                 {
                 }
             }
-
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -368,23 +372,37 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
             return;
         }
 
+        string temporary = $"{_path}.{Guid.NewGuid():N}.new";
         try
         {
-            CockpitConfigPath.ReplaceAtomicallyPrivate(_path, stream =>
+            using (FileStream stream = CockpitConfigPath.CreatePrivateFile(temporary))
             {
-                using var writer = new StreamWriter(stream, leaveOpen: true);
-                // Preserve the order of the first appearance of each pane for equal activity times.
-                foreach (ConversationRecord record in latest.Values)
+                using (var writer = new StreamWriter(stream, leaveOpen: true))
                 {
-                    writer.WriteLine(JsonSerializer.Serialize(record, SerializerOptions));
+                    // Keep the first-seen pane order for ties in activity time.
+                    foreach (ConversationRecord record in latest.Values)
+                    {
+                        writer.WriteLine(JsonSerializer.Serialize(record, SerializerOptions));
+                    }
                 }
-            });
 
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Replace(temporary, _path, _path + ".bak", ignoreMetadataErrors: true);
             _lineCount = latest.Count;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning("Could not compact the conversation index ({ErrorType}).", exception.GetType().Name);
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning("Could not remove the conversation index temporary file ({ErrorType}).", cleanupError.GetType().Name);
+            }
         }
     }
 

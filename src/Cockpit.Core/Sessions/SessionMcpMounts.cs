@@ -14,6 +14,7 @@ public sealed class SessionMcpMounts : ISingletonService
     private readonly ConcurrentDictionary<string, SessionMcpConnectionReport> _connections = new(StringComparer.Ordinal);
 
     public event Action<string>? Changed;
+    public event Action<string>? SelectionChanged;
 
     public void Bind(string paneId, SessionMcpContext context)
     {
@@ -22,7 +23,7 @@ public sealed class SessionMcpMounts : ISingletonService
             _ => new SessionMcpSet(context, Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase)),
             (_, current) => current with { Context = current.Context?.Manager == SessionMcpManager.Assistant
                 ? context with { Manager = SessionMcpManager.Assistant } : context });
-        Changed?.Invoke(paneId);
+        _NotifySelectionChanged(paneId);
     }
 
     public SessionMcpSet? Set(string paneId) => _mounted.GetValueOrDefault(paneId);
@@ -43,7 +44,7 @@ public sealed class SessionMcpMounts : ISingletonService
         _mounted.AddOrUpdate(paneId,
             _ => new SessionMcpSet(null, Array.Empty<string>().ToFrozenSet(StringComparer.OrdinalIgnoreCase)) { DelegationCeiling = names },
             (_, current) => current with { DelegationCeiling = names });
-        Changed?.Invoke(paneId);
+        _NotifySelectionChanged(paneId);
     }
 
     public bool TryChange(string paneId, SessionMcpSet expected, string name, bool add) =>
@@ -76,7 +77,7 @@ public sealed class SessionMcpMounts : ISingletonService
         {
             return false;
         }
-        Changed?.Invoke(paneId);
+        _NotifySelectionChanged(paneId);
         return true;
     }
 
@@ -122,6 +123,12 @@ public sealed class SessionMcpMounts : ISingletonService
                 ServerNames = names,
                 PreserveSelection = preserveSelection || current.Context?.Manager == SessionMcpManager.Assistant,
             });
+        _NotifySelectionChanged(paneId);
+    }
+
+    private void _NotifySelectionChanged(string paneId)
+    {
+        SelectionChanged?.Invoke(paneId);
         Changed?.Invoke(paneId);
     }
 
