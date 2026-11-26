@@ -87,7 +87,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     private CancellationTokenSource? _lifetime;
     private Task? _pump;
     private volatile bool _stopping;
-    private volatile bool _providerStreamEnded;
+    private volatile bool _providerStreamFailed;
 
     // The OS ceiling around this session's process tree, while it has one (AC-661).
     private IDisposable? _memoryCap;
@@ -303,7 +303,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     public IReadOnlyList<SessionLiveOption> LiveOptions => _driver?.LiveOptions ?? [];
 
     // AC-693: the pump ends when the driver's stream does, so a death out of band shows here, not only at DisposeAsync.
-    public bool IsRunning => !_stopping && !_providerStreamEnded && _pump is { IsCompleted: false };
+    public bool IsRunning => !_stopping && !_providerStreamFailed && _pump is { IsCompleted: false };
 
     public ProvisionPolicy? Policy => _policy;
 
@@ -364,7 +364,8 @@ internal sealed class SessionRuntime : ISessionRuntime
 
         // AC-661: cap the driver's own child (a spawned CLI) the moment it exists, before it has run a turn and
         // spawned anything itself. A provider that is an HTTP call has no process and nothing to cap.
-        if (_driver.ProcessId is { } processId)
+        int? startedProcessId = _driver.ProcessId;
+        if (startedProcessId is { } processId)
         {
             var anchorPane = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId);
             _processAnchor = _processAnchorFactory?.Anchor(processId, anchorPane,
@@ -376,7 +377,7 @@ internal sealed class SessionRuntime : ISessionRuntime
             }
         }
 
-        _pump = _PumpEventsAsync(_lifetime.Token);
+        _pump = _PumpEventsAsync(startedProcessId.HasValue, _lifetime.Token);
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
@@ -386,7 +387,7 @@ internal sealed class SessionRuntime : ISessionRuntime
             throw new InvalidOperationException("This model does not support image input.");
         }
 
-        if (!IsRunning || _driver is not { } driver)
+        if (_stopping || _providerStreamFailed || _driver is not { } driver)
         {
             throw new InvalidOperationException("This session's provider is no longer running.");
         }
@@ -646,7 +647,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
     }
 
-    private async Task _PumpEventsAsync(CancellationToken cancellationToken)
+    private async Task _PumpEventsAsync(bool startedWithProcess, CancellationToken cancellationToken)
     {
         if (_driver is null)
         {
@@ -671,7 +672,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
         catch (Exception exception)
         {
-            _providerStreamEnded = true;
+            _providerStreamFailed = true;
             if (!_stopping && !cancellationToken.IsCancellationRequested)
             {
                 _Publish(new SessionError
@@ -684,7 +685,13 @@ internal sealed class SessionRuntime : ISessionRuntime
             return;
         }
 
-        _providerStreamEnded = true;
+        // A clean event-stream end only signals a lost provider when a subprocess was observed at start.
+        if (!startedWithProcess)
+        {
+            return;
+        }
+
+        _providerStreamFailed = true;
         if (!_stopping && !cancellationToken.IsCancellationRequested)
         {
             string? oomdMessage = await _OomdKillMessageAsync(cancellationToken);
