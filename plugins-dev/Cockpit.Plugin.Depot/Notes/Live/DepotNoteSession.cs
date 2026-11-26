@@ -66,6 +66,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
     private int _merging;
     private volatile bool _mergeAgain;
     private DateTimeOffset _mergeFrom;
+    private (string Checksum, int[] Blocks, int Conflicts)? _pendingMerge;
 
     // editor.ts' MERGE_RETRY_MS: a merge that failed is tried again while the saves are still held.
     private static readonly TimeSpan MergeRetry = TimeSpan.FromSeconds(5);
@@ -1299,7 +1300,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             return;
         }
 
-        var @base = saver.Base;
+        var @base = _pendingMerge?.Checksum ?? saver.Base;
         var theirs = await hub.TextAsync(documentId, null, cancellationToken).ConfigureAwait(false);
         if (theirs is null || @base is null)
         {
@@ -1309,9 +1310,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
         if (theirs.Checksum == @base)
         {
-            // Merged already (a retry after a failed announcement): the room holds it, so the hub hears it again.
-            saver.Rebase(@base);
-            await hub.MergedAsync(documentId, @base, [], 0, cancellationToken).ConfigureAwait(false);
+            await _AnnounceMergeAsync(hub, documentId, @base, saver, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -1337,9 +1336,17 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             _text.Release();
         }
 
-        // What was typed and not yet saved goes out next, on top of the outside write; with nothing owed the room is the file.
-        saver.Rebase(theirs.Checksum);
-        await hub.MergedAsync(documentId, theirs.Checksum, merged.Blocks, merged.Conflicts, cancellationToken).ConfigureAwait(false);
+        _pendingMerge = (theirs.Checksum, merged.Blocks, merged.Conflicts);
+        await _AnnounceMergeAsync(hub, documentId, theirs.Checksum, saver, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task _AnnounceMergeAsync(
+        IDepotNotesHub hub, string documentId, string checksum, DepotNoteSaver saver, CancellationToken cancellationToken)
+    {
+        // Depot accepts Merged only while this checksum is still on disk. Keep saves held until the call returns.
+        await hub.MergedAsync(documentId, checksum, _pendingMerge?.Blocks ?? [], _pendingMerge?.Conflicts ?? 0, cancellationToken).ConfigureAwait(false);
+        _pendingMerge = null;
+        saver.Rebase(checksum);
     }
 
     private void _StatusChanged()
