@@ -147,12 +147,13 @@ public sealed class VaultHubTests : IDisposable
         });
 
         string[] readFile = OperatingSystem.IsWindows()
-            ? ["powershell", "-NoProfile", "-Command", "$f=[IO.File]::Open($env:VAULT_TEST_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)); try { $r=[IO.StreamReader]::new($f); [Console]::Write($r.ReadToEnd()) } finally { $f.Dispose() }"]
+            ? ["powershell", "-NoProfile", "-Command", "$ErrorActionPreference='Stop'; [Console]::Write([IO.File]::ReadAllText($env:VAULT_TEST_FILE))"]
             : ["sh", "-c", "cat \"$VAULT_TEST_FILE\""];
         var fileMapping = new Dictionary<string, string> { ["VAULT_TEST_FILE"] = "test://deploy" };
         string verified = await tools.RunAsync(readFile, [], "test", files: fileMapping, verifyOnly: true);
         string fileOutput = await tools.RunAsync(readFile, [], "test", files: fileMapping);
         Assert.Equal("{\"ok\":true}", verified);
+        Assert.Contains("\"exitCode\":0", fileOutput, StringComparison.Ordinal);
         Assert.Contains("[vault: Deploy token]", fileOutput, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, fileOutput, StringComparison.Ordinal);
         await consent.Received(5).RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
@@ -202,8 +203,8 @@ public sealed class VaultHubTests : IDisposable
 
         if (OperatingSystem.IsWindows())
         {
-            using var privateFiles = new VaultSecretFiles(hub.RuntimeDirectory);
-            string privatePath = privateFiles.Add(Canary);
+            using var privateFiles = new VaultSecretFiles(NullLogger.Instance);
+            string privatePath = privateFiles.Add(Canary, hub.RuntimeDirectory);
             using var identity = WindowsIdentity.GetCurrent();
             var acl = new FileInfo(privatePath).GetAccessControl(AccessControlSections.Access | AccessControlSections.Owner);
             Assert.StartsWith(hub.RuntimeDirectory + Path.DirectorySeparatorChar, privatePath, StringComparison.OrdinalIgnoreCase);

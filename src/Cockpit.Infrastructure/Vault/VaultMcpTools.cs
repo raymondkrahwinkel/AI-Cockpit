@@ -95,7 +95,7 @@ internal sealed class VaultMcpTools
         [Description("How long to wait for the operator and then for the command, in seconds. Default and maximum 600.")] int timeoutSeconds = MaxTimeoutSeconds,
         [Description("One vault reference to send privately to stdin as value plus newline, then EOF. Use env={} for stdin alone; env may supply a second secret to a local wrapper.")] string? stdinReference = null,
         [Description("Existing vault field to update with stdin only after exit 0 and successful delivery. Stage a separate replacement first. A shared native-item lock covers remote apply and commit, including direct writes; changed revisions refuse the commit and retain staging. External clients are outside that lock. Requires provider writes and appears on the same approval card.")] string? updateOnSuccess = null,
-        [Description("ASCII variable names mapped to vault references. Each variable contains a private temporary file path with exact UTF-8 bytes, no added newline. Windows uses per-user Cockpit runtime state with verified current-user-only DACLs and requires delete-sharing readers; Linux uses anonymous memfd. Files disappear on completion, timeout, child crash or host death; permission failures refuse execution.")] Dictionary<string, string>? files = null,
+        [Description("ASCII variable names mapped to vault references. Each variable contains a private temporary file path with exact UTF-8 bytes, no added newline. Windows uses machine-local Cockpit runtime state with verified current-user-only DACLs. Cockpit attempts cleanup after completion, timeout or child crash and retries abandoned directories at startup. Linux uses anonymous memfd, released by the OS on host death. Permission failures refuse execution.")] Dictionary<string, string>? files = null,
         [Description("Return only {ok:true/false} for login/ping probes; discard all command output, including encoded/composite values. Uses its own approval scope and cannot be combined with updateOnSuccess.")] bool verifyOnly = false,
         [Description("Append a newline to stdin (default true, convenient for read -r over SSH). Set false for exact UTF-8 bytes when a platform secret command must store the value without an extra newline.")] bool stdinNewline = true,
         CancellationToken cancellationToken = default)
@@ -222,7 +222,7 @@ internal sealed class VaultMcpTools
         }
 
         ContainedRun? contained = null;
-        using var secretFiles = new VaultSecretFiles(_hub.RuntimeDirectory);
+        using var secretFiles = new VaultSecretFiles(_logger);
         bool started;
         try
         {
@@ -231,7 +231,7 @@ internal sealed class VaultMcpTools
             {
                 if (value.Channel == VaultChannel.File)
                 {
-                    environment[value.Variable] = secretFiles.Add(value.Value);
+                    environment[value.Variable] = secretFiles.Add(value.Value, _hub.RuntimeDirectory);
                 }
                 else
                 {

@@ -35,6 +35,7 @@ using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Usage;
+using Cockpit.Infrastructure.Vault;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions;
 
@@ -106,6 +107,7 @@ public sealed class CockpitBackend
     {
         StartupPathRepair.Run(loggerFactory.CreateLogger(typeof(StartupPathRepair)));
         StaleSessionProcessSweep.Run(loggerFactory.CreateLogger(typeof(StaleSessionProcessSweep)));
+        VaultSecretFiles.SweepStale(CockpitConfigPath.Default, loggerFactory.CreateLogger<VaultSecretFiles>());
     }
 
     // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
