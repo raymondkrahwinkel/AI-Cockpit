@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Windows vault commands can use private files with standard readers such as OpenSSH, Python and npm. Cockpit removes files left by a host crash at the next startup.
+
 - Pluginupdates kunnen direct worden gepubliceerd als de beschikbare host voldoet en de minimaal vereiste hostversie niet is verhoogd.
 
 - The 1Password vault lists SSH private key references for use as OpenSSH files in vault commands.
