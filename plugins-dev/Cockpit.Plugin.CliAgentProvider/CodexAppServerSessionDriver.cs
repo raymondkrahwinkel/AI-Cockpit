@@ -82,6 +82,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private string? _workingDirectory;
     private Task? _notificationPump;
     private Task? _serverRequestPump;
+    private Task? _turnReply;
 
     // The limits feed (#45 D7). The pump thread is the only writer of the three component fields; the immutable
     // snapshot it builds is published to the volatile field so the host's poll (a different thread) reads a
@@ -284,16 +285,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
         SendUserMessageAsync(text, images: null, cancellationToken);
 
-    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
+    public async Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
         if (_threadId is not { Length: > 0 } threadId)
         {
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} was called before the session started.");
         }
 
-        // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it would block the
-        // caller; output streams via the notification pump instead, closed by turn/completed. Live model/
-        // effort/approval/sandbox (#45 D4) are captured on the caller's thread so same-thread switches are picked up next turn.
+        // The pipe write confirms the send. The turn/start reply can arrive as late as the turn's end.
         var input = new List<object> { new { type = "text", text } };
         if (images is { Count: > 0 })
         {
@@ -308,19 +307,23 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             }
         }
 
-        _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, _sandbox, cancellationToken);
-        return Task.CompletedTask;
+        Task<JsonElement> reply = await _connection.WriteRequestAsync("turn/start", new
+        {
+            threadId,
+            input,
+            model = _NullIfBlank(_model),
+            effort = _NullIfBlank(_effort),
+            approvalPolicy = _NullIfBlank(_approval),
+            sandboxPolicy = CodexSandbox.Policy(_sandbox, _writableRoots),
+        }, cancellationToken).ConfigureAwait(false);
+        _turnReply = _ObserveTurnReplyAsync(reply);
     }
 
-    private async Task _SendTurnAsync(string threadId, IReadOnlyList<object> input, string? model, string? effort, string? approval, string? sandbox, CancellationToken cancellationToken)
+    private async Task _ObserveTurnReplyAsync(Task<JsonElement> reply)
     {
         try
         {
-            // model/effort/approvalPolicy/sandboxPolicy are per-turn overrides (#45 D4): TurnStartParams takes them all
-            // as optional, so a null simply leaves the thread's own default in place. sandboxPolicy is the tagged-union
-            // object keyed by its camelCase type (unlike thread/start's SandboxMode string), built from the kebab choice.
-            object? sandboxPolicy = CodexSandbox.Policy(sandbox, _writableRoots);
-            await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort), approvalPolicy = _NullIfBlank(approval), sandboxPolicy }, cancellationToken).ConfigureAwait(false);
+            await reply.ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1035,7 +1038,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await _connection.DisposeAsync().ConfigureAwait(false);
 
-        foreach (var pump in new[] { _notificationPump, _serverRequestPump })
+        foreach (var pump in new[] { _notificationPump, _serverRequestPump, _turnReply })
         {
             if (pump is not null)
             {
