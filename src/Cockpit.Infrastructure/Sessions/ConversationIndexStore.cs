@@ -373,6 +373,7 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
         }
 
         string temporary = $"{_path}.{Guid.NewGuid():N}.new";
+        string backupTemporary = temporary + ".bak";
         try
         {
             using (FileStream stream = CockpitConfigPath.CreatePrivateFile(temporary))
@@ -389,19 +390,31 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
                 stream.Flush(flushToDisk: true);
             }
 
-            File.Replace(temporary, _path, _path + ".bak", ignoreMetadataErrors: true);
+            // Publish the backup first so a failed replacement leaves the original at its path.
+            using (FileStream original = File.OpenRead(_path))
+            using (FileStream backup = CockpitConfigPath.CreatePrivateFile(backupTemporary))
+            {
+                original.CopyTo(backup);
+                backup.Flush(flushToDisk: true);
+            }
+
+            File.Move(backupTemporary, _path + ".bak", overwrite: true);
+            File.Move(temporary, _path, overwrite: true);
             _lineCount = latest.Count;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning("Could not compact the conversation index ({ErrorType}).", exception.GetType().Name);
-            try
+            foreach (string sidecar in new[] { temporary, backupTemporary })
             {
-                File.Delete(temporary);
-            }
-            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
-            {
-                _logger.LogWarning("Could not remove the conversation index temporary file ({ErrorType}).", cleanupError.GetType().Name);
+                try
+                {
+                    File.Delete(sidecar);
+                }
+                catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning("Could not remove a conversation index temporary file ({ErrorType}).", cleanupError.GetType().Name);
+                }
             }
         }
     }
