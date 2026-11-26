@@ -1880,7 +1880,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // Use `IsSessionReady` because a driver that never started can leave a runtime accepting sends into nothing.
     // AC-1321: a held pane is not a candidate for a wake either, so the gateway refuses it instead of the funnel.
-    public override bool CanTakeAPrompt => IsSessionReady && TurnsHeldBecause is null
+    public override bool CanTakeAPrompt => IsSessionReady && string.IsNullOrEmpty(TurnsHeldBecause)
         && SessionStatus != SessionStatus.NeedsAttention && PendingConsent is null && !HasPendingPermission;
 
     // AC-1321: why no new turn may start on this pane, else null — set by the assistant host while a paired
