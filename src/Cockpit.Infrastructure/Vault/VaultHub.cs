@@ -22,6 +22,7 @@ internal sealed partial class VaultHub : ISingletonService
     private readonly ISecretKeyHolder _keyHolder;
     private readonly ILogger<VaultHub> _logger;
     private readonly IToastService? _toasts;
+    private readonly bool _machineLocalRuntime;
     private readonly Dictionary<string, IVaultProvider> _providers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _gate = new();
     private VaultAvailability? _last;
@@ -30,6 +31,7 @@ internal sealed partial class VaultHub : ISingletonService
     public VaultHub(ISecretProtectionService protection, ILogger<VaultHub> logger, IToastService? toasts = null)
         : this(protection, CockpitConfigPath.Default, SecretKeyHolder.Shared, logger, toasts)
     {
+        _machineLocalRuntime = true;
     }
 
     // Test seam: its own config file and key holder, the same pair the SecretProtectionService under test uses.
@@ -49,7 +51,7 @@ internal sealed partial class VaultHub : ISingletonService
 
     public event EventHandler? AvailabilityChanged;
 
-    internal string RuntimeDirectory => VaultSecretFiles.RuntimeDirectoryFor(_config.ConfigFilePath);
+    internal string RuntimeDirectory => VaultSecretFiles.RuntimeDirectoryFor(_config.ConfigFilePath, _machineLocalRuntime);
 
     public IReadOnlyList<IVaultProvider> Providers
     {

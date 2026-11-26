@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Windows vault commands can use private files with standard readers such as OpenSSH, Python and npm. Cockpit removes files left by a host crash at the next startup.
+- Windows vault commands can use private files with standard readers such as OpenSSH, Python and npm. Cockpit stores them in LocalAppData and cleans up abandoned files at startup.
 
 - Pluginupdates kunnen direct worden gepubliceerd als de beschikbare host voldoet en de minimaal vereiste hostversie niet is verhoogd.
 

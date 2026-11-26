@@ -203,8 +203,8 @@ public sealed class VaultHubTests : IDisposable
 
         if (OperatingSystem.IsWindows())
         {
-            using var privateFiles = new VaultSecretFiles(hub.RuntimeDirectory);
-            string privatePath = privateFiles.Add(Canary);
+            using var privateFiles = new VaultSecretFiles(NullLogger.Instance);
+            string privatePath = privateFiles.Add(Canary, hub.RuntimeDirectory);
             using var identity = WindowsIdentity.GetCurrent();
             var acl = new FileInfo(privatePath).GetAccessControl(AccessControlSections.Access | AccessControlSections.Owner);
             Assert.StartsWith(hub.RuntimeDirectory + Path.DirectorySeparatorChar, privatePath, StringComparison.OrdinalIgnoreCase);

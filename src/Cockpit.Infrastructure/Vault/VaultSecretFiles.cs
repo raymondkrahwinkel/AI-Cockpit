@@ -2,26 +2,51 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Security.Cryptography;
 using System.Text;
+using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 
 namespace Cockpit.Infrastructure.Vault;
 
-internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
+internal sealed class VaultSecretFiles(ILogger logger) : IDisposable
 {
     private const uint CloseOnExec = 1;
-    private const string WindowsRunPrefix = ".cockpit-vault-run-";
-    private const int InvalidParameter = 87;
+    private const string WindowsRunPrefix = ".cockpit-vault-run-utc-";
     private const int SharingViolation = unchecked((int)0x80070020);
     private readonly List<FileStream> _streams = [];
     private string? _windowsDirectory;
 
-    internal static string RuntimeDirectoryFor(string configFilePath) => Path.Combine(Path.GetDirectoryName(configFilePath)
-        ?? throw new InvalidOperationException("Vault configuration has no directory."), "runtime", "vault");
+    internal static string RuntimeDirectoryFor(string configFilePath, bool machineLocal)
+    {
+        string stateRoot = Path.GetDirectoryName(configFilePath)
+            ?? throw new InvalidOperationException("Vault configuration has no directory.");
+        if (!OperatingSystem.IsWindows() || !machineLocal)
+        {
+            return Path.Combine(stateRoot, "runtime", "vault");
+        }
 
-    public string Add(string value)
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.DoNotVerify);
+        if (!Path.IsPathFullyQualified(local))
+        {
+            throw new UnauthorizedAccessException("The machine-local vault runtime directory could not be resolved.");
+        }
+
+        string runtime = Path.Combine(local, CockpitBuild.StateFolder, "runtime", "vault");
+        string normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(stateRoot));
+        if (string.Equals(normalized, Path.GetFullPath(CockpitBuild.DefaultStateRoot), StringComparison.OrdinalIgnoreCase))
+        {
+            return runtime;
+        }
+
+        string instance = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized.ToUpperInvariant())))[..32];
+        return Path.Combine(runtime, instance);
+    }
+
+    public string Add(string value, string runtimeDirectory)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -29,7 +54,7 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
             {
                 using var host = Process.GetCurrentProcess();
                 // The start time distinguishes a live owner from a process that reused its PID.
-                string name = FormattableString.Invariant($"{WindowsRunPrefix}{host.Id}-{host.StartTime.ToUniversalTime().Ticks}-{Guid.NewGuid():N}");
+                string name = FormattableString.Invariant($"{WindowsRunPrefix}{host.Id}-{GetCreationTime(host.SafeHandle)}-{Guid.NewGuid():N}");
                 CockpitConfigPath.EnsurePrivateDirectory(runtimeDirectory);
                 _windowsDirectory = Path.Combine(runtimeDirectory, name);
                 CockpitConfigPath.EnsurePrivateDirectory(_windowsDirectory);
@@ -65,7 +90,7 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
         return path;
     }
 
-    internal static void SweepStale(string runtimeDirectory, ILogger logger)
+    internal static void SweepStale(string configFilePath, ILogger logger)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -74,6 +99,7 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
 
         try
         {
+            string runtimeDirectory = RuntimeDirectoryFor(configFilePath, machineLocal: true);
             foreach (string directory in Directory.EnumerateDirectories(runtimeDirectory, WindowsRunPrefix + "*"))
             {
                 string name = Path.GetFileName(directory);
@@ -97,7 +123,7 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
                         DeleteRunDirectory(directory);
                     }
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
                 {
                     logger.LogWarning("Could not clean up a leftover vault run directory ({ExceptionType}).", exception.GetType().Name);
                 }
@@ -114,15 +140,30 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
 
     private static bool IsOwnerRunning(int processId, long startTime)
     {
+        Process process;
         try
         {
-            using var process = Process.GetProcessById(processId);
-            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == startTime;
+            process = Process.GetProcessById(processId);
         }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception { NativeErrorCode: InvalidParameter })
+        catch (ArgumentException)
         {
             return false;
         }
+
+        using (process)
+        {
+            return !process.HasExited && GetCreationTime(process.SafeHandle) == startTime;
+        }
+    }
+
+    private static long GetCreationTime(SafeProcessHandle process)
+    {
+        if (!_GetProcessTimes(process, out var creation, out _, out _, out _))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return ((long)creation.dwHighDateTime << 32) | (uint)creation.dwLowDateTime;
     }
 
     private static void DeleteRunDirectory(string directory)
@@ -150,6 +191,10 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
     [DllImport("libc", EntryPoint = "memfd_create", SetLastError = true)]
     private static extern int _MemfdCreate([MarshalAs(UnmanagedType.LPUTF8Str)] string name, uint flags);
 
+    [DllImport("kernel32.dll", EntryPoint = "GetProcessTimes", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool _GetProcessTimes(SafeProcessHandle process, out FILETIME creation, out FILETIME exit, out FILETIME kernel, out FILETIME user);
+
     public void Dispose()
     {
         foreach (FileStream stream in _streams)
@@ -159,7 +204,14 @@ internal sealed class VaultSecretFiles(string runtimeDirectory) : IDisposable
 
         if (_windowsDirectory is not null)
         {
-            DeleteRunDirectory(_windowsDirectory);
+            try
+            {
+                DeleteRunDirectory(_windowsDirectory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning("Could not remove a vault run directory ({ExceptionType}).", exception.GetType().Name);
+            }
         }
     }
 }
