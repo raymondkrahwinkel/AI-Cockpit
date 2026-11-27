@@ -25,7 +25,11 @@ internal sealed partial class VaultHub : ISingletonService
     private readonly bool _machineLocalRuntime;
     private readonly Dictionary<string, IVaultProvider> _providers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _gate = new();
+
+    // AC-2390: a leaf lock for the availability cache, never `_gate`. Nothing is called while it is held.
+    private readonly Lock _availabilityGate = new();
     private VaultAvailability? _last;
+    private int _refreshing;
     private Func<Task>? _openSecurity;
 
     public VaultHub(ISecretProtectionService protection, ILogger<VaultHub> logger, IToastService? toasts = null)
@@ -146,7 +150,44 @@ internal sealed partial class VaultHub : ISingletonService
         return appended;
     }
 
-    private VaultAvailability _Evaluate() => EvaluateAsync().GetAwaiter().GetResult();
+    // AC-2390: never waits. A plugin reads this from any thread, under its own locks and from the UI; the blocking read it
+    // replaced deadlocked inside TryStart. It answers the last evaluation, refreshes that in the background (a change
+    // raises AvailabilityChanged), and is never Available without the key in hand.
+    private VaultAvailability _Evaluate()
+    {
+        VaultAvailability? last;
+        lock (_availabilityGate)
+        {
+            last = _last;
+        }
+
+        _RefreshInBackground();
+        return last is not { } known || (known == VaultAvailability.Available && _keyHolder.Protector is null) ? VaultAvailability.Locked : known;
+    }
+
+    private void _RefreshInBackground()
+    {
+        if (Interlocked.Exchange(ref _refreshing, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await EvaluateAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Refreshing the vault's availability failed; the last known state stands.");
+            }
+            finally
+            {
+                Volatile.Write(ref _refreshing, 0);
+            }
+        });
+    }
 
     private static string _SlotOf(string pluginId, string providerId) => JsonSerializer.Serialize<string[]>([pluginId, providerId], StateOptions);
 
@@ -251,7 +292,7 @@ internal sealed partial class VaultHub : ISingletonService
 
     private void _Note(VaultAvailability availability)
     {
-        lock (_gate)
+        lock (_availabilityGate)
         {
             var changed = _last is { } last && last != availability;
             _last = availability;

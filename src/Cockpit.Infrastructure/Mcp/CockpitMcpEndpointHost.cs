@@ -422,26 +422,31 @@ internal sealed class CockpitMcpEndpointHost
     // the operator's MCP-servers manager never lists them.
     public IReadOnlyList<McpServerConfig> GetServers()
     {
+        // AC-2390: IsEnabled is an endpoint's own callback (a plugin's, the vault's); asked outside `_mountedLock`, so
+        // one that blocks cannot hold every endpoint's tool calls and the UI thread with it.
+        MountedEndpoint[] mounted;
         lock (_mountedLock)
         {
-            return
-            [
-                .. _mounted.Select(endpoint => new McpServerConfig
-                {
-                    Name = endpoint.Name,
-                    Transport = McpTransport.Http,
-                    Scope = McpServerScope.All,
-                    Url = endpoint.Url,
-                    // AC-1148: a NodeOnly endpoint is never offered to a session — it exists for the paired
-                    // controller, which does not read this list.
-                    Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly && endpoint.Retired is null,
-                    CockpitHosted = true,
-                    Internal = endpoint.Internal,
-                    AlwaysMounted = endpoint.AlwaysMounted,
-                    ContributingPluginId = endpoint.ContributingPluginId,
-                }),
-            ];
+            mounted = [.. _mounted];
         }
+
+        return
+        [
+            .. mounted.Select(endpoint => new McpServerConfig
+            {
+                Name = endpoint.Name,
+                Transport = McpTransport.Http,
+                Scope = McpServerScope.All,
+                Url = endpoint.Url,
+                // AC-1148: a NodeOnly endpoint is never offered to a session — it exists for the paired
+                // controller, which does not read this list.
+                Enabled = endpoint.IsEnabled() && !endpoint.NodeOnly && endpoint.Retired is null,
+                CockpitHosted = true,
+                Internal = endpoint.Internal,
+                AlwaysMounted = endpoint.AlwaysMounted,
+                ContributingPluginId = endpoint.ContributingPluginId,
+            }),
+        ];
     }
 
     // This instance's live network-node addresses (AC-790) — see ICockpitInternalMcpProvider.GetNodeAddresses.

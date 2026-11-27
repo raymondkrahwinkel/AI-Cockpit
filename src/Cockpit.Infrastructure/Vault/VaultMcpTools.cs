@@ -27,6 +27,9 @@ internal sealed class VaultMcpTools
     internal const int OutputLimit = 64 * 1024;
 
     private const int MaxTimeoutSeconds = 600;
+
+    // vault_write's command source has no operator card to wait for; a value command that runs longer is stuck.
+    private const int CommandSourceTimeoutSeconds = 120;
     private const string Once = "once";
     private const string Session = "session";
     private const string Project = "project";
@@ -412,10 +415,17 @@ internal sealed class VaultMcpTools
                     return _Error("Write refused: the vault closed, the setting changed or the session ended.");
                 }
 
-                var run = await _WaitAsync(contained, TimeSpan.FromSeconds(MaxTimeoutSeconds), cancellationToken, stdoutOnly: true).ConfigureAwait(false);
+                var run = await _WaitAsync(contained, TimeSpan.FromSeconds(CommandSourceTimeoutSeconds), cancellationToken, stdoutOnly: true).ConfigureAwait(false);
                 if (run.OutputLimitExceeded)
                 {
                     return _Error("Command source exceeded 65,536 characters on stdout or stderr; nothing was written.");
+                }
+
+                // AC-2390: a CLI that waits for the operator (1Password asking to be unlocked or approved) must say so.
+                if (run.TimedOut && !cancellationToken.IsCancellationRequested)
+                {
+                    return _Error($"The value command did not finish within {CommandSourceTimeoutSeconds} s and was stopped; nothing was written. "
+                        + "A password manager it calls may be waiting to be unlocked or approved (1Password, for example); ask the user to unlock it and try again.");
                 }
                 if (run.TimedOut || run.ExitCode != 0 || run.Output.Length == 0)
                 {

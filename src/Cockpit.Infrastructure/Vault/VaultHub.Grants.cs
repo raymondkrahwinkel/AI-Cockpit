@@ -88,12 +88,18 @@ internal sealed partial class VaultHub
     }
 
     // Starts the run's process only while `lease` holds and `stillWanted` does. Serialised with every revoke and ended
-    // session, so none can land between this check and the start.
+    // session, so none can land between this check and the start: each of those raises the lease's generation.
+    // AC-2390: `stillWanted` calls into a plugin (CanWrite), so it is asked before `_gate`, never under it.
     public bool TryStart(VaultLease lease, Func<bool> stillWanted, Action start)
     {
+        if (!stillWanted())
+        {
+            return false;
+        }
+
         lock (_gate)
         {
-            if (!_Holds(lease) || !stillWanted())
+            if (!_Holds(lease))
             {
                 return false;
             }
@@ -238,7 +244,7 @@ internal sealed partial class VaultHub
     // One toast per closed period, so repeated calls do not stack them.
     public void ShowUnavailable()
     {
-        lock (_gate)
+        lock (_availabilityGate)
         {
             if (_isUnavailableToastShown)
             {

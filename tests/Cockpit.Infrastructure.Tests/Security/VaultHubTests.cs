@@ -45,6 +45,7 @@ public sealed class VaultHubTests : IDisposable
         var context = hub.Register("plugin-a", new Provider());
 
         Assert.NotNull(context);
+        await hub.EvaluateAsync();
         Assert.Equal(VaultAvailability.EncryptionOff, context.Availability);
         Assert.False(context.TryStoreCredential(Canary));
         Assert.Null(context.ReadCredential());
@@ -60,7 +61,9 @@ public sealed class VaultHubTests : IDisposable
         // The 2026-11-14 incident: a status read that lands mid-swap reports encryption off while it is on.
         var misread = Substitute.For<ISecretProtectionService>();
         misread.GetStatusAsync(Arg.Any<CancellationToken>()).Returns(new SecretProtectionStatus(Enabled: false, Unlocked: false, ShouldWarnUnprotected: false));
-        var blind = new VaultHub(misread, ConfigPath, holder, NullLogger<VaultHub>.Instance).Register("plugin-a", new Provider())!;
+        var blindHub = new VaultHub(misread, ConfigPath, holder, NullLogger<VaultHub>.Instance);
+        var blind = blindHub.Register("plugin-a", new Provider())!;
+        await blindHub.EvaluateAsync();
         Assert.Equal(VaultAvailability.EncryptionOff, blind.Availability);
         Assert.Null(blind.ReadCredential());
         Assert.False(blind.TryStoreCredential("other"));
@@ -73,6 +76,11 @@ public sealed class VaultHubTests : IDisposable
         File.Move(ConfigPath, aside);
         var read = Task.Run(context.ReadCredential);
         var answeredMidSwap = await Task.WhenAny(read, Task.Delay(500)) == read;
+
+        // Also category C (AC-2390): a plugin's availability check inside TryStart, mid-swap, answers at once. It used to
+        // block on the config read under the hub's lock and deadlock there, and with it every Cockpit MCP endpoint.
+        var start = Task.Run(() => hub.TryStart(hub.Lease(), () => context.Availability == VaultAvailability.Available, () => { }));
+        Assert.True(await start.WaitAsync(TimeSpan.FromSeconds(5)));
         File.Move(aside, ConfigPath);
         await gate.DisposeAsync();
         Assert.False(answeredMidSwap);

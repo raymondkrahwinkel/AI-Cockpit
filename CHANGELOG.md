@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2390: A vault command that hung (for example several vault_write calls at once) no longer freezes Cockpit or leaves every other Cockpit tool call waiting until a restart. A value command for vault_write now stops after 120 s and says a password manager may be waiting to be unlocked. Saving the conversation index no longer briefly freezes the window.
+
 - AC-2387: Plugin SDK 3.99.0 lists available models and per-model efforts for a Cockpit profile, including Codex and LM Studio. It distinguishes an unknown catalog from a verified empty list. The API requires Cockpit 0.186.0.
 
 - Windows vault commands can use private files with standard readers such as OpenSSH, Python and npm. Cockpit stores them in LocalAppData and cleans up abandoned files at startup.
