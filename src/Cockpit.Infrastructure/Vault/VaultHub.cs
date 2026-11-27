@@ -81,6 +81,8 @@ internal sealed partial class VaultHub : ISingletonService
             }
         }
 
+        // AC-2390: fills the availability cache before a provider's first sync read, also where no desktop start-up check runs.
+        _RefreshInBackground();
         return new ProviderContext(this, provider, _SlotOf(pluginId, provider.Id));
     }
 
