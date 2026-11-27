@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- AC-2392: The approval card for a vault command now fits the window with a long command. It starts with a summary (host, program, vault references, the agent's reason), shortens long arguments such as a base64 payload to their size with a button to show the full text, and always keeps Cancel and Run in view. A card that closes without a choice (the wait ran out or the call was cancelled) now tells the agent there was no answer instead of reporting a refusal, and Run without a valid pick keeps the card open instead of counting as a refusal.
+
+- AC-2393: Options › Vault › Permissions has "Ask before every vault_run", on by default. Turned off, an agent's vault command runs without a card; item grants, output masking, verify-only and update-on-success still apply, and every such run is in the vault audit with its masked, shortened command and its result. The setting is stored encrypted on this machine only, is not carried by settings sync, and can only be changed in Options.
+
 - AC-2390: A vault command that hung (for example several vault_write calls at once) no longer freezes Cockpit or leaves every other Cockpit tool call waiting until a restart. A value command for vault_write now stops after 120 s and says a password manager may be waiting to be unlocked. Saving the conversation index no longer briefly freezes the window.
 
 - AC-2387: Plugin SDK 3.99.0 lists available models and per-model efforts for a Cockpit profile, including Codex and LM Studio. It distinguishes an unknown catalog from a verified empty list. The API requires Cockpit 0.186.0.

@@ -71,6 +71,15 @@
                     </StackPanel>
                 </TabItem.Header>
                 <StackPanel Spacing="8" Margin="0,10,0,0">
+                    <!-- AC-2393: the one place this switch exists; no tool, endpoint or settings sync can change it. -->
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Ask before every vault_run" FontWeight="SemiBold"/>
+                            <TextBlock Classes="optionsHint" TextWrapping="Wrap" Text="{Binding AskEveryRunHint}"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" OnContent="On" OffContent="Off"
+                                      IsChecked="{Binding AskEveryRun, Mode=OneWay}" Command="{Binding ToggleAskEveryRunCommand}"/>
+                    </Grid>
                     <Border Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
                             BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}">
                         <StackPanel>

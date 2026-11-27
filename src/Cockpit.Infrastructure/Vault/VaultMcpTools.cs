@@ -17,7 +17,7 @@ namespace Cockpit.Infrastructure.Vault;
 
 // AC-2346: the `cockpit-vault` MCP server. A value is injected into a process the hub starts itself and never
 // returned: the only way back to the agent is the output, and the hub redacts that first.
-internal sealed class VaultMcpTools
+internal sealed partial class VaultMcpTools
 {
     internal const string EncryptionOffText =
         "Vault unavailable: Cockpit's credential encryption is off. Ask the user to turn it on in Options › Security › Encryption (\"Encrypt with a password…\").";
@@ -34,7 +34,19 @@ internal sealed class VaultMcpTools
     private const string Session = "session";
     private const string Project = "project";
 
+    private const int AuditCommandLength = 120;
+    private const int OptionCommandLength = 80;
+
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
+    // How a run got past (or not past) its approval; Unanswered is a card that closed without a choice (AC-2392).
+    private enum _Consent
+    {
+        Allowed,
+        WithoutCard,
+        Denied,
+        Unanswered,
+    }
 
     private readonly VaultHub _hub;
     private readonly IConsentBroker _consent;
@@ -90,7 +102,7 @@ internal sealed class VaultMcpTools
     }
 
     [McpServerTool(Name = "vault_run", ReadOnly = false, Destructive = true)]
-    [Description("Runs one command without a shell with env mappings, one stdinReference and/or files, after operator approval. Stdin receives the value plus one newline, then EOF; SSH forwards stdin, not env. Output (bounded at 65,536 characters per stream; overflow terminates the command and suppresses output) masks literal injected values and common base64/base64url/URL forms as [vault: <name>]. Structured grants separately bind reference, channel, verification mode, variable name, exact argv, stdin framing and updateOnSuccess target; verification grants never permit output-returning runs. Recipes using scripts/vault-recipes.py: (1) vault_write generate, vault_list, then ssh host python3 helper db mariadb/postgres create USER via stdin; (2) generate a separate staged replacement, run db rotate via stdin with updateOnSuccess=existing reference, so failed apply never overwrites the vault; (3) import one remote env field via vault_write command, not vault_run; (4) helper config PATH --key KEY over ssh writes owner-only config atomically; (5) helper http URL formats the stdin token for curl -K -, never argv; (6) helper container --pane PANE IMAGE COMMAND supplies a Linux Docker env-file through /dev/stdin, without a temporary secret file. A local wrapper can combine env credentials and stdin before SSH. Multi-field references can populate several env variables; compose connection strings inside the child. files maps environment variable names to private UTF-8 file paths for SSH keys, PEM and JSON documents; file permissions and lifetime are host-managed on Windows/Linux. Use stdin for gh secret set NAME, kubectl --from-file=key=/dev/stdin and docker secret create NAME -; use files for .npmrc via NPM_CONFIG_USERCONFIG. verifyOnly returns only success/failure and has a distinct grant: use it for login/ping and composite-value probes. Masking is not a general DLP boundary: arbitrary splitting, escaping or derived/composite encodings require verifyOnly and a consumer that does not log credentials. Consumers must fail atomically; on uncertain remote completion, recover with the retained staged item rather than generate again.")]
+    [Description("Runs one command without a shell with env mappings, one stdinReference and/or files, after operator approval (unless the operator turned the per-run card off; a card closed without a choice returns denied:false and means no answer, not a refusal). Stdin receives the value plus one newline, then EOF; SSH forwards stdin, not env. Output (bounded at 65,536 characters per stream; overflow terminates the command and suppresses output) masks literal injected values and common base64/base64url/URL forms as [vault: <name>]. Structured grants separately bind reference, channel, verification mode, variable name, exact argv, stdin framing and updateOnSuccess target; verification grants never permit output-returning runs. Recipes using scripts/vault-recipes.py: (1) vault_write generate, vault_list, then ssh host python3 helper db mariadb/postgres create USER via stdin; (2) generate a separate staged replacement, run db rotate via stdin with updateOnSuccess=existing reference, so failed apply never overwrites the vault; (3) import one remote env field via vault_write command, not vault_run; (4) helper config PATH --key KEY over ssh writes owner-only config atomically; (5) helper http URL formats the stdin token for curl -K -, never argv; (6) helper container --pane PANE IMAGE COMMAND supplies a Linux Docker env-file through /dev/stdin, without a temporary secret file. A local wrapper can combine env credentials and stdin before SSH. Multi-field references can populate several env variables; compose connection strings inside the child. files maps environment variable names to private UTF-8 file paths for SSH keys, PEM and JSON documents; file permissions and lifetime are host-managed on Windows/Linux. Use stdin for gh secret set NAME, kubectl --from-file=key=/dev/stdin and docker secret create NAME -; use files for .npmrc via NPM_CONFIG_USERCONFIG. verifyOnly returns only success/failure and has a distinct grant: use it for login/ping and composite-value probes. Masking is not a general DLP boundary: arbitrary splitting, escaping or derived/composite encodings require verifyOnly and a consumer that does not log credentials. Consumers must fail atomically; on uncertain remote completion, recover with the retained staged item rather than generate again.")]
     public async Task<string> RunAsync(
         [Description("The executable and its arguments, one per entry — never re-parsed by a shell.")] string[] argv,
         [Description("ASCII environment variable names ([A-Za-z_][A-Za-z0-9_]*) mapped to vault references, e.g. {\"API_TOKEN\": \"op://Agents/deploy/token\"}.")] Dictionary<string, string> env,
@@ -191,14 +203,17 @@ internal sealed class VaultMcpTools
         // AC-2333 S3: taken before the grants are read; a later revoke, wipe, closed gate or ended session refuses both storing
         // a grant and the start below.
         var lease = _hub.Lease();
-        if (!await _ConsentAsync(lease, session, directory, argv, grants, consentPairs, reason, timeout, cancellationToken).ConfigureAwait(false))
+        var consent = await _ConsentAsync(lease, session, directory, argv, grants, consentPairs, reason, timeout, cancellationToken).ConfigureAwait(false);
+        if (consent is _Consent.Denied or _Consent.Unanswered)
         {
             foreach (var injection in injections)
             {
-                await _hub.AuditAsync("Denied", session.PaneId, injection.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await _hub.AuditAsync(consent == _Consent.Denied ? "Denied" : "Unanswered", session.PaneId, injection.Name, cancellationToken: CancellationToken.None).ConfigureAwait(false);
             }
 
-            return _Serialize(new { ok = false, denied = true, error = "Denied: the operator did not allow this command; nothing was started." });
+            return consent == _Consent.Denied
+                ? _Serialize(new { ok = false, denied = true, error = "Denied: the operator did not allow this command; nothing was started." })
+                : _Serialize(new { ok = false, denied = false, error = "No answer: the approval card closed without a choice (the wait ran out or the call was cancelled); nothing was started. Ask the operator before trying again." });
         }
 
         using IDisposable? destinationLock = updateProvider is not null && expectedVersion is not null
@@ -280,6 +295,16 @@ internal sealed class VaultMcpTools
             await _hub.AuditAsync("Injected", session.PaneId, injection.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
+        if (consent == _Consent.WithoutCard)
+        {
+            // AC-2393: the run nobody saw a card for, with its command masked like the output before it is cut, and its result.
+            var command = Redact(string.Join(' ', argv), values.Select(v => (v.Value, v.Name))).Output;
+            var result = run.TimedOut ? "timed out" : run.OutputLimitExceeded ? "output over limit" : $"exit {run.ExitCode}";
+            await _hub.AuditAsync("RunWithoutCard", session.PaneId, string.Join(", ", injections.Select(i => i.Name)),
+                detail: $"{(command.Length > AuditCommandLength ? command[..AuditCommandLength] + "…" : command)} → {result}",
+                cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        }
+
         if (run.OutputLimitExceeded)
         {
             return verifyOnly ? _Serialize(new { ok = false })
@@ -287,7 +312,7 @@ internal sealed class VaultMcpTools
         }
 
         var (output, masked) = Redact(run.Output, values.Select(v => (v.Value, v.Name)));
-        await _hub.AuditAsync("Masked", session.PaneId, string.Join(", ", injections.Select(i => i.Name)), masked, cancellationToken).ConfigureAwait(false);
+        await _hub.AuditAsync("Masked", session.PaneId, string.Join(", ", injections.Select(i => i.Name)), masked, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (verifyOnly)
         {
             return _Serialize(new { ok = run.ExitCode == 0 && !run.TimedOut && run.InputSent });
@@ -533,7 +558,7 @@ internal sealed class VaultMcpTools
         return (output, masked);
     }
 
-    private async Task<bool> _ConsentAsync(
+    private async Task<_Consent> _ConsentAsync(
         VaultLease lease, ISessionHandle session, string directory, string[] argv, IReadOnlyList<VaultGrant> grants, List<(string Variable, string Reference, string Name)> pairs, string reason,
         TimeSpan timeout, CancellationToken cancellationToken)
     {
@@ -541,7 +566,13 @@ internal sealed class VaultMcpTools
         var keys = grants.Select(VaultHub.GrantKey).ToList();
         if (keys.All(key => sessionGrants.Contains(key) || projectGrants.Contains(key)))
         {
-            return true;
+            return _Consent.Allowed;
+        }
+
+        // AC-2393: the operator switched the card off under Options › Vault; every other boundary of the run still holds.
+        if (!await _hub.AsksEveryRunAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return _Consent.WithoutCard;
         }
 
         var projectName = session.ProjectId is { } projectId && _projects is not null
@@ -556,7 +587,13 @@ internal sealed class VaultMcpTools
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return _Consent.Unanswered;
+        }
+
+        // AC-2392: a card the broker closed because the wait ran out or the call was cancelled is no answer, not a refusal.
+        if (!decision.IsApproved && wait.IsCancellationRequested)
+        {
+            return _Consent.Unanswered;
         }
 
         var scope = decision is { IsApproved: true, Chosen: { } chosen } && chosen.TryGetValue("scope", out var picked) && picked.Count == 1 ? picked[0] : null;
@@ -565,21 +602,21 @@ internal sealed class VaultMcpTools
             case Session:
                 if (!_hub.TryGrantSession(lease, session.PaneId, keys))
                 {
-                    return false;
+                    return _Consent.Denied;
                 }
 
                 break;
             case Project when session.ProjectId is { } project:
                 if (!await _hub.TryGrantProjectAsync(lease, session.PaneId, project, keys, cancellationToken).ConfigureAwait(false))
                 {
-                    return false;
+                    return _Consent.Denied;
                 }
 
                 break;
             case Once:
                 break;
             default:
-                return false;
+                return _Consent.Denied;
         }
 
         foreach (var pair in pairs)
@@ -587,19 +624,31 @@ internal sealed class VaultMcpTools
             await _hub.AuditAsync("Allowed", session.PaneId, pair.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        return true;
+        return _Consent.Allowed;
     }
+
+    // A user@host address anywhere in an argument, as ssh, scp and rsync take it; the card's summary names it as the host.
+    [GeneratedRegex(@"(?<![\w.@-])[\w.-]+@[\w-]+(\.[\w-]+)*")]
+    private static partial Regex HostPattern();
 
     internal static ConsentRequest Card(
         string sessionTitle, string paneId, string directory, IReadOnlyList<string> argv, IEnumerable<(string Variable, string Reference)> pairs, string reason, string? projectName)
     {
+        // The options name the command; the literal argv is in the action above them, so here it is cut to a line.
         var command = string.Join(' ', argv);
+        command = command.Length > OptionCommandLength ? command[..OptionCommandLength] + "…" : command;
         var said = string.Join(' ', (reason ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        // AC-2392: the summary first (host, program, references, reason), the literal argv after it, so a long payload
+        // in the argv no longer hides what is being asked.
+        var program = Path.GetFileName(argv[0]);
+        var host = argv.Skip(1).Select(argument => HostPattern().Match(argument)).FirstOrDefault(match => match.Success)?.Value;
         return new ConsentRequest(
             $"{sessionTitle} wants to run a command with a vault secret",
-            string.Join('\n', pairs.Select(pair => $"{pair.Variable} ← {pair.Reference}"))
-            + $"\nin {JsonSerializer.Serialize(argv, SerializerOptions)}\nin {directory}"
-            + (said.Length > 0 ? $"\nThe agent says: \"{said}\"" : string.Empty),
+            (host is null ? program : $"{host} · {program}")
+            + "\n" + string.Join('\n', pairs.Select(pair => $"{pair.Variable} ← {pair.Reference}"))
+            + (said.Length > 0 ? $"\nThe agent says: \"{said}\"" : string.Empty)
+            + $"\nin {JsonSerializer.Serialize(argv, SerializerOptions)}\nin {directory}",
             new ConsentSource(paneId, null, ConsentSourceCatalog.VaultMcp),
             "vault.run",
             ConsentRisk.Dangerous)

@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Vault;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -33,6 +34,8 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     private int _openRequests;
     private bool _isRefreshing;
     private bool _isRefreshPending;
+    private bool _askEveryRun = true;
+    private IAsyncRelayCommand? _toggleAskEveryRun;
 
     public VaultAvailability Availability
     {
@@ -65,10 +68,38 @@ internal sealed class VaultOverviewViewModel : ObservableObject
 
     public IReadOnlyList<VaultAuditRow> Audit => _audit;
 
+    // AC-2393: read from the vault's encrypted state on every refresh; on until the operator turns it off here.
+    public bool AskEveryRun => _askEveryRun;
+
+    public string AskEveryRunHint => _askEveryRun
+        ? "Every command an agent runs with a vault secret shows you its card first, unless you allowed it for the session or project."
+        : "Off: agents use vault secrets without you seeing each command. Grants per item, output masking, verify-only and update-on-success still apply, and every run is in the audit.";
+
+    public IAsyncRelayCommand ToggleAskEveryRunCommand => _toggleAskEveryRun ??= new AsyncRelayCommand(_ToggleAskEveryRunAsync);
+
+    private async Task _ToggleAskEveryRunAsync()
+    {
+        try
+        {
+            if (_hub is not null && await _hub.TrySetAskEveryRunAsync(!_askEveryRun).ConfigureAwait(true))
+            {
+                _askEveryRun = !_askEveryRun;
+            }
+        }
+        catch (Exception exception)
+        {
+            Program.Services?.GetService<ILogger<VaultOverviewViewModel>>()?.LogWarning("Changing the vault card setting failed ({ExceptionType}).", exception.GetType().Name);
+        }
+
+        // Also after a refused write, so the switch flips back to what is stored.
+        OnPropertyChanged(nameof(AskEveryRun));
+        OnPropertyChanged(nameof(AskEveryRunHint));
+    }
+
     public IReadOnlyList<string> AuditProviderChoices { get; private set; } = [AllProviders];
 
     public IReadOnlyList<string> AuditEventChoices { get; } =
-        [AllEvents, "Requested", "Allowed", "Denied", "Injected", "Masked", "Revoked"];
+        [AllEvents, "Requested", "Allowed", "Denied", "Unanswered", "RunWithoutCard", "Injected", "Masked", "Revoked", "AskEveryRunOn", "AskEveryRunOff"];
 
     public string AuditProvider
     {
@@ -209,6 +240,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
             }
         }
 
+        _askEveryRun = await hub.AsksEveryRunAsync().ConfigureAwait(true);
         var grants = await hub.ListGrantsAsync().ConfigureAwait(true);
         var audit = await hub.ReadAuditAsync().ConfigureAwait(true);
         _Apply(grants, audit, live.ToDictionary(pair => pair.Key, pair => (pair.Value.Title, pair.Value.ProjectId)), projectNames);
@@ -319,7 +351,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
 
     private void _Notify()
     {
-        foreach (var property in new[] { nameof(Providers), nameof(HasNoProviders), nameof(Permissions), nameof(HasNoPermissions), nameof(PermissionsCount), nameof(Groups), nameof(SecretsInUse), nameof(HasSecretsInUse), nameof(MeterText), nameof(PanelSummary), nameof(AuditProviderChoices) })
+        foreach (var property in new[] { nameof(AskEveryRun), nameof(AskEveryRunHint), nameof(Providers), nameof(HasNoProviders), nameof(Permissions), nameof(HasNoPermissions), nameof(PermissionsCount), nameof(Groups), nameof(SecretsInUse), nameof(HasSecretsInUse), nameof(MeterText), nameof(PanelSummary), nameof(AuditProviderChoices) })
         {
             OnPropertyChanged(property);
         }
@@ -343,7 +375,7 @@ internal sealed class VaultOverviewViewModel : ObservableObject
     private static string _AuditDetail(VaultAuditEvent entry) => entry.Kind switch
     {
         "Masked" => entry.Count is { } count ? $"{count} {(count == 1 ? "occurrence" : "occurrences")} in the output" : string.Empty,
-        _ => string.Empty,
+        _ => entry.Detail ?? string.Empty,
     };
 
     private void _FilterAudit()

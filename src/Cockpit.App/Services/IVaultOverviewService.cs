@@ -20,8 +20,10 @@ internal interface IVaultOverviewService
     Task RevokeProjectAsync(string projectId, string reference, CancellationToken cancellationToken = default);
     Task RevokeSessionAsync(string paneId, string reference, CancellationToken cancellationToken = default);
     Task RevokeEverywhereAsync(string reference, CancellationToken cancellationToken = default);
+    Task<bool> AsksEveryRunAsync(CancellationToken cancellationToken = default);
+    Task<bool> TrySetAskEveryRunAsync(bool ask, CancellationToken cancellationToken = default);
 }
 
 internal sealed record VaultProviderInfo(string Id, string DisplayName, string ReferenceScheme, VaultProviderStatus Status, IReadOnlyList<VaultItem> Items);
 internal sealed record VaultGrantInfo(string Scope, string Owner, string Reference);
-internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null);
+internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null, string? Detail = null);

@@ -55,6 +55,21 @@ internal static partial class Screenshotter
             "I need the deploy token to push the staging build after the tests pass.", "Webshop")),
     };
 
+    // AC-2392: a server script sent as base64 inside the ssh command, about 12 KB, the argv that pushed the buttons off screen.
+    private static Window _VaultConsentLong(int width, int height) => new()
+    {
+        Width = width,
+        Height = height,
+        Content = _WindowConsentChoices(VaultMcpTools.Card(
+            "Session 3", "pane-3", @"D:\Projects\Webshop",
+            ["powershell", "-NoProfile", "-Command",
+                "& ssh.exe -i $env:KEY -o BatchMode=yes deploy@10.0.20.197 'mkdir -p /tmp/smoke && echo "
+                + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("set -euo pipefail; curl -fsS http://localhost:8080/health\n", 160))))
+                + " | base64 -d > /tmp/smoke/run.sh && bash /tmp/smoke/run.sh'"],
+            [("File: KEY", "op://Agents/ssh-deploy/private key")],
+            "Run the staging smoke test after the deploy.", "Webshop")),
+    };
+
     private static Task _Done() => Task.CompletedTask;
 
     private static void _VaultSample(VaultOverviewViewModel vault, VaultAvailability availability)

@@ -271,6 +271,7 @@ internal static partial class Screenshotter
         ["vault-options-encryption-off"] = (_, _) => _VaultOptions(VaultAvailability.EncryptionOff),
         ["vault-statusbar-panel"] = (_, _) => _VaultStatusBarScene(),
         ["vault-consent"] = (width, height) => _VaultConsent(width, height),
+        ["vault-consent-long"] = (width, height) => _VaultConsentLong(width, height),
         ["test-runs"] = (_, _) => _TestRunsScene(),
         ["child-history-sidebar"] = (_, _) => _ChildHistorySidebar(),
         ["child-history-sidebar-open"] = (_, _) => _ChildHistorySidebar(),

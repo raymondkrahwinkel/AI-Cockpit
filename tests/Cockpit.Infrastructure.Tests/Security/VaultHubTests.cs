@@ -167,6 +167,19 @@ public sealed class VaultHubTests : IDisposable
         await consent.Received(5).RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
         Assert.False(Directory.Exists(hub.RuntimeDirectory) && Directory.EnumerateDirectories(hub.RuntimeDirectory, ".cockpit-vault-*").Any());
 
+        // AC-2393: switched off, a run starts without a card and audits its command masked; switched on, the next run asks.
+        string[] printWithValue = [.. printX[..^1], printX[^1] + " " + Canary];
+        Assert.True(await hub.AsksEveryRunAsync());
+        Assert.True(await hub.TrySetAskEveryRunAsync(false));
+        Assert.Contains("\"exitCode\":0", await tools.RunAsync(printWithValue, env, "test"), StringComparison.Ordinal);
+        await consent.Received(5).RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
+        var unprompted = Assert.Single(await hub.ReadAuditAsync(), entry => entry.Kind == "RunWithoutCard");
+        Assert.Contains("[vault: Deploy token]", unprompted.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain(Canary, unprompted.Detail, StringComparison.Ordinal);
+        Assert.True(await hub.TrySetAskEveryRunAsync(true));
+        await tools.RunAsync([.. printWithValue, "again"], env, "test");
+        await consent.Received(6).RequestConsentAsync(Arg.Any<ConsentRequest>(), Arg.Any<CancellationToken>());
+
         string[] wait = OperatingSystem.IsWindows() ? ["powershell", "-NoProfile", "-Command", "Start-Sleep -Seconds 10"] : ["sleep", "10"];
         string timedOut = await tools.RunAsync(wait, [], "test", timeoutSeconds: 1, files: fileMapping);
         Assert.Contains("\"timedOut\":true", timedOut, StringComparison.Ordinal);
