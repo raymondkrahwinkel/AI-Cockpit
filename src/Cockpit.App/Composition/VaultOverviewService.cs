@@ -19,6 +19,8 @@ internal sealed class VaultOverviewService(VaultHub hub) : IVaultOverviewService
     public Task RevokeProjectAsync(string projectId, string reference, CancellationToken cancellationToken = default) => hub.RevokeProjectAsync(projectId, reference, cancellationToken);
     public Task RevokeSessionAsync(string paneId, string reference, CancellationToken cancellationToken = default) => hub.RevokeSessionAsync(paneId, reference, cancellationToken);
     public Task RevokeEverywhereAsync(string reference, CancellationToken cancellationToken = default) => hub.RevokeEverywhereAsync(reference, cancellationToken);
+    public Task<bool> AsksEveryRunAsync(CancellationToken cancellationToken = default) => hub.AsksEveryRunAsync(cancellationToken);
+    public Task<bool> TrySetAskEveryRunAsync(bool ask, CancellationToken cancellationToken = default) => hub.TrySetAskEveryRunAsync(ask, cancellationToken);
 
     public async Task<IReadOnlyList<VaultProviderInfo>> ReadProvidersAsync(CancellationToken cancellationToken = default)
     {
@@ -42,5 +44,5 @@ internal sealed class VaultOverviewService(VaultHub hub) : IVaultOverviewService
     private async Task<IReadOnlyList<OverviewGrantInfo>> _MapGrants(CancellationToken cancellationToken) =>
         (await hub.ListGrantsAsync(cancellationToken).ConfigureAwait(false)).Select(grant => new OverviewGrantInfo(grant.Scope, grant.Owner, grant.Reference)).ToList();
     private async Task<IReadOnlyList<OverviewAuditEvent>> _MapAudit(CancellationToken cancellationToken) =>
-        (await hub.ReadAuditAsync(cancellationToken).ConfigureAwait(false)).Select(entry => new OverviewAuditEvent(entry.At, entry.Kind, entry.Session, entry.Item, entry.Count)).ToList();
+        (await hub.ReadAuditAsync(cancellationToken).ConfigureAwait(false)).Select(entry => new OverviewAuditEvent(entry.At, entry.Kind, entry.Session, entry.Item, entry.Count, entry.Detail)).ToList();
 }

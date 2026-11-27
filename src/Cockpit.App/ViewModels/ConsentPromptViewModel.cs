@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
@@ -39,6 +41,7 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
         SubjectHost = end < 0 ? bare : bare[..end];
         SubjectRest = end < 0 ? string.Empty : bare[end..];
         Details = string.Join('\n', lines.Skip(1));
+        ShortDetails = Abbreviate(Details);
     }
 
     // Matches the broker's prompt, so the cockpit can clear this banner when the prompt is resolved elsewhere.
@@ -121,11 +124,47 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
 
     public bool HasDetails => Details.Length > 0;
 
+    // AC-2392: the details with every long token cut to its size, so a 12 KB payload no longer fills the card.
+    public string ShortDetails { get; }
+
+    public bool IsAbbreviated => ShortDetails.Length != Details.Length;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShownDetails), nameof(ExpandLabel))]
+    private bool _showFullDetails;
+
+    public string ShownDetails => ShowFullDetails ? Details : ShortDetails;
+
+    public string ExpandLabel => ShowFullDetails ? "Show less" : $"Show the full text ({_Size(Details.Length)})";
+
+    [RelayCommand]
+    private void ToggleFullDetails() => ShowFullDetails = !ShowFullDetails;
+
+    internal static string Abbreviate(string text) =>
+        LongToken().Replace(text, match =>
+            $"{match.Value[..24]}… ({_Size(match.Value.Length)}{(Base64Run().IsMatch(match.Value) ? ", base64" : string.Empty)})");
+
+    private static string _Size(int length) => length < 1024
+        ? $"{length} characters"
+        : string.Create(CultureInfo.InvariantCulture, $"{length / 1024.0:0.#} KB");
+
+    [GeneratedRegex(@"\S{200,}")]
+    private static partial Regex LongToken();
+
+    [GeneratedRegex(@"^[A-Za-z0-9+/=_-]+$")]
+    private static partial Regex Base64Run();
+
     [RelayCommand]
     private void Approve()
     {
         if (HasChoices)
         {
+            // AC-2392: an approval without a pick reaches the broker as a denial; the card stays open for a pick instead.
+            if (Choices.Any(choice => choice.Picked().Count == 0))
+            {
+                return;
+            }
+
             _consent.Respond(Id, ConsentOutcome.Approved, Remember, Choices.ToDictionary(choice => choice.Key, choice => choice.Picked()));
             return;
         }

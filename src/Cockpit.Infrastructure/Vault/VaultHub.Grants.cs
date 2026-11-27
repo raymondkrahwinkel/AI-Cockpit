@@ -238,8 +238,8 @@ internal sealed partial class VaultHub
         await AuditAsync("Revoked", null, reference, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
-    public Task<bool> AuditAsync(string kind, string? paneId, string? item, int? count = null, CancellationToken cancellationToken = default) =>
-        TryAppendAuditAsync(new VaultAuditEvent(DateTimeOffset.UtcNow, kind, paneId, item, count), cancellationToken);
+    public Task<bool> AuditAsync(string kind, string? paneId, string? item, int? count = null, string? detail = null, CancellationToken cancellationToken = default) =>
+        TryAppendAuditAsync(new VaultAuditEvent(DateTimeOffset.UtcNow, kind, paneId, item, count, detail), cancellationToken);
 
     // One toast per closed period, so repeated calls do not stack them.
     public void ShowUnavailable()

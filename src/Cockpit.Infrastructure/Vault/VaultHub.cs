@@ -152,6 +152,22 @@ internal sealed partial class VaultHub : ISingletonService
         return appended;
     }
 
+    // AC-2393: whether every vault_run shows its card. Fails closed: state that cannot be read still asks.
+    public async Task<bool> AsksEveryRunAsync(CancellationToken cancellationToken = default) =>
+        (await _ReadStateAsync(cancellationToken).ConfigureAwait(false))?.AskEveryRun ?? true;
+
+    // Only Options › Vault calls this; no MCP tool, endpoint or sync route reaches it.
+    public async Task<bool> TrySetAskEveryRunAsync(bool ask, CancellationToken cancellationToken = default)
+    {
+        if (!await _TryUpdateAsync(section => _WithState(section, state => state.AskEveryRun = ask), cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        await AuditAsync(ask ? "AskEveryRunOn" : "AskEveryRunOff", null, null, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        return true;
+    }
+
     // AC-2390: never waits. A plugin reads this from any thread, under its own locks and from the UI; the blocking read it
     // replaced deadlocked inside TryStart. It answers the last evaluation, refreshes that in the background (a change
     // raises AvailabilityChanged), and is never Available without the key in hand.
@@ -337,6 +353,10 @@ internal sealed partial class VaultHub : ISingletonService
 
         [JsonPropertyName("projectGrants")]
         public Dictionary<string, List<string>> ProjectGrants { get; set; } = new(StringComparer.Ordinal);
+
+        // AC-2393: machine policy, encrypted with the rest of this state and outside the settings sync's whitelist.
+        [JsonPropertyName("askEveryRun")]
+        public bool AskEveryRun { get; set; } = true;
     }
 
     // A provider's slot, keyed by (owning plugin, provider id); a context whose provider was unregistered or replaced answers like a closed vault.
@@ -367,4 +387,4 @@ internal sealed partial class VaultHub : ISingletonService
 }
 
 // One audit line: who, which item, when — never a value.
-internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null);
+internal sealed record VaultAuditEvent(DateTimeOffset At, string Kind, string? Session, string? Item, int? Count = null, string? Detail = null);

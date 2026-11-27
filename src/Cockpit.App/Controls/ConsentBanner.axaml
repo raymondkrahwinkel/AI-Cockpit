@@ -70,9 +70,11 @@
     <Border CornerRadius="10" BoxShadow="0 10 30 0 #80000000" IsVisible="{Binding IsOverlayChoices}"
             Background="{DynamicResource CockpitPanelBgBrush}"
             BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" Padding="20,18">
-        <StackPanel Spacing="12">
-            <StackPanel Spacing="4">
-                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15"/>
+        <!-- AC-2392: only the details scroll, in a row the host's height bounds, so a long command can no longer push the
+             choices and the buttons out of the window; long tokens are cut to their size until the operator expands them. -->
+        <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+            <StackPanel Grid.Row="0" Spacing="4">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" TextWrapping="Wrap"/>
                 <StackPanel Orientation="Horizontal" Spacing="5">
                     <materialIcons:MaterialIcon Kind="Lock" Width="12" Height="12" IsVisible="{Binding IsSecure}" VerticalAlignment="Center"
                                                 Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
@@ -80,11 +82,17 @@
                         <Run Text="{Binding SubjectHost}" FontWeight="SemiBold"/><Run Text="{Binding SubjectRest}" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </TextBlock>
                 </StackPanel>
-                <SelectableTextBlock Text="{Binding Details}" IsVisible="{Binding HasDetails}" FontSize="12" TextWrapping="Wrap"
-                                     Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
 
-            <ItemsControl ItemsSource="{Binding Choices}">
+            <ScrollViewer Grid.Row="1" Margin="0,4,0,0" MaxHeight="300" IsVisible="{Binding HasDetails}"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <SelectableTextBlock Text="{Binding ShownDetails}" FontSize="12" TextWrapping="Wrap"
+                                     Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            </ScrollViewer>
+            <Button Grid.Row="2" Classes="Compact" Margin="0,6,0,0" HorizontalAlignment="Left" IsVisible="{Binding IsAbbreviated}"
+                    Content="{Binding ExpandLabel}" Command="{Binding ToggleFullDetailsCommand}"/>
+
+            <ItemsControl Grid.Row="3" Margin="0,12,0,0" ItemsSource="{Binding Choices}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ConsentChoiceViewModel">
                         <StackPanel Spacing="6" Margin="0,0,0,10">
@@ -126,16 +134,16 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <StackPanel Spacing="3" IsVisible="{Binding HasNever}">
+            <StackPanel Grid.Row="4" Spacing="3" IsVisible="{Binding HasNever}">
                 <TextBlock Text="Never, not even later" FontSize="11.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 <TextBlock Text="{Binding Never}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+            <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
                 <Button Content="Cancel" Command="{Binding DenyCommand}"/>
                 <Button Content="{Binding ApproveLabel}" Classes="Accent" Command="{Binding ApproveCommand}"/>
             </StackPanel>
-        </StackPanel>
+        </Grid>
     </Border>
 
     <!-- AC-1715: the same card under the conversation, after mockup screen 6: the subject, what it sees and never
