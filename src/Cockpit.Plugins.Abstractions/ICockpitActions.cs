@@ -57,6 +57,12 @@ public interface ICockpitActions
         string? profileLabel, string? projectId, IReadOnlyList<string> serverNames) =>
         throw new NotSupportedException("This host cannot check MCP servers for plugin-owned sessions.");
 
+    /// <summary>Checks the named servers as <see cref="CheckSessionMcpServersAsync(string?, string?, IReadOnlyList{string})"/> does, for a start that names <paramref name="brain"/>.</summary>
+    /// <remarks>Set <c>minHostVersion</c> to 0.188.0. The brain follows the rules of <see cref="Sessions.PluginSessionStartRequest.Brain"/>.</remarks>
+    Task<IReadOnlyList<PluginSessionMcpServerCheck>> CheckSessionMcpServersAsync(
+        string? profileLabel, string? projectId, IReadOnlyList<string> serverNames, string? brain) =>
+        throw new NotSupportedException("This host cannot check MCP servers for a plugin-owned session's brain.");
+
     /// <summary>
     /// Hands work to another profile as a background task and waits for what it produces (#67, #69). The task
     /// appears in the delegated-tasks view like any other.

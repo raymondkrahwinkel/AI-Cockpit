@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.App.Composition;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -37,7 +38,8 @@ internal static class AssistantAgentGatewayGraph
         IProviderModelIntelligence? providerIntelligence = null,
         TimeSpan? modelIntelligenceBudget = null,
         Cockpit.Core.Sessions.SessionMcpMounts? mcpMounts = null,
-        SessionLauncher? launcher = null) =>
+        SessionLauncher? launcher = null,
+        IProjectMemorySourceRegistry? memorySources = null) =>
         new(
             sessions,
             launcher ?? DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
@@ -57,5 +59,6 @@ internal static class AssistantAgentGatewayGraph
             worktreeManager,
             projectFields,
             mcpServers: mcpServerCatalog,
-            mcpMounts: mcpMounts);
+            mcpMounts: mcpMounts,
+            memorySources: memorySources);
 }

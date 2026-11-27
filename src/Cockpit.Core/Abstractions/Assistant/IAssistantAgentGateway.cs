@@ -487,7 +487,11 @@ public sealed record AgentSpawnRequest(
     bool? IsolateInWorktree = null,
     IReadOnlyList<string>? McpServers = null,
     string? Role = null,
-    bool RoleChoiceRequired = false);
+    bool RoleChoiceRequired = false)
+{
+    // AC-2394: a plugin's brain for the session it starts; only taken when a registered source serves it.
+    public string? Brain { get; init; }
+}
 
 // AC-1013: What came of a spawn — a refusal carries Error and no pane, so a failed spawn is a sentence the
 // operator hears, not a session that's silently missing. PromptDelivered (AC-760) and ResolvedProfileLabel

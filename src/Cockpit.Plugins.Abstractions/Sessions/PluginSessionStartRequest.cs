@@ -18,7 +18,16 @@ public sealed record PluginSessionStartRequest(
     string? Effort = null,
     IReadOnlyList<string>? McpServers = null,
     bool? IsolateInWorktree = null,
-    string? DeskId = null);
+    string? DeskId = null)
+{
+    /// <summary>The brain the session loads, as <c>scheme:address@server</c> or <c>address@server</c>.</summary>
+    /// <remarks>
+    /// Set <c>minHostVersion</c> to 0.188.0. The host takes it only when exactly one registered memory source serves it
+    /// and the project and profile name no other brain; otherwise the start is refused. That source's MCP server is
+    /// then mounted as the brain server. Leave it null to use the project's or profile's brain.
+    /// </remarks>
+    public string? Brain { get; init; }
+}
 
 /// <summary>The session that started, or the host's refusal reason.</summary>
 /// <remarks>PromptDelivered is null when there was no prompt. McpServers lists the selected servers until a connection report confirms which connected.</remarks>

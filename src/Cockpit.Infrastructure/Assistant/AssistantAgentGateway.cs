@@ -152,6 +152,13 @@ internal sealed partial class AssistantAgentGateway(
             project = await launcher.FindProjectByIdAsync(inferredProjectId).ConfigureAwait(false);
         }
 
+        var (brainProfile, brainRefusal) = _WithPluginBrain(project, profile, request.Brain);
+        if (brainRefusal is not null)
+        {
+            return await _RefuseSpawnAsync(request, workspace.Name, brainRefusal, cancellationToken).ConfigureAwait(false);
+        }
+        profile = brainProfile;
+
         var (requestedKind, kindRefusal) = _ParseKind(request.Kind);
         if (kindRefusal is not null)
         {
