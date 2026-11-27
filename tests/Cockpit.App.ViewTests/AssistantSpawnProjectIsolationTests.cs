@@ -123,10 +123,15 @@ public class AssistantSpawnProjectIsolationTests
         {
             EnabledMcpServerNames = ["cockpit-coding", "cockpit-orchestrator", "cockpit-terminal"],
         };
-        var managedProject = Project.Create("Managed");
+        var managedProject = Project.Create("Managed") with { Assistant = "Aura" };
         var services = new ServiceCollection();
-        var (management, _, changes, deskId) = Dispatcher.UIThread.Invoke(() => _Gateway(
-            managedProfile, managedProject, _WorktreeManagerThatIsolatesCleanly(), mcpMounts: mounts, pluginServices: services));
+        var brainSources = new ProjectMemorySourceRegistry();
+        brainSources.Register(new("depot", "Depot", "Read it through the Depot MCP.")
+        {
+            BrainMcpServerName = value => value.EndsWith("@depot.acme.example", StringComparison.Ordinal) ? "depot-acme" : null,
+        });
+        var (management, managedCockpit, changes, deskId) = Dispatcher.UIThread.Invoke(() => _Gateway(
+            managedProfile, managedProject, _WorktreeManagerThatIsolatesCleanly(), mcpMounts: mounts, pluginServices: services, memorySources: brainSources));
         mounts.Bind("managed", new SessionMcpContext(managedProject, Repository, null, "work", SessionMcpManager.Assistant));
         mounts.Grant("managed", ["cockpit-session"]);
         McpRequestContext.Set("ordinary-agent");
@@ -174,6 +179,26 @@ public class AssistantSpawnProjectIsolationTests
         Assert.Contains((await plugin.GetSessionMcpSetAsync(paneId)).Servers, server => server.Name == "owner-endpoint");
         Assert.False(await other.CloseSessionAsync(paneId));
         Assert.True(await plugin.CloseSessionAsync(paneId));
+
+        // AC-2394: a plugin's brain is the session's whole brain only as a registered source serves it and no other
+        // brain stands; its server is then allowed, without it or for any other brain the server stays outside.
+        var projectless = new PluginSessionStartRequest("work", DeskId: deskId, McpServers: ["depot-acme"]);
+        Assert.Contains("outside", (await plugin.StartSessionAsync(projectless)).Error);
+        Assert.Contains("not served", (await plugin.StartSessionAsync(projectless with { Brain = "acme/zyra@depot.unknown.example" })).Error);
+        Assert.Contains("differs", (await plugin.StartSessionAsync(request with { Brain = "acme/zyra@depot.acme.example" })).Error);
+        var brainStart = await plugin.StartSessionAsync(projectless with { Brain = "acme/zyra@depot.acme.example" });
+        Assert.True(brainStart.Ok, brainStart.Error);
+        Assert.Equal("depot:acme/zyra@depot.acme.example", Dispatcher.UIThread.Invoke(() =>
+            managedCockpit.Sessions.Single(session => session.PaneId == brainStart.PaneId).LaunchResult)?.Profile.Assistant);
+
+        // AC-2394 (Raymond, 27-11): a profile without a preselection allows every offered server, internal ones still not.
+        var openServices = new ServiceCollection();
+        Dispatcher.UIThread.Invoke(() => _Gateway(managedProfile with { EnabledMcpServerNames = [] }, managedProject,
+            _WorktreeManagerThatIsolatesCleanly(), pluginServices: openServices));
+        using var openProvider = openServices.BuildServiceProvider();
+        var open = await new PluginScopedActions("owner", "Owner", shared, openProvider)
+            .CheckSessionMcpServersAsync("work", null, ["cockpit-orchestrator", "cockpit-elevated"]);
+        Assert.Equal(new[] { true, false }, open.Select(check => check.Ok));
     }
 
     [Fact]
@@ -316,7 +341,7 @@ public class AssistantSpawnProjectIsolationTests
         LiveSessionRegistry? liveSessions = null,
         SessionRegistry? sessionRegistry = null,
         Action<CockpitViewModel>? whileComposing = null,
-        SessionMcpMounts? mcpMounts = null, IServiceCollection? pluginServices = null)
+        SessionMcpMounts? mcpMounts = null, IServiceCollection? pluginServices = null, IProjectMemorySourceRegistry? memorySources = null)
     {
         var sessions = sessionRegistry ?? new SessionRegistry();
         var desk = Workspace.Create("Release", WorkspaceType.Sessions);
@@ -346,6 +371,7 @@ public class AssistantSpawnProjectIsolationTests
                 new() { Name = "oauth", Auth = McpServerAuth.OAuth },
                 new() { Name = "cockpit-orchestrator" },
                 new() { Name = "cockpit-terminal" },
+                new() { Name = "depot-acme" },
                 .. call.ArgAt<string?>(0) == project.Id ? new McpServerConfig[] { new() { Name = "project-server", ProjectLinked = true } } : [],
             ]);
         });
@@ -406,7 +432,7 @@ public class AssistantSpawnProjectIsolationTests
                 Substitute.For<IAssistantSessionHost>(),
                 worktreeManager,
                 mcpServerCatalog: mcpCatalog,
-                mcpMounts: mcpMounts, launcher: launcher);
+                mcpMounts: mcpMounts, launcher: launcher, memorySources: memorySources);
         pluginServices?.AddSingleton<ISessionLauncher>(launcher).AddSingleton<IAssistantAgentGateway>(gateway);
         return (gateway, cockpit, trail, desk.Id);
     }

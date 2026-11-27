@@ -40,7 +40,11 @@ internal sealed partial class AssistantAgentGateway
         var projectNames = McpServerRegistryFilter.OfferedToOperator(scoped)
             .Where(server => project?.McpOverlay.IsSelectedByDefault(server) == true)
             .Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var profileNames = (profile.EnabledMcpServerNames ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var explicitNames = (profile.EnabledMcpServerNames ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // AC-2394 (Raymond, 27-11): the profile's preselection as a session start reads it, so none means every server.
+        var profileNames = McpServerRegistryFilter.ApplySessionSelection(scoped,
+                McpServerRegistryFilter.EffectiveSessionSelection(null, profile.EnabledMcpServerNames))
+            .Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var brain = _BrainServer(project, profile);
         var names = new ExactMcpServerSelection(requested);
         var available = await mcpServers.GetServersForSessionAsync(project?.Id, names, cancellationToken).ConfigureAwait(false);
@@ -50,7 +54,8 @@ internal sealed partial class AssistantAgentGateway
         {
             var server = available.FirstOrDefault(server => names.Comparer.Equals(server.Name, name));
             var configured = projectNames.Contains(name) || profileNames.Contains(name) || names.Comparer.Equals(name, brain);
-            var pinOwner = server?.ContributingPluginId == pluginId && (!configured || server.Internal);
+            var selected = projectNames.Contains(name) || explicitNames.Contains(name) || names.Comparer.Equals(name, brain);
+            var pinOwner = server?.ContributingPluginId == pluginId && (!selected || server.Internal);
             var error = server is null ? $"MCP server '{name}' is unknown."
                 : !configured && !pinOwner ? $"MCP server '{name}' is outside this plugin's session allowance."
                 : await policy.RefusalAsync(available, [name], delegationCeiling: delegationCeiling,
@@ -62,7 +67,7 @@ internal sealed partial class AssistantAgentGateway
     }
 
     internal async Task<IReadOnlyList<PluginSessionMcpServerCheck>> CheckPluginMcpServersAsync(
-        string pluginId, string? profileLabel, string? projectId, IReadOnlyList<string> serverNames)
+        string pluginId, string? profileLabel, string? projectId, IReadOnlyList<string> serverNames, string? brain = null)
     {
         var (project, profile, error) = await _PluginMcpTargetAsync(profileLabel, projectId, CancellationToken.None).ConfigureAwait(false);
         if (profile is null)
@@ -74,7 +79,12 @@ internal sealed partial class AssistantAgentGateway
         {
             project = await launcher.FindProjectByIdAsync(inferredId).ConfigureAwait(false);
         }
-        var checks = await _PluginMcpChecksAsync(pluginId, project, profile, serverNames, CancellationToken.None).ConfigureAwait(false);
+        var (brainProfile, brainRefusal) = _WithPluginBrain(project, profile, brain);
+        if (brainRefusal is not null)
+        {
+            return [.. serverNames.Select(name => new PluginSessionMcpServerCheck(name, false, brainRefusal))];
+        }
+        var checks = await _PluginMcpChecksAsync(pluginId, project, brainProfile, serverNames, CancellationToken.None).ConfigureAwait(false);
         return [.. checks.Select(check => check.Result)];
     }
 
@@ -133,8 +143,30 @@ internal sealed partial class AssistantAgentGateway
     private string? _BrainServer(Project? project, SessionProfile? profile) =>
         SessionStartDefaults.ResolveBrainMcpServer(project, profile, memorySources?.Sources.ToMemorySources());
 
+    // AC-2394: a plugin's brain becomes the session's whole brain, only as a registered source serves it and only
+    // where the project and profile name no other. The allowance then follows that brain, never a server name.
+    private (SessionProfile Profile, string? Refusal) _WithPluginBrain(Project? project, SessionProfile profile, string? brain)
+    {
+        if (brain is null)
+        {
+            return (profile, null);
+        }
+        var sources = memorySources?.Sources.ToMemorySources();
+        var registered = SessionStartDefaults.ResolveRegisteredBrain(brain, sources);
+        var current = SessionStartDefaults.ResolveAssistant(project, profile);
+        var refusal = registered is null ? $"The brain '{brain}' is not served by exactly one registered memory source."
+            : current is not null && !string.Equals(SessionStartDefaults.ResolveRegisteredBrain(current, sources), registered, StringComparison.OrdinalIgnoreCase)
+                ? $"The brain '{brain}' differs from the brain '{current}' that the project or profile names."
+            : null;
+        return (refusal is null ? profile with { Assistant = registered } : profile, refusal);
+    }
+
     private async Task<string?> _BrainServerOfAsync(string paneId, Project? project, CancellationToken cancellationToken)
     {
+        if (mcpMounts?.Set(paneId)?.Context?.Brain is { } brain)
+        {
+            return SessionStartDefaults.ResolveBrainMcpServer(brain, memorySources?.Sources.ToMemorySources());
+        }
         var label = (paneId == AssistantIdentity.PaneId ? sessions.Assistant : sessions.Find(paneId))?.ActiveProfileLabel;
         var profile = label is null ? null : (await profiles.LoadAsync(cancellationToken).ConfigureAwait(false))
             .FirstOrDefault(candidate => string.Equals(candidate.Label, label, StringComparison.OrdinalIgnoreCase));
@@ -218,6 +250,7 @@ internal sealed partial class AssistantAgentGateway
             error = targetError;
             if (profile is not null)
             {
+                profile = profile with { Assistant = context.Brain ?? profile.Assistant };
                 var checks = await _PluginMcpChecksAsync(pluginId, project, profile, [name], cancellationToken, set.DelegationCeiling)
                     .ConfigureAwait(false);
                 var check = checks[0];

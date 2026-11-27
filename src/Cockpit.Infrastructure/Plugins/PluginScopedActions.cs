@@ -49,7 +49,7 @@ public sealed class PluginScopedActions(string pluginId, string pluginName, ICoc
             SpawnTarget.NamedByAPlugin(deskId ?? string.Empty, pluginId), request.ProfileLabel, request.ProjectId,
             request.Prompt, request.WorkingDirectory, request.SessionName, OptionOverrides: options,
             IsolateInWorktree: request.IsolateInWorktree, McpServers: request.McpServers?.ToArray(),
-            Role: request.Role, RoleChoiceRequired: true)).ConfigureAwait(false);
+            Role: request.Role, RoleChoiceRequired: true) { Brain = request.Brain }).ConfigureAwait(false);
 
         return new(result.Ok, result.PaneId, result.SessionName, result.ResolvedProfileLabel,
             result.PromptDelivered, result.McpServers, result.Error, result.McpServersConfirmed);
@@ -64,11 +64,15 @@ public sealed class PluginScopedActions(string pluginId, string pluginName, ICoc
         _McpGateway().ReadPluginSessionMcpSetAsync(_LocalLauncher().FindPluginSession(paneId, pluginId));
 
     public Task<IReadOnlyList<PluginSessionMcpServerCheck>> CheckSessionMcpServersAsync(
-        string? profileLabel, string? projectId, IReadOnlyList<string> serverNames)
+        string? profileLabel, string? projectId, IReadOnlyList<string> serverNames) =>
+        CheckSessionMcpServersAsync(profileLabel, projectId, serverNames, null);
+
+    public Task<IReadOnlyList<PluginSessionMcpServerCheck>> CheckSessionMcpServersAsync(
+        string? profileLabel, string? projectId, IReadOnlyList<string> serverNames, string? brain)
     {
         _LocalLauncher();
         ArgumentNullException.ThrowIfNull(serverNames);
-        return _McpGateway().CheckPluginMcpServersAsync(pluginId, profileLabel, projectId, serverNames.ToArray());
+        return _McpGateway().CheckPluginMcpServersAsync(pluginId, profileLabel, projectId, serverNames.ToArray(), brain);
     }
 
     private AssistantAgentGateway _McpGateway() =>

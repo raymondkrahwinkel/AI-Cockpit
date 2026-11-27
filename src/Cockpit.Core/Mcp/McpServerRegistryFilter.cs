@@ -21,13 +21,13 @@ public static class McpServerRegistryFilter
     public static IReadOnlyList<McpServerConfig> OfferedToOperator(IReadOnlyList<McpServerConfig> registry) =>
         [.. registry.Where(server => server.Enabled && !server.Internal && !server.AlwaysMounted)];
 
-    // #44/AC-130: the per-session selection to apply — the explicit one it was handed, or the profile's saved
-    // selection when there is none. A programmatic launch (plugin shortcut, restored session) has no New-session
-    // dialog to compute one, so without this fallback it would reach every enabled server instead of the profile's.
+    // #44/AC-130: the explicit session selection, or else the profile's saved one, so a programmatic launch without
+    // a New-session dialog still follows the profile. AC-2394 (Raymond, 27-11): an empty profile selection is no
+    // preselection, so like null it means every server.
     public static IReadOnlySet<string>? EffectiveSessionSelection(
         IReadOnlySet<string>? sessionSelection,
         IReadOnlyList<string>? profileSelection) =>
-        sessionSelection ?? (profileSelection is not null
+        sessionSelection ?? (profileSelection is { Count: > 0 }
             ? new HashSet<string>(profileSelection, StringComparer.OrdinalIgnoreCase)
             : null);
 

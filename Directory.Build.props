@@ -469,7 +469,8 @@
     <!-- 0.186.0: profile model catalog with per-model efforts (SDK 3.99.0). -->
     <!-- 0.186.1 (AC-2390): a stuck vault call no longer blocks every Cockpit MCP endpoint and the UI; no API change. -->
     <!-- 0.187.0 (AC-2392, AC-2393): vault card fits a long command; "Ask before every vault_run" can be turned off; no API change. -->
-    <VersionPrefix>0.187.0</VersionPrefix>
+    <!-- 0.188.0 (AC-2394): a plugin may name its session's brain; no profile preselection allows every server (SDK 3.100.0). -->
+    <VersionPrefix>0.188.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

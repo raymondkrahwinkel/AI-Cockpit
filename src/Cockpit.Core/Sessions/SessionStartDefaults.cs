@@ -108,9 +108,31 @@ public sealed record SessionStartDefaults(
         ResolveAssistant(project, profile) is { } assistant ? _Brain(assistant, memorySources).Note : null;
 
     // The MCP server serving the resolved brain, so a session keeps it whatever server list it is started with.
-    public static string? ResolveBrainMcpServer(Project? project, SessionProfile? profile, IReadOnlyList<ProjectMemorySource>? memorySources)
+    public static string? ResolveBrainMcpServer(Project? project, SessionProfile? profile, IReadOnlyList<ProjectMemorySource>? memorySources) =>
+        ResolveBrainMcpServer(ResolveAssistant(project, profile), memorySources);
+
+    // AC-2394: the brain a plugin names for its own session, as the reference of the registered source serving it.
+    // Null unless the registered sources serve it from exactly one server; a bare `<address>@<server>` is accepted.
+    public static string? ResolveRegisteredBrain(string? brain, IReadOnlyList<ProjectMemorySource>? memorySources)
     {
-        if (ResolveAssistant(project, profile) is not { } assistant || !ProjectMemoryRef.TryParse(assistant.Trim(), out var scheme, out var value))
+        var trimmed = brain?.Trim() ?? string.Empty;
+        var sources = (memorySources ?? []).Where(source => source.BrainMcpServerName is not null).ToList();
+        var scheme = ProjectMemoryRef.TryParse(trimmed, out var parsedScheme, out var parsedValue)
+            && sources.Any(source => string.Equals(source.Scheme, parsedScheme, StringComparison.OrdinalIgnoreCase)) ? parsedScheme : null;
+        var value = scheme is null ? trimmed : parsedValue;
+        var matches = value.Length == 0 ? [] : sources
+            .Where(source => scheme is null || string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+            .Select(source => (source.Scheme, Server: source.BrainMcpServerName!(value)))
+            .Where(match => !string.IsNullOrWhiteSpace(match.Server))
+            .ToList();
+        return matches.Select(match => match.Server).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1
+            ? $"{matches[0].Scheme}:{value}"
+            : null;
+    }
+
+    public static string? ResolveBrainMcpServer(string? brain, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (brain is null || !ProjectMemoryRef.TryParse(brain.Trim(), out var scheme, out var value))
         {
             return null;
         }
