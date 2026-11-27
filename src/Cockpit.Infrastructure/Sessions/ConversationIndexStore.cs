@@ -213,6 +213,8 @@ internal sealed class ConversationIndexStore : IConversationIndex, ISingletonSer
 
     private async Task _WriteAsync(string paneId, Func<ConversationRecord?, ConversationRecord?> compose, CancellationToken cancellationToken, bool isStagedClose = false)
     {
+        // AC-2390: the UI thread records conversations; off it before the first lock, ACL and file write (a 5 s freeze, 27-11).
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         long started = Stopwatch.GetTimestamp();
         if (isStagedClose)
         {
