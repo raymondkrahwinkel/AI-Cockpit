@@ -730,9 +730,16 @@ internal sealed partial class McpToolProvider
             _ReportConnections();
         }
 
+        private readonly object _reportSync = new();
+
+        // Snapshot and write share one lock, so two concurrent reports cannot land in the reverse order.
         private void _ReportConnections()
         {
-            if (_paneId is not null && (!_ownsToken || IsLive))
+            if (_paneId is null || (_ownsToken && !IsLive))
+            {
+                return;
+            }
+            lock (_reportSync)
             {
                 bool settled;
                 lock (_sync)
