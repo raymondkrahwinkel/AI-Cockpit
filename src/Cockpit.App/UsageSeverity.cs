@@ -22,4 +22,10 @@ internal static class UsageSeverity
     // Where amber turns red: halfway from the threshold to full. Derived rather than declared so a provider sets
     // one number, and a signal that warns at 90 still has somewhere left to escalate to.
     public static double CriticalAt(double threshold) => threshold + ((100 - threshold) / 2);
+
+    // AC-2408: the reversed scale, for a figure that is bad when low — amber below the threshold, red below half of it.
+    public static string LowBrushKeyFor(double percent, double threshold) =>
+        percent < threshold / 2 ? "CockpitStatusErrorBrush"
+        : percent < threshold ? "CockpitStatusWaitingBrush"
+        : "CockpitTextSecondaryBrush";
 }

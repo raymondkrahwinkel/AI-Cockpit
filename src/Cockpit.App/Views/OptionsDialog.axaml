@@ -819,6 +819,7 @@
                         <StackPanel Spacing="6">
                             <CheckBox Content="Context window (ctx %)" IsChecked="{Binding ShowUsagePillContext}"/>
                             <CheckBox Content="Session usage (tokens · cost)" IsChecked="{Binding ShowUsagePillSessionUsage}"/>
+                            <CheckBox Content="Cache hit rate (cache %)" IsChecked="{Binding ShowUsagePillCacheHitRate}"/>
                             <CheckBox Content="Rate windows (e.g. 5-hour, weekly — whatever the provider reports)" IsChecked="{Binding ShowUsagePillRateWindows}"/>
                         </StackPanel>
                     </StackPanel>
