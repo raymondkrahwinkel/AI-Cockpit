@@ -105,6 +105,9 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
 
     void IAssistantSession.InjectAndSubmit(string text) => _Assistant.InjectAndSubmit(text);
 
+    Task IAssistantSession.SubmitForTheAgentAsync(string text) =>
+        _Assistant.Control.SubmitForTheAgentAsync(new QueuedPrompt(text, []));
+
     Task<bool> IAssistantSession.AnswerQuestionAsync(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers) =>
         UiThreadCall.RunAsync(() => Task.FromResult(_Assistant.AnswerBrokerQuestion(rowId, inputJson, answers)));
 

@@ -46,6 +46,16 @@ public static class AssistantSystemPrompt
         (sdkAsksPermission ? _GateAAsks : _GateABypassed) + " " +
         (consentCardAsks ? _GateBAsks : _GateBBypassed) + _ActingTail;
 
+    // AC-2417: the template of the state note, named in the instruction, the note prompt and the tool.
+    public const string NoteStateHeadings =
+        "State; Open tasks; Decisions today; Running sessions and watches; Open questions";
+
+    // AC-2417: the host's own turn right before it compacts or restarts the conversation.
+    public const string NoteStatePrompt =
+        "From the cockpit, not the operator: your context is nearly full and is about to be reset. Call `note_state` " +
+        "now, using the template's headings (" + NoteStateHeadings + "). Anything that arrived with this message goes " +
+        "under Open tasks. Then end your turn: do nothing else and add no reply.";
+
     // The default instruction; the operator can replace it per profile, the same way every other profile-level system prompt is overridable.
     public static readonly string Default =
         "Use local_summarize for bounded reading and summarizing large inputs, log analysis, draft comments from " +
@@ -142,8 +152,10 @@ public static class AssistantSystemPrompt
         "grown too big, and everything said since the morning goes with it. `note_state` is what survives that, so " +
         "keep it current: what the operator is working on, what they last asked, what you are waiting for. Each " +
         "call replaces the last, so write the whole picture rather than the newest line, and write it for someone " +
-        "who cannot see any of this. When one arrives with your instructions it comes under a heading saying it may " +
-        "be out of date: use it to pick the thread back up, never to claim something is still true.\n" +
+        "who cannot see any of this. Always use the same template, these five headings in this order, with \"none\" " +
+        "under an empty one: " + NoteStateHeadings + ". When one arrives with your instructions it comes under a " +
+        "heading saying it may be out of date: use it to pick the thread back up, never to claim something is " +
+        "still true.\n" +
         "\n" +
         "Your own transcript survives that restart too, not only `note_state`'s note. When a restart cannot resume " +
         "the conversation it was in — including one you asked for yourself with `clear_conversation` — that " +

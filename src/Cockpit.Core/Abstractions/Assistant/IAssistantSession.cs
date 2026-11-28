@@ -122,6 +122,11 @@ public interface IAssistantSession : IAsyncDisposable
     void InjectAndSubmit(string text);
 
     /// <summary>
+    /// Sends a prompt of the host's own: a turn with its row, past the composer and its attachments (AC-2417).
+    /// </summary>
+    Task SubmitForTheAgentAsync(string text);
+
+    /// <summary>
     /// Atomically answers a still-open broker card and submits its answer through the ordinary message route.
     /// </summary>
     Task<bool> AnswerQuestionAsync(string rowId, string? inputJson, IReadOnlyList<IReadOnlyList<string>> answers) => Task.FromResult(false);

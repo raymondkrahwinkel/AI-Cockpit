@@ -476,6 +476,10 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public bool SupportsContextCompaction => _host.Runtime?.Capabilities is { SupportsContextCompaction: true };
 
+    public SessionUsageTotals? UsageTotals => LiveState.Usage;
+
+    public Task SubmitForTheAgentAsync(string text) => SendPromptAsync(text);
+
     // AC-1442: the process the backend's stop ends by its tree when the stop itself does not end in time.
     internal int? ProcessId => _host.Runtime?.ProcessId;
 
