@@ -1,3 +1,4 @@
+using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
@@ -9,6 +10,9 @@ namespace Cockpit.Infrastructure.Tests.Configuration;
 public sealed class CockpitConfigWriteBatchTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), $"cockpit-write-batch-{Guid.NewGuid():N}");
+
+    // Only the failure path waits this long: every step is released by a gate, never by the clock.
+    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(5);
 
     private string ConfigPath => Path.Combine(_directory, "cockpit.json");
 
@@ -79,4 +83,70 @@ public sealed class CockpitConfigWriteBatchTests : IDisposable
         Assert.DoesNotContain("late", written.Plugins.Keys);
     }
 
+    /// <summary>
+    /// AC-2424 (category C): a read inside a batch whose first mutation is still loading — the gate already held by
+    /// that very batch — used to poll the gate until it timed out, since only the batch's own flush releases it.
+    /// It must wait for the batch's load instead. The load is held open by the key holder, so no timing is involved.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_WhileTheOwnBatchIsStillLoading_WaitsForThatLoadInsteadOfItsOwnGate()
+    {
+        Directory.CreateDirectory(_directory);
+        await new CockpitConfigFileAccess(ConfigPath).UpdateAsync(
+            file => (file.Plugins ??= [])["seeded"] = new PluginRegistrationEntry(), CancellationToken.None);
+
+        using var holder = new HoldingKeyHolder();
+        var access = new CockpitConfigFileAccess(ConfigPath, holder);
+
+        await using (CockpitConfigWriteBatch.Begin())
+        {
+            var mutation = Task.Run(() => access.UpdateAsync(
+                file => (file.Plugins ??= [])["mutated"] = new PluginRegistrationEntry(), CancellationToken.None));
+            await holder.Entered.Task.WaitAsync(Bound);
+
+            var read = access.ReadAsync(CancellationToken.None);
+            holder.Release.Set();
+
+            Assert.Contains("seeded", (await read.WaitAsync(Bound))!.Plugins!.Keys);
+            await mutation.WaitAsync(Bound);
+        }
+    }
+
+    // Blocks the first Protector lookup — made by the batch's load while it holds the write gate — until released.
+    private sealed class HoldingKeyHolder : ISecretKeyHolder, IDisposable
+    {
+        private int _armed = 1;
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ManualResetEventSlim Release { get; } = new();
+
+        public ISecretProtector? Protector
+        {
+            get
+            {
+                if (Interlocked.Exchange(ref _armed, 0) == 1)
+                {
+                    Entered.SetResult();
+                    Release.Wait(Bound);
+                }
+
+                return null;
+            }
+        }
+
+        public SecretFields Fields => SecretFields.ByName;
+
+        public event EventHandler? UnprotectedSecretsWritten
+        {
+            add { }
+            remove { }
+        }
+
+        public void NoteUnprotectedSecretsWritten()
+        {
+        }
+
+        public void Dispose() => Release.Dispose();
+    }
 }

@@ -9,20 +9,12 @@ namespace Cockpit.Infrastructure.Tests.Mcp;
 public class McpAuthKeyTests
 {
     [Fact]
-    public void IsAuthorized_TheRunsOwnKeyAsABearerToken_IsAccepted()
+    public void IsAuthorized_OnlyTheRunsOwnKeyAsABearerToken_IsAccepted()
     {
         var key = new McpAuthKey();
 
         Assert.True(key.IsAuthorized($"Bearer {key.Value}"));
-    }
 
-
-
-
-
-    [Fact]
-    public void OneKeyDoesNotAuthorizeAnother()
-    {
         var first = new McpAuthKey();
         var second = new McpAuthKey();
 
