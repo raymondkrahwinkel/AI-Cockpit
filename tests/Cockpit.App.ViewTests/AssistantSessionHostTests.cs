@@ -172,16 +172,17 @@ public class AssistantSessionHostTests
     {
         var (host, first, driver) = _StartedAssistantOn(_CompactingProvider(), contextCompactionPercent: 30);
 
-        _ReportAFullContext(first, driver, fill: 30);
+        _CrossTheLine(first, driver, fill: 30);
 
         // The same conversation, and the ask that keeps it: a hand-over would have swapped the instance for one whose
         // transcript is empty.
         Assert.Same(first, host.View());
-        driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
 
-        // And it says so where the operator reads, since the provider reports a compaction nowhere they can see.
+        // And it says so where the operator reads, after the note it asked for first (AC-2417).
         var divider = Assert.Single(first.Transcript, entry => entry.IsDivider);
         Assert.StartsWith("Context compacted at 30%", divider.Text, StringComparison.Ordinal);
+        Assert.Equal(AssistantSystemPrompt.NoteStatePrompt, first.Transcript.TakeWhile(entry => !entry.IsDivider)
+            .Single(entry => entry.Kind == TranscriptEntryKind.UserText).Text);
     }
 
     /// <summary>
@@ -194,12 +195,14 @@ public class AssistantSessionHostTests
     {
         var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
 
-        _ReportAFullContext(first, driver, fill: 90);
+        _CrossTheLine(first, driver, fill: 90);
         Assert.Same(first, host.View());
 
         // The compaction turn ends: busy drops while the provider's figure has not been re-read yet.
         Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
 
+        // A wrongly triggered hand-over runs a beat later, so give it one.
+        Thread.Sleep(200);
         Assert.Same(first, host.View());
         driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
     }
@@ -366,6 +369,30 @@ public class AssistantSessionHostTests
         var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.NotNull(session);
         return (host, session!, driver);
+    }
+
+    // AC-2417: a crossing first runs the note turn; the compaction follows once that turn is counted.
+    private static void _CrossTheLine(SessionViewModel session, ISessionDriver driver, double fill)
+    {
+        _ReportAFullContext(session, driver, fill);
+        _WaitFor(() => driver.ReceivedCalls().Any(call => call.GetArguments() is [AssistantSystemPrompt.NoteStatePrompt, ..]));
+        _ReportAFullContext(session, driver, fill);
+        _WaitFor(() => driver.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ISessionDriver.CompactContextAsync)));
+        Dispatcher.UIThread.Invoke(() => { });
+    }
+
+    private static void _WaitFor(Func<bool> happened)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (!happened())
+        {
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                throw new TimeoutException("The expected call did not reach the driver within 5s.");
+            }
+
+            Thread.Sleep(10);
+        }
     }
 
     // The signal production reads: a turn completes and the provider's usage poll reports the fill.
