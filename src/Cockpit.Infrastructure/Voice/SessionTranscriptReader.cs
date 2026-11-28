@@ -116,7 +116,7 @@ internal sealed class SessionTranscriptReader(
     private static TokenUsage? _MapUsage(PluginTokenUsage? usage) =>
         usage is null
             ? null
-            : new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens);
+            : new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens) { CacheReported = usage.CacheReported };
 
     // The provider plugin's reader for this profile plus its config JSON, or null when the provider
     // registered none (a TUI that records nothing, or a local model with no TUI). Mapping mirrors

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2405: The session usage tooltip shows the cache hit rate ("unknown" when the provider reports nothing about its cache). Codex token counts are now correct per turn: every model request of a turn is added up (before, only the last one was), and cached input and reasoning output are no longer counted twice. Codex totals are therefore much higher than before in turns with tool use (Codex plugin 0.15.0, Plugin SDK 3.101.0, Cockpit 0.189.0). Usage already on record keeps its old counts.
+
 - AC-2410: What Cockpit hands a session now keeps a stable order, so a provider's prompt cache can reuse more of it. MCP tools and server instructions are listed by server and tool name whatever order the servers connected in, servers that are not connected are named after the others, and the assistant's hand-over note now follows what it remembers about you and this machine instead of sitting between the two.
 
 - AC-2423: A session start no longer reports an empty list of mounted MCP servers while they are still connecting. The planned servers come back marked unconfirmed (mcpServersConfirmed false) until every server has connected or failed; an empty list now means nothing is mounted.

@@ -162,6 +162,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private int _pendingTurnOutputTokens;
     private int _pendingTurnCacheReadTokens;
     private int _pendingTurnCacheCreationTokens;
+    private bool _pendingTurnCacheReported;
 
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
     public TtyViewModel()
@@ -686,6 +687,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                         _pendingTurnOutputTokens += usage.OutputTokens;
                         _pendingTurnCacheReadTokens += usage.CacheReadInputTokens;
                         _pendingTurnCacheCreationTokens += usage.CacheCreationInputTokens;
+                        _pendingTurnCacheReported |= usage.CacheReported;
                     }
 
                     // AC-1013: RawLine is null for the reader's synthetic keep-alive readings (a background sub-agent's
@@ -780,7 +782,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private void _AccumulateTurnUsage()
     {
         var usage = new TokenUsage(
-            _pendingTurnInputTokens, _pendingTurnOutputTokens, _pendingTurnCacheReadTokens, _pendingTurnCacheCreationTokens);
+            _pendingTurnInputTokens, _pendingTurnOutputTokens, _pendingTurnCacheReadTokens, _pendingTurnCacheCreationTokens)
+        {
+            CacheReported = _pendingTurnCacheReported,
+        };
+        _pendingTurnCacheReported = false;
         _pendingTurnInputTokens = 0;
         _pendingTurnOutputTokens = 0;
         _pendingTurnCacheReadTokens = 0;

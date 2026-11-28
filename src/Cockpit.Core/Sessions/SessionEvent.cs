@@ -116,13 +116,25 @@ public sealed record TurnCompleted : SessionEvent
     public IReadOnlyList<string>? Errors { get; init; }
 }
 
-// Token counts from a `result` event's `usage` object (#8 token/cost meter). Carried on
-// `TurnCompleted.Usage`; how these accumulate across turns (running total vs per-turn delta) is a
-// consumer concern, not decided here — this record just mirrors what the CLI reported for one result.
+// AC-2405: one turn's tokens (#8); the buckets never overlap, so `InputTokens` is only what the cache neither served nor took.
 public sealed record TokenUsage(int InputTokens, int OutputTokens, int CacheReadInputTokens, int CacheCreationInputTokens)
 {
+    // The provider reports cache counts, so zero reads is a miss rather than unknown.
+    public bool CacheReported { get; init; }
+
     // Input + output tokens including cache reads and creations — one number for a compact meter.
     public int Total => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
+
+    // The prompt a hit rate is measured over; 0 when this turn says nothing about the cache.
+    public long CacheCountedPromptTokens => CacheReported || CacheReadInputTokens > 0 || CacheCreationInputTokens > 0
+        ? (long)InputTokens + CacheReadInputTokens + CacheCreationInputTokens
+        : 0;
+
+    // The share of the prompt served from cache, 0 to 1; null when unknown.
+    public double? CacheHitRate => HitRate(CacheReadInputTokens, CacheCountedPromptTokens);
+
+    public static double? HitRate(long cacheReadTokens, long countedPromptTokens) =>
+        countedPromptTokens > 0 ? (double)cacheReadTokens / countedPromptTokens : null;
 }
 
 // Per-session/per-turn status and attention state, from the CLI's own `system/post_turn_summary` and

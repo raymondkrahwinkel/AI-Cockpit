@@ -896,7 +896,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             IsError = turnCompleted.IsError,
             StopReason = turnCompleted.StopReason,
             Usage = turnCompleted.Usage is { } usage
-                ? new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+                ? new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens) { CacheReported = usage.CacheReported }
                 : null,
             TotalCostUsd = turnCompleted.TotalCostUsd,
             NumTurns = turnCompleted.NumTurns,

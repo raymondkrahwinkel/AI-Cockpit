@@ -333,15 +333,18 @@ public class CodexAppServerSessionDriverTests
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
         await _StartAsync(driver, fake);
 
-        // Turn 1 reports usage. D3: it feeds the host token meter — reasoning output (30) folds into output (200),
-        // cached input (50) maps to cache-read, and Codex reports no cache-creation count.
+        // A real Codex turn (AC-2405): three requests added up, the third reported twice, cached input counted inside input.
         await driver.SendUserMessageAsync("one");
         await _WaitForRequestIdAsync(fake, "turn/start");
         await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
-        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":1000,"outputTokens":200,"cachedInputTokens":50,"reasoningOutputTokens":30,"totalTokens":1280},"modelContextWindow":200000}}}""");
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":371052,"cachedInputTokens":370816,"cacheWriteInputTokens":0,"outputTokens":629,"reasoningOutputTokens":333,"totalTokens":371681},"total":{"totalTokens":32999421},"modelContextWindow":950000}}}""");
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":372713,"cachedInputTokens":371584,"cacheWriteInputTokens":0,"outputTokens":1947,"reasoningOutputTokens":1737,"totalTokens":374660},"total":{"totalTokens":33374081},"modelContextWindow":950000}}}""");
+        const string third = """{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":375191,"cachedInputTokens":374528,"cacheWriteInputTokens":0,"outputTokens":250,"reasoningOutputTokens":48,"totalTokens":375441},"total":{"totalTokens":33749522},"modelContextWindow":950000}}}""";
+        await fake.PushStdoutAsync(third);
+        await fake.PushStdoutAsync(third);
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
         var first = await _CollectUntilTurnCompletedAsync(driver);
-        Assert.Equal(new PluginTokenUsage(1000, 230, 50, 0), Assert.Single(first.OfType<PluginTurnCompleted>()).Usage);
+        Assert.Equal(new PluginTokenUsage(2028, 2826, 1116928, 0) { CacheReported = true }, Assert.Single(first.OfType<PluginTurnCompleted>()).Usage);
 
         // Turn 2 reports NO tokenUsage (e.g. an interrupted turn). Its usage must be null — not turn 1's total
         // leaking in, which the accumulating token meter would then double-count.

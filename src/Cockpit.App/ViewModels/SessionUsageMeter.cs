@@ -40,7 +40,8 @@ internal sealed class SessionUsageMeter
     // Per-bucket breakdown for the meter's hover text.
     public string Tooltip =>
         $"Input {FormatTokens(InputTokens)} · Output {FormatTokens(OutputTokens)} · " +
-        $"Cache read {FormatTokens(CacheReadInputTokens)} · Cache write {FormatTokens(CacheCreationInputTokens)}" +
+        $"Cache read {FormatTokens(CacheReadInputTokens)} · Cache write {FormatTokens(CacheCreationInputTokens)} · " +
+        $"Cache hit {FormatHitRate(Totals.CacheHitRate)}" +
         (TotalCostUsd > 0 ? $" · {FormatCost(TotalCostUsd)}" : string.Empty) +
         $" · {Turns} turn{(Turns == 1 ? string.Empty : "s")}";
 
@@ -51,6 +52,10 @@ internal sealed class SessionUsageMeter
         < 1_000_000 => (tokens / 1_000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k",
         _ => (tokens / 1_000_000.0).ToString("0.00", CultureInfo.InvariantCulture) + "M",
     };
+
+    // A provider that says nothing about its cache reads as unknown, never as 0%.
+    internal static string FormatHitRate(double? rate) =>
+        rate is { } share ? (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%" : "unknown";
 
     // Sub-dollar sessions need the extra digits to not read as "$0.00"; a dollar or more only needs cents.
     internal static string FormatCost(double costUsd) =>

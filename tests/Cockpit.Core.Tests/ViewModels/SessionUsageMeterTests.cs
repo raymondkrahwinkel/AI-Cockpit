@@ -30,5 +30,22 @@ public class SessionUsageMeterTests
         Assert.Equal(3.00, meter.TotalCostUsd, 9);
         Assert.Equal(4, meter.Turns);
         Assert.Equal(33, meter.TotalTokens); // the usage-less turn counts as a turn but adds no tokens
+
+        // AC-2405: those turns said nothing about a cache, so the rate is unknown rather than 0%.
+        Assert.Null(meter.Totals.CacheHitRate);
+        Assert.Contains("Cache hit unknown", meter.Tooltip);
+
+        // Real usage: a Claude response (17428 of 73182 prompt tokens cached) and a normalised Codex turn (11008 of 19680).
+        var claude = new TokenUsage(2, 767, 17428, 55752);
+        var codex = new TokenUsage(8672, 130, 11008, 0) { CacheReported = true };
+        Assert.Equal(17428d / 73182, claude.CacheHitRate);
+        Assert.Equal(11008d / 19680, codex.CacheHitRate);
+
+        // The session rate is weighted over the turns that reported; the earlier silent ones do not dilute it.
+        meter.Add(claude, costUsd: null);
+        meter.Add(codex, costUsd: null);
+
+        Assert.Equal(28436d / 92862, meter.Totals.CacheHitRate);
+        Assert.Contains("Cache hit 31%", meter.Tooltip);
     }
 }
