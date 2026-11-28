@@ -91,9 +91,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private double? _contextUsedPercent;
     private IReadOnlyList<PluginRateLimitWindow> _rateLimits = [];
 
-    // The most recent turn's token breakdown (#45 D3), attached to the next turn/completed so the host's token
-    // meter folds it in. Updated by thread/tokenUsage/updated, which arrives around the end of the turn.
-    private PluginTokenUsage? _lastTurnUsage;
+    // AC-2405: this turn's model requests added up (#45 D3); each thread/tokenUsage/updated reports only one of them.
+    private PluginTokenUsage? _turnUsage;
+
+    // The thread total counted last, so a repeated notification does not count its request twice.
+    private long? _countedThreadTokens;
 
     // AC-126: turn/completed carries no "final text" field, unlike Claude's stream-json result — the answer
     // arrives only as item/agentMessage/delta chunks, folded here so LastAssistantText/Result aren't null.
@@ -445,7 +447,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 // A new turn clears leftover usage so one that reports no tokenUsage carries none, rather than
                 // double-counting the previous turn's totals. Same reason for resetting the text accumulator
                 // (AC-126): a pure tool-use turn must not inherit the previous turn's answer as its Result.
-                _lastTurnUsage = null;
+                _turnUsage = null;
                 _turnText.Clear();
                 if (_TryGetNestedString(notification.Params, "turn", "id", out var turnId))
                 {
@@ -719,18 +721,17 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             Result = _turnText.Length > 0 ? _turnText.ToString() : null,
             IsError = isError,
             StopReason = isInterrupted ? "interrupt" : null,
-            Usage = _lastTurnUsage,
+            Usage = _turnUsage,
         });
         _currentTurnId = null;
 
         // Belt-and-braces alongside the turn/started reset above: a missed turn/started (an app-server build that
         // skips it, a resume replay) or a duplicate turn/completed must not hand this turn's text to the next one.
         _turnText.Clear();
+        _turnUsage = null;
     }
 
-    // thread/tokenUsage/updated carries how full the context window is: the last turn's footprint (falling back to
-    // the thread total) over the model's window. "last" is the most recent turn's usage, which is the running
-    // context going into the next turn — the closest analogue to Claude's context_window.used_percentage.
+    // Context fill, as Claude's used_percentage: the last request's footprint (or the thread total) over the model's window.
     private void _HandleTokenUsage(JsonElement parameters)
     {
         // Guard the entry, not just the nested reads: a notification with no "params" reaches here as
@@ -741,8 +742,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             return;
         }
 
-        // The last turn's breakdown feeds the host's token meter (#45 D3); kept for the next turn/completed to carry.
-        _lastTurnUsage = _ParseTurnUsage(_ObjectOrDefault(usage, "last")) ?? _lastTurnUsage;
+        // Each request adds to the turn's usage, which the next turn/completed carries to the host's token meter.
+        var threadTokens = _TryGetLong(_ObjectOrDefault(usage, "total"), "totalTokens");
+        if ((threadTokens is null || threadTokens != _countedThreadTokens)
+            && _ParseRequestUsage(_ObjectOrDefault(usage, "last")) is { } request)
+        {
+            _countedThreadTokens = threadTokens;
+            _turnUsage = _turnUsage is { } sum ? _Add(sum, request) : request;
+        }
 
         var contextWindow = _TryGetLong(usage, "modelContextWindow");
         var usedTokens = _TryGetLong(_ObjectOrDefault(usage, "last"), "totalTokens")
@@ -756,7 +763,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     }
 
     // AC-2405: Codex counts cached and cache-write tokens inside inputTokens, and reasoning inside outputTokens.
-    private static PluginTokenUsage? _ParseTurnUsage(JsonElement breakdown)
+    private static PluginTokenUsage? _ParseRequestUsage(JsonElement breakdown)
     {
         if (breakdown.ValueKind != JsonValueKind.Object)
         {
@@ -771,6 +778,16 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             CacheReported = cacheRead is not null,
         };
     }
+
+    private static PluginTokenUsage _Add(PluginTokenUsage left, PluginTokenUsage right) =>
+        new(
+            left.InputTokens + right.InputTokens,
+            left.OutputTokens + right.OutputTokens,
+            left.CacheReadInputTokens + right.CacheReadInputTokens,
+            left.CacheCreationInputTokens + right.CacheCreationInputTokens)
+        {
+            CacheReported = left.CacheReported || right.CacheReported,
+        };
 
     // account/rateLimits/updated carries the whole snapshot, so primary/secondary are replaced wholesale rather
     // than merged: a window the snapshot no longer reports is a window that no longer applies.
