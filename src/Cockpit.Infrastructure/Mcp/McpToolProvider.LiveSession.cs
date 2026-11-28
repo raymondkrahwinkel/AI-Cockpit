@@ -122,11 +122,16 @@ internal sealed partial class McpToolProvider
             {
                 lock (_sync)
                 {
-                    return [.. _servers.Values.SelectMany(server => server.Tools.Select(tool => new McpSessionTool(
+                    return [.. _ServersByName().SelectMany(server => _ByName(server.Tools).Select(tool => new McpSessionTool(
                         new MountedTool(tool, this, server, _toolNames.ForTool(server.Config.Name, tool.Name)), server.Config.Name, server.Config.AlwaysMounted)))];
                 }
             }
         }
+
+        // AC-2410: tools head the prompt-cache prefix, so neither mount order nor upstream listing order may move them.
+        private IEnumerable<Upstream> _ServersByName() => _servers.Values.OrderBy(server => server.Config.Name, StringComparer.Ordinal);
+
+        private static IEnumerable<AIFunction> _ByName(IReadOnlyList<AIFunction> tools) => tools.OrderBy(tool => tool.Name, StringComparer.Ordinal);
 
         public IReadOnlyList<McpServerTool> ForwardTools
         {
@@ -135,9 +140,9 @@ internal sealed partial class McpToolProvider
                 lock (_sync)
                 {
                     var tools = new List<McpServerTool>();
-                    foreach (var server in _servers.Values.OrderBy(server => server.Config.Name, StringComparer.Ordinal))
+                    foreach (var server in _ServersByName())
                     {
-                        foreach (var tool in server.Tools.OfType<McpClientTool>())
+                        foreach (var tool in _ByName(server.Tools).OfType<McpClientTool>())
                         {
                             var name = _toolNames.ForTool(server.Config.Name, tool.Name);
                             tools.Add(new ForwardMcpServerTool(name, tool.ProtocolTool, server, (context, ct) => _CallAsync(server, tool.Name, context, ct)));
@@ -198,7 +203,8 @@ internal sealed partial class McpToolProvider
             lock (_sync)
             {
                 var instructions = new List<string>();
-                foreach (var server in _servers.Values)
+                var unavailable = new List<string>();
+                foreach (var server in _ServersByName())
                 {
                     if (server.Connection?.Client.ServerInstructions is { Length: > 0 } text)
                     {
@@ -208,10 +214,11 @@ internal sealed partial class McpToolProvider
                     else if (server.Connection is null && server.Issue is { Length: > 0 } issue)
                     {
                         // The agent must hear that a selected server delivers no tools, not just the operator panel.
-                        instructions.Add($"## {server.Config.Name}\nNot connected, so it has no tools in this session: {issue}");
+                        unavailable.Add($"## {server.Config.Name}\nNot connected, so it has no tools in this session: {issue}");
                     }
                 }
-                return string.Join("\n\n", instructions);
+                // AC-2410: connection failures differ per start, so they follow the stable instructions.
+                return string.Join("\n\n", instructions.Concat(unavailable));
             }
         }
 
