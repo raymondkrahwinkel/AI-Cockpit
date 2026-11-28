@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -67,6 +68,28 @@ public class SessionUsageDisplayTests
         session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 93, null)]);
 
         Assert.True(session.HasUsageWarning);
+
+        // AC-2414: percentage and token limit share one crossing; whichever is passed first raises the line.
+        var thresholds = new UsageThresholdSettings();
+        thresholds.Set(thresholds.ByProvider, "claude", UsageThresholdSettings.ContextTokensSignalKey, 20_000);
+        var guarded = new TtyViewModel { UsageThresholds = thresholds, UsageProviderId = "claude" };
+
+        guarded.ApplyUsage(Signals, [new PluginUsageReading("context", 30, null)]);
+        guarded.ReportContextTokens(25_000);
+
+        Assert.Equal("Context 30% (25.0k tokens) — long contexts cost more per turn and lose detail.", Assert.Single(guarded.Warnings).Text);
+
+        // The percentage passing too, and then carrying the crossing on its own, is not news.
+        guarded.DismissUsageWarningCommand.Execute(null);
+        guarded.ApplyUsage(Signals, [new PluginUsageReading("context", 72, null)]);
+        guarded.ReportContextTokens(null);
+
+        Assert.False(guarded.HasUsageWarning, "the same crossing has already been announced");
+
+        guarded.ApplyUsage(Signals, [new PluginUsageReading("context", 12, null)]);
+        guarded.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
+
+        Assert.True(guarded.HasUsageWarning, "back under both, then past the percentage first");
     }
 
     [Fact]
@@ -86,7 +109,7 @@ public class SessionUsageDisplayTests
         session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 4, null)]);
 
         Assert.Equal(2, session.Warnings.Count);
-        Assert.Contains("Context window is 60% used", session.Warnings[0].Text);
+        Assert.StartsWith("Context 60%", session.Warnings[0].Text);
         Assert.Contains("Week is 96% used", session.Warnings[1].Text);
     }
 }

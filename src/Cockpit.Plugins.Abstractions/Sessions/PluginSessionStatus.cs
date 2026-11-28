@@ -21,7 +21,13 @@ public sealed record PluginSessionStatus(
     IReadOnlyList<PluginRateLimitWindow> RateLimits)
 {
     /// <summary>
+    /// The tokens in the context: input, cache-read and cache-write counts of the last model request, not summed over
+    /// a turn. <see langword="null"/> while unknown, such as after a compaction.
+    /// </summary>
+    public long? ContextTokens { get; init; }
+
+    /// <summary>
     /// Whether there is anything worth showing, so a header can hide the bars until a provider reports usage.
     /// </summary>
-    public bool HasAny => ContextUsedPercent is not null || RateLimits.Count > 0;
+    public bool HasAny => ContextUsedPercent is not null || ContextTokens is not null || RateLimits.Count > 0;
 }

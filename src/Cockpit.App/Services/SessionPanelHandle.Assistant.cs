@@ -32,6 +32,8 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
 
     bool IAssistantSession.SupportsContextCompaction => _Assistant.Capabilities.SupportsContextCompaction;
 
+    long? IAssistantSession.ContextTokens => _Assistant.ContextTokens;
+
     SessionUsageTotals? IAssistantSession.UsageTotals => _Assistant.Control.LiveState.Usage;
 
     string? IAssistantSession.TurnsHeldBecause

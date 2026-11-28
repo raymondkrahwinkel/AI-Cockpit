@@ -104,7 +104,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
     // AC-2421: the guard's own estimate of how full the window is, so the header and the Assistant can see it.
     public SessionStatusFeed? CurrentStatus =>
-        _agent?.GetService<ContextGuardChatClient>()?.FillPercent is { } fill ? new SessionStatusFeed(Math.Round(fill), []) : null;
+        _agent?.GetService<ContextGuardChatClient>() is { } guard && (guard.FillPercent is not null || guard.ContextTokens is not null)
+            ? new SessionStatusFeed(guard.FillPercent is { } fill ? Math.Round(fill) : null, []) { ContextTokens = guard.ContextTokens }
+            : null;
 
     public SessionProfile? Profile { get; private set; }
 

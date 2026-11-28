@@ -22,10 +22,19 @@ public sealed partial class UsageThresholdRowViewModel : ObservableObject
     // AC-805 placeholder shows the provider or Assistant default, making a null override visibly inherit it.
     public double Declared { get; }
 
+    private bool IsTokenCount => SignalKey == Core.Sessions.UsageThresholdSettings.ContextTokensSignalKey;
+
+    public decimal Maximum => IsTokenCount ? int.MaxValue : 100;
+
+    public decimal Increment => IsTokenCount ? 5000 : 5;
+
     // The hint under the field, naming the value that applies when this is left empty.
-    public string FollowsLabel => SignalKey == Core.Sessions.UsageThresholdSettings.CacheSignalKey
-        ? $"Left empty: colours below {Declared:0}%"
-        : $"Left empty: warns at {Declared:0}%";
+    public string FollowsLabel => SignalKey switch
+    {
+        Core.Sessions.UsageThresholdSettings.CacheSignalKey => $"Left empty: colours below {Declared:0}%",
+        Core.Sessions.UsageThresholdSettings.ContextTokensSignalKey => Declared > 0 ? $"Left empty: warns at {Declared:0} tokens" : "Left empty: off",
+        _ => $"Left empty: warns at {Declared:0}%",
+    };
 
     // The operator's own number, or null to follow the level above. Null is stored as an absence rather than a
     // copy of the current value, so a later change to the provider's default still carries.

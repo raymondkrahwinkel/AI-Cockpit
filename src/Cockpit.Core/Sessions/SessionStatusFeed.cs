@@ -7,8 +7,11 @@ public sealed record SessionStatusFeed(
     double? ContextUsedPercent,
     IReadOnlyList<SessionRateWindow> RateLimits)
 {
+    // AC-2414: input + cache read + cache write of the last model request; null while unknown (after a compaction).
+    public long? ContextTokens { get; init; }
+
     // Whether there is anything worth showing, so the header hides the bars until a provider reports usage.
-    public bool HasAny => ContextUsedPercent is not null || RateLimits.Count > 0;
+    public bool HasAny => ContextUsedPercent is not null || ContextTokens is not null || RateLimits.Count > 0;
 
     // The hover text for the header's bars: what each bar means, spelled out, plus when each window rolls over —
     // the one thing a bar cannot show and the thing you want when it is nearly full. Only the numbers the

@@ -2315,7 +2315,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // the automatic 80%-trigger already checks before it asks (`AssistantSessionHost.ShouldHandOver`), so a click
     // during an in-flight turn — automatic or a second click on this one — does nothing instead of asking twice.
     [RelayCommand(CanExecute = nameof(_CanCompact))]
-    private async Task CompactAsync() => await CompactContextAsync();
+    private async Task CompactAsync()
+    {
+        // AC-2414: a compaction leaves nothing else in the transcript. The Assistant writes its own divider.
+        if (await CompactContextAsync())
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider, "Compacting the context — earlier messages become a summary"));
+        }
+    }
 
     private bool _CanCompact => !IsBusy;
 
@@ -3566,6 +3573,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             readings.Add(new PluginUsageReading(signal.Key, window.UsedPercent, window.ResetsAt));
         }
 
+        // Set first, so the guard `ApplyUsage` runs judges this status's percentage and tokens together.
+        ContextTokens = status.ContextTokens;
         ApplyUsage(signals, readings);
     }
 

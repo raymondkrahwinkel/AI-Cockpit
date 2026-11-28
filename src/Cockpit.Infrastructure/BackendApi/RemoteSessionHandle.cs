@@ -854,7 +854,7 @@ internal sealed record RemoteQueueEvent(IReadOnlyList<RemoteQueueItem>? Queue);
 
 internal sealed record RemoteQueueItem(string WireId, string Text);
 
-internal sealed record RemoteUsageStatus(double? ContextUsedPercent, IReadOnlyList<RemoteRateWindow> RateLimits)
+internal sealed record RemoteUsageStatus(double? ContextUsedPercent, IReadOnlyList<RemoteRateWindow> RateLimits, long? ContextTokens = null)
 {
     public static RemoteUsageStatus? From(SessionStatusFeed? status) => status is null
         ? null
@@ -864,7 +864,8 @@ internal sealed record RemoteUsageStatus(double? ContextUsedPercent, IReadOnlyLi
                 window.Label,
                 window.UsedPercent,
                 window.ResetsAt,
-                window.ThresholdPercent))]);
+                window.ThresholdPercent))],
+            status.ContextTokens);
 
     public SessionStatusFeed ToCore() => new(
         ContextUsedPercent,
@@ -872,7 +873,10 @@ internal sealed record RemoteUsageStatus(double? ContextUsedPercent, IReadOnlyLi
             window.Label,
             window.UsedPercent,
             window.ResetsAt,
-            window.ThresholdPercent))]);
+            window.ThresholdPercent))])
+    {
+        ContextTokens = ContextTokens,
+    };
 }
 
 internal sealed record RemoteRateWindow(

@@ -4840,13 +4840,9 @@ internal static partial class Screenshotter
     private static AssistantChatWindow _AssistantChatWithWarnings()
     {
         const long Cap = 512L * 1024 * 1024;
-        // AC-893: without a capability that declares compaction, the Compact button never rendered in this
-        // scene — the exact blind spot that let the missing wiring on the real surfaces go unnoticed.
-        var session = new ViewModels.SessionViewModel
-        {
-            MemoryCapBytes = Cap,
-            Capabilities = SessionCapabilities.ClaudeCli with { SupportsContextCompaction = true },
-        };
+        var session = new ViewModels.SessionViewModel { MemoryCapBytes = Cap };
+        // The pane in this window is the assistant, which shows no context line (AC-2414).
+        session.AdoptPaneId(Cockpit.Core.Assistant.AssistantIdentity.PaneId);
         session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "Running the build." });
         session.ApplyUsage(
             [

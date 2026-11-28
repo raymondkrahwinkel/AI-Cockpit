@@ -42,7 +42,8 @@ internal sealed class SharedUsageCache : ISharedUsageCache, ISingletonService
     {
         if (_KeyFor(config) is { } key)
         {
-            _entries[key] = (status, _time.GetUtcNow());
+            // AC-2414: only the account's windows are shared; how full a context is belongs to the session that read it.
+            _entries[key] = (status with { ContextUsedPercent = null, ContextTokens = null }, _time.GetUtcNow());
         }
     }
 

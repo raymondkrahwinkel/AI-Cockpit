@@ -20,6 +20,7 @@ internal sealed class ClaudeSdkUsage
     private readonly string? _profile;
 
     private double? _contextUsedPercent;
+    private long? _contextTokens;
     private string? _model;
 
     private volatile PluginSessionStatus? _status;
@@ -128,16 +129,16 @@ internal sealed class ClaudeSdkUsage
         foreach (var model in models.EnumerateObject())
         {
             after = (
-                after.Input + _Tokens(model.Value, "inputTokens"),
-                after.Output + _Tokens(model.Value, "outputTokens"),
-                after.CacheRead + _Tokens(model.Value, "cacheReadInputTokens"),
-                after.CacheCreation + _Tokens(model.Value, "cacheCreationInputTokens"));
+                after.Input + _Count(model.Value, "inputTokens"),
+                after.Output + _Count(model.Value, "outputTokens"),
+                after.CacheRead + _Count(model.Value, "cacheReadInputTokens"),
+                after.CacheCreation + _Count(model.Value, "cacheCreationInputTokens"));
         }
 
         _modelTotals = after;
         var countedByTheTurn = root.TryGetProperty("usage", out var usage)
-            && _Tokens(usage, "input_tokens") + _Tokens(usage, "output_tokens")
-                + _Tokens(usage, "cache_read_input_tokens") + _Tokens(usage, "cache_creation_input_tokens") > 0;
+            && _Count(usage, "input_tokens") + _Count(usage, "output_tokens")
+                + _Count(usage, "cache_read_input_tokens") + _Count(usage, "cache_creation_input_tokens") > 0;
         if (!compacted || countedByTheTurn || before is not { } previous)
         {
             return null;
@@ -149,10 +150,6 @@ internal sealed class ClaudeSdkUsage
             _Delta(after.CacheRead, previous.CacheRead),
             _Delta(after.CacheCreation, previous.CacheCreation));
 
-        static long _Tokens(JsonElement parent, string name) =>
-            parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value)
-            && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var tokens) ? tokens : 0;
-
         static int _Delta(long now, long then) => (int)Math.Clamp(now - then, 0, int.MaxValue);
     }
 
@@ -162,8 +159,13 @@ internal sealed class ClaudeSdkUsage
     {
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("type", out var type)
-            || type.ValueKind != JsonValueKind.String
-            || type.GetString() is not "rate_limit_event")
+            || type.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        _ObserveContextTokens(root, type.GetString());
+        if (type.GetString() is not "rate_limit_event")
         {
             return;
         }
@@ -186,6 +188,44 @@ internal sealed class ClaudeSdkUsage
             _recordObservation?.Invoke(new PluginModelObservation(ClaudeProviderIds.Claude, PluginModelObservationKind.RateLimitRefusal, asOf) { Model = _model, Profile = _profile });
         }
     }
+
+    // AC-2414: a result's `usage` sums every request of the turn, so the context comes off the newest assistant line.
+    private void _ObserveContextTokens(JsonElement root, string? type)
+    {
+        long? tokens = null;
+        if (type is "assistant")
+        {
+            if (root.TryGetProperty("parent_tool_use_id", out var parent) && parent.ValueKind == JsonValueKind.String
+                || !root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object
+                || !message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            tokens = _Count(usage, "input_tokens") + _Count(usage, "cache_read_input_tokens") + _Count(usage, "cache_creation_input_tokens");
+            // A line the CLI made up itself (an error notice) carries zeroes and says nothing about the context.
+            if (tokens is 0)
+            {
+                return;
+            }
+        }
+        else if (type is not "system"
+            || !root.TryGetProperty("subtype", out var subtype)
+            || subtype.ValueKind != JsonValueKind.String || subtype.GetString() is not "compact_boundary")
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            _contextTokens = tokens;
+            _Publish();
+        }
+    }
+
+    private static long _Count(JsonElement parent, string name) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var tokens) ? tokens : 0;
 
     // The CLI restates a window whenever its figure changes, so the newest line for a type replaces the previous one
     // and a type never seen simply has no segment.
@@ -256,7 +296,7 @@ internal sealed class ClaudeSdkUsage
             .ThenBy(window => window.Label, StringComparer.Ordinal)
             .ToArray();
 
-        var status = new PluginSessionStatus(_contextUsedPercent, windows);
+        var status = new PluginSessionStatus(_contextUsedPercent, windows) { ContextTokens = _contextTokens };
         _status = status.HasAny ? status : null;
     }
 }

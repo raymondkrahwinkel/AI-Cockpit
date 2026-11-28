@@ -599,6 +599,9 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     // AC-2421: how full the window is, on the same rough estimate pruning uses; null until something was measured.
     public double? FillPercent { get; private set; }
 
+    // AC-2414: the last request's prompt as the server counted it; null until it reports one, and after a restart.
+    public long? ContextTokens { get; private set; }
+
     public void Measure(IList<ChatMessage> messages, ChatOptions? options) =>
         FillPercent = Math.Min(100d, 100d * _EstimateTokens(messages, options) / Limits.ContextWindowTokens);
 
@@ -626,6 +629,7 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
 
         history.RemoveRange(0, turnStart);
         history.InsertRange(0, system);
+        ContextTokens = null;
         return $"(cockpit) The context was about {fill:0}% full (limit {line}%), so a fresh conversation started: the model no longer sees the earlier messages.";
     }
 
@@ -682,6 +686,12 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
         finally
         {
             turn.Add(reported);
+            if (reported is not null
+                && (long)reported.InputTokens + reported.CacheReadInputTokens + reported.CacheCreationInputTokens is var prompt and > 0)
+            {
+                ContextTokens = prompt;
+            }
+
             await updates.DisposeAsync().ConfigureAwait(false);
         }
 

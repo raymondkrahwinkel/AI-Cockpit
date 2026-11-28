@@ -212,7 +212,7 @@
                                         VerticalAlignment="Center"
                                         ToolTip.Tip="Close this session now. Nothing closes it on its own once it is over its cap."/>
                                 <!-- AC-782: manual context compaction, next to the automatic 80% trigger. -->
-                                <Button Content="Compact" Classes="Compact"
+                                <Button Content="Compact now" Classes="Compact"
                                         Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).CompactCommand}"
                                         IsVisible="{Binding ShowCompact}"
                                         VerticalAlignment="Center"

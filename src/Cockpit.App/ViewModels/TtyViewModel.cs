@@ -688,6 +688,11 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                         _pendingTurnCacheReadTokens += usage.CacheReadInputTokens;
                         _pendingTurnCacheCreationTokens += usage.CacheCreationInputTokens;
                         _pendingTurnCacheReported |= usage.CacheReported;
+                        // AC-2414: one transcript usage line is one model request, so it is what the context holds now.
+                        if ((long)usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens is var prompt and > 0)
+                        {
+                            ReportContextTokens(prompt);
+                        }
                     }
 
                     // AC-1013: RawLine is null for the reader's synthetic keep-alive readings (a background sub-agent's
