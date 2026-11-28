@@ -41,6 +41,11 @@ public sealed record SessionUsageTotals(
 {
     public static SessionUsageTotals None { get; } = new(0, 0, 0, 0, 0, 0);
 
+    // AC-2405: the prompt tokens of the turns that said something about the cache, so the others do not dilute the rate.
+    public long CacheCountedPromptTokens { get; init; }
+
+    public double? CacheHitRate => TokenUsage.HitRate(CacheReadInputTokens, CacheCountedPromptTokens);
+
     public int TotalTokens => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
 
     // A pure-error session with no usage has nothing worth showing.
@@ -53,7 +58,10 @@ public sealed record SessionUsageTotals(
         CacheReadInputTokens + (usage?.CacheReadInputTokens ?? 0),
         CacheCreationInputTokens + (usage?.CacheCreationInputTokens ?? 0),
         costUsd ?? TotalCostUsd,
-        Turns + 1);
+        Turns + 1)
+    {
+        CacheCountedPromptTokens = CacheCountedPromptTokens + (usage?.CacheCountedPromptTokens ?? 0),
+    };
 }
 
 // How a turn ended: completed (an error result included) or broken off by a session error, which drains no queue.

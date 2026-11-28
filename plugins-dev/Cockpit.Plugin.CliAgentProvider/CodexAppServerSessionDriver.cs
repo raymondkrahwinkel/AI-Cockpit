@@ -755,9 +755,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
     }
 
-    // Codex's TokenUsageBreakdown → the host's per-turn token counts. Reasoning output is folded into output
-    // tokens (it is completion the turn produced); cached input maps to the cache-read bucket; Codex reports no
-    // cache-creation count, so that stays zero.
+    // AC-2405: Codex counts cached and cache-write tokens inside inputTokens, and reasoning inside outputTokens.
     private static PluginTokenUsage? _ParseTurnUsage(JsonElement breakdown)
     {
         if (breakdown.ValueKind != JsonValueKind.Object)
@@ -765,10 +763,13 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             return null;
         }
 
-        var input = _TryGetInt(breakdown, "inputTokens") ?? 0;
-        var output = (_TryGetInt(breakdown, "outputTokens") ?? 0) + (_TryGetInt(breakdown, "reasoningOutputTokens") ?? 0);
-        var cachedInput = _TryGetInt(breakdown, "cachedInputTokens") ?? 0;
-        return new PluginTokenUsage(input, output, cachedInput, 0);
+        var cacheRead = _TryGetInt(breakdown, "cachedInputTokens");
+        var cacheWrite = _TryGetInt(breakdown, "cacheWriteInputTokens") ?? 0;
+        var uncached = Math.Max(0, (_TryGetInt(breakdown, "inputTokens") ?? 0) - (cacheRead ?? 0) - cacheWrite);
+        return new PluginTokenUsage(uncached, _TryGetInt(breakdown, "outputTokens") ?? 0, cacheRead ?? 0, cacheWrite)
+        {
+            CacheReported = cacheRead is not null,
+        };
     }
 
     // account/rateLimits/updated carries the whole snapshot, so primary/secondary are replaced wholesale rather
