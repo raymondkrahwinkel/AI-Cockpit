@@ -38,4 +38,4 @@ changing.
 
 OpenRouter's chat-completions response carries no rolling allowance or context-usage figure to read, unlike
 some other providers — this plugin does not show any such indicator, by design, not because something is
-missing.
+missing. Token usage per turn is shown in the session meter, with cache reads where OpenRouter reports them.

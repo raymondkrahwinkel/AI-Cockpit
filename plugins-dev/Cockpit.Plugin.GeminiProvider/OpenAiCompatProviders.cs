@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.GeminiProvider;
 // changes; Hetzner Inference profiles live on "gemini-provider.openai" with their own base URL.
 internal sealed record OpenAiCompatProvider(string ProviderId, string DisplayName, string BaseUrl, string Supports, TermsNotice Terms, string? ApiKeyEnvVar = null)
 {
-    private const string Standard = "Chat, streaming and tools through the cockpit. Images depend on the model. Token usage, reasoning and cache hits are not shown.";
+    private const string Standard = "Chat, streaming and tools through the cockpit. Images depend on the model. Token usage and cache reads are shown when the endpoint reports them; reasoning is not shown.";
 
     public bool IsCustom => BaseUrl.Length == 0;
 
@@ -17,7 +17,7 @@ internal sealed record OpenAiCompatProvider(string ProviderId, string DisplayNam
             "Gemini (OpenAI-compatible)",
             OpenAiCompatDefaultBaseUrls.Gemini,
             // Gemini's docs require thought signatures for multi-turn function calling; the shared driver drops them.
-            "Chat and streaming. Tool calls may fail on Gemini 3 models. Images depend on the model. Token usage, thoughts and cache hits are not shown.",
+            "Chat and streaming. Tool calls may fail on Gemini 3 models. Images depend on the model. Token usage and cache reads are shown when the endpoint reports them; thoughts are not shown.",
             new TermsNotice("Gemini (Google): API-key use is billed to the key owner and governed by Google's API terms. A custom endpoint is governed by its own service agreement.", new Uri("https://ai.google.dev/gemini-api/terms")),
             OpenAiCompatConfig.ApiKeyEnvVar),
         new(

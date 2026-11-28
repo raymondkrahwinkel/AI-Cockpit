@@ -171,17 +171,17 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
                 cancellationToken,
                 _streamIdleTimeout).ConfigureAwait(false);
 
-            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false, Usage = _TurnUsage() });
         }
         catch (OperationCanceledException)
         {
-            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt", Usage = _TurnUsage() });
         }
         catch (ChatStreamIdleTimeoutException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger?.LogWarning(ex, "{Provider} model {Model} stream went idle in session {SessionId}.", providerName, _model, _sessionId);
             _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = ex.Message, Kind = PluginSessionErrorKind.ServiceUnavailable, RetryAfter = null });
-            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
         }
         // AC-1344: the SDK retries a NetworkTimeout up to 4x, wrapping every attempt in one AggregateException —
         // readable message instead of the raw dump. IsCancellationRequested excludes an interrupt landing right
@@ -197,7 +197,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
                 Kind = PluginSessionErrorKind.ServiceUnavailable,
                 RetryAfter = null,
             });
-            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
         }
         catch (Exception ex)
         {
@@ -208,9 +208,11 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
                 Kind = _ClassifyError(ex),
                 RetryAfter = _RetryAfterFrom(ex),
             });
-            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
         }
     }
+
+    private PluginTokenUsage? _TurnUsage() => _agent?.GetService<ContextGuardChatClient>()?.Turn.Usage;
 
     // AC-1344: a NetworkTimeout is the only failure the SDK reports this way — every retry attempt's own
     // TaskCanceledException, batched into one AggregateException instead of a single exception.

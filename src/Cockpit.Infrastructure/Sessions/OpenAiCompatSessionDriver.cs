@@ -382,13 +382,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // A genuine user interrupt: the token this turn runs under was cancelled, so keep a clean "interrupted"
             // turn with no error row. An OperationCanceledException the SDK throws while aborting on a non-2xx response
             // leaves the token uncancelled, so it fails this filter and falls through as an error instead (AC-132).
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt", Usage = _TurnUsage() });
         }
         catch (ChatStreamIdleTimeoutException ex)
         {
             _logger.LogWarning(ex, "OpenAI-compatible provider model {Model} stream went idle in pane {PaneId}.", _model, _sessionId);
             _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = ex.Message, Exception = ex, Kind = SessionErrorKind.ServiceUnavailable });
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
         }
         catch (Exception ex)
         {
@@ -416,7 +416,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
+                    _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt", Usage = _TurnUsage() });
                 }
                 catch (Exception retryEx)
                 {
@@ -435,7 +435,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 Kind = _ClassifyError(ex),
                 RetryAfter = _RetryAfterFrom(ex),
             });
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
         }
     }
 
@@ -476,7 +476,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         if (!hasText && !_turnHadToolActivity)
         {
             _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = "The model returned no response — no text and no tool calls." });
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
             return;
         }
 
@@ -491,12 +491,16 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                 Message = "The model emitted a tool call as text that was not executed, so the run cannot proceed. "
                     + "This local model does not produce tool calls this runtime can run.",
             });
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
             return;
         }
 
-        _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = reply, IsError = false });
+        _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = reply, IsError = false, Usage = _TurnUsage() });
     }
+
+    private TokenUsage? _TurnUsage() => _agent?.GetService<ContextGuardChatClient>()?.Turn.Usage is { } usage
+        ? new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens) { CacheReported = usage.CacheReported }
+        : null;
 
     private void _EmitError(Exception ex)
     {
@@ -512,7 +516,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             Kind = _ClassifyError(ex),
             RetryAfter = _RetryAfterFrom(ex),
         });
-        _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+        _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true, Usage = _TurnUsage() });
     }
 
     // Whether a failed request looks like the runtime refusing tool-calling itself (a GGUF tool-parser failure,
