@@ -719,10 +719,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
             _thresholds[declared.Label] = threshold;
             described.Add(_DescribeReading(declared, reading));
-            _RaiseOrClearWarning(declared, reading, threshold);
+            if (declared.Kind is not PluginUsageSignalKind.Fill)
+            {
+                _RaiseOrClearWarning(declared, reading, threshold);
+            }
         }
 
         ContextUsedPercent = context;
+        _GuardTheContext();
 
         RateLimits.Clear();
         foreach (var window in windows)
@@ -732,6 +736,35 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         LimitsTooltip = string.Join(Environment.NewLine, described);
     }
+
+    // AC-2414: the tokens in the context, as the last model request counted them; null while unknown.
+    public long? ContextTokens { get; private protected set; }
+
+    public void ReportContextTokens(long? tokens)
+    {
+        ContextTokens = tokens;
+        _GuardTheContext();
+    }
+
+    private bool _IsOverContextTokens =>
+        _ResolveThreshold(Core.Sessions.UsageThresholdSettings.ContextTokensSignalKey, 0) is > 0 and var limit && ContextTokens >= limit;
+
+    // AC-2414: percentage and token limit share one line, so one crossing; the Assistant compacts itself and shows none.
+    private void _GuardTheContext()
+    {
+        var over = ContextUsedPercent >= ContextThreshold || _IsOverContextTokens;
+        var percent = ContextUsedPercent is { } used ? $"{Math.Round(used, MidpointRounding.AwayFromZero):0}%" : null;
+        var tokens = ContextTokens is { } count ? $"{SessionUsageMeter.FormatTokens(count)} tokens" : null;
+        var figures = percent is not null && tokens is not null ? $"{percent} ({tokens})" : percent ?? tokens;
+
+        _RaiseOrClear(
+            ContextWarningKey,
+            over && PaneId != AssistantIdentity.PaneId ? $"Context {figures} — long contexts cost more per turn and lose detail." : null,
+            kind: PluginUsageSignalKind.Fill);
+        RebuildUsagePillItems();
+    }
+
+    private const string ContextWarningKey = "cockpit.context";
 
     // The last known reading per signal key, merged into by every `ApplyUsage` call (AC-761 F1).
     private readonly Dictionary<string, (PluginUsageSignal Signal, PluginUsageReading Reading)> _lastReadings = [];
@@ -743,6 +776,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _lastReadings.Clear();
         _thresholds.Clear();
         _declaredSignals = [];
+        ContextTokens = null;
+        _RaiseOrClear(ContextWarningKey, says: null);
     }
 
     // The threshold each rendered figure was measured against, by the label it renders under, so the pill and the
@@ -1456,7 +1491,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         switch (field)
         {
             case UsagePillField.Context when ContextUsedPercent is { } percent:
-                yield return new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used");
+                var brush = UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx"));
+                yield return new UsagePillItem(
+                    $"ctx {percent:0}%",
+                    _IsOverContextTokens && brush == "CockpitTextSecondaryBrush" ? "CockpitStatusWaitingBrush" : brush,
+                    $"Context window: {percent:0}% used");
                 break;
 
             // Suppress cost here because this is its only rendering; deselecting usage must remove it, not move it.

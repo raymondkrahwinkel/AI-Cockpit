@@ -16,6 +16,13 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         Description = "Cache hit rate pill",
     };
 
+    // AC-2414: sits beside the context row; a declared 0 is "off".
+    private static readonly PluginUsageSignal _ContextTokensSignal = new(
+        UsageThresholdSettings.ContextTokensSignalKey, "ctx tokens", PluginUsageSignalKind.Fill, 0)
+    {
+        Description = "Context tokens",
+    };
+
     private readonly IUsageThresholdStore _store;
     private UsageThresholdSettings _settings = new();
 
@@ -50,7 +57,8 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
         AssistantProviders.Clear();
         foreach (var (providerId, displayName, declared) in providers.Where(entry => entry.Signals.Count > 0))
         {
-            IReadOnlyList<PluginUsageSignal> signals = [.. declared, _CacheSignal];
+            List<PluginUsageSignal> signals = [.. declared, _CacheSignal];
+            signals.Insert(signals.FindIndex(signal => signal.Kind == PluginUsageSignalKind.Fill) + 1, _ContextTokensSignal);
 
             // The Assistant's own "what this follows" is what an ordinary session on this provider would resolve
             // to (its own override, else the declaration) — not always the raw declaration, now that a provider

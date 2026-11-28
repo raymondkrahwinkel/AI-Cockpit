@@ -39,6 +39,11 @@ public interface IAssistantSession : IAsyncDisposable
     double? ContextUsedPercent { get; }
 
     /// <summary>
+    /// The tokens in the context, as the last model request counted them (AC-2414); null while unknown.
+    /// </summary>
+    long? ContextTokens => null;
+
+    /// <summary>
     /// Its token totals so far, for the compaction measurement (AC-2419); null when it keeps none.
     /// </summary>
     SessionUsageTotals? UsageTotals => null;

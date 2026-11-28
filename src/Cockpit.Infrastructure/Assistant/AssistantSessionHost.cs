@@ -1027,10 +1027,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             return first;
         });
 
-        // ContextTokens: no provider hands the host a count yet.
         var atTrigger = new AssistantContextEvent(
             DateTimeOffset.Now, AssistantContextEvent.Compact, AssistantContextEvent.Threshold,
-            session.ContextUsedPercent, ContextTokens: null, CompactInput: null, CompactOutput: null, _NoteStateAgeMinutes());
+            session.ContextUsedPercent, session.ContextTokens, CompactInput: null, CompactOutput: null, _NoteStateAgeMinutes());
 
         if (ask)
         {

@@ -698,7 +698,8 @@
     <!-- 3.100.0 (AC-2394): PluginSessionStartRequest.Brain and CheckSessionMcpServersAsync with a brain; requires host 0.188.0, contract stays 3. -->
     <!-- 3.101.0 (AC-2405): PluginTokenUsage.CacheReported and disjoint input counts; requires host 0.189.0, contract stays 3. -->
     <!-- 3.102.0 (AC-2409): CacheCountedPromptTokens on CockpitUsageDelta and CockpitTimelineDay; a plugin that reads it requires host 0.189.0, contract stays 3. -->
-    <Version>3.102.0</Version>
+    <!-- 3.103.0 (AC-2414): PluginSessionStatus.ContextTokens; requires host 0.189.0, contract stays 3. -->
+    <Version>3.103.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

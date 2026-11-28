@@ -53,10 +53,17 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     // AC-2421: only a profile that states its window gets a fill figure; the default window is a guess, not a measurement.
-    public PluginSessionStatus? Status =>
-        _turnLimits.RestartAtPercent is not null && _agent?.GetService<ContextGuardChatClient>()?.FillPercent is { } fill
-            ? new PluginSessionStatus(Math.Round(fill), [])
-            : null;
+    public PluginSessionStatus? Status
+    {
+        get
+        {
+            var guard = _agent?.GetService<ContextGuardChatClient>();
+            double? fill = _turnLimits.RestartAtPercent is not null && guard?.FillPercent is { } measured ? Math.Round(measured) : null;
+            return fill is null && guard?.ContextTokens is null
+                ? null
+                : new PluginSessionStatus(fill, []) { ContextTokens = guard?.ContextTokens };
+        }
+    }
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
     {

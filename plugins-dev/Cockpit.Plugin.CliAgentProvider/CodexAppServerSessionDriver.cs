@@ -89,6 +89,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // consistent value. Context and rate-limits arrive in separate notifications, so each is kept and recombined.
     private volatile PluginSessionStatus? _status;
     private double? _contextUsedPercent;
+    private long? _contextTokens;
     private IReadOnlyList<PluginRateLimitWindow> _rateLimits = [];
 
     // AC-2405: this turn's model requests added up (#45 D3); each thread/tokenUsage/updated reports only one of them.
@@ -628,6 +629,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             // AC-2421: Codex compacts on its own and says nothing else, so the transcript names the moment.
             case "contextCompaction" when completed && !isChild:
+                _contextTokens = null;
+                _PublishStatus();
                 _events.Publish(new PluginAssistantTextDelta { SessionId = sessionId, BlockIndex = 0, Text = CompactedNote });
                 break;
 
@@ -759,6 +762,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             _countedThreadTokens = threadTokens;
             _turnUsage = _turnUsage is { } sum ? _Add(sum, request) : request;
+            // AC-2414: this one request is the context; the estimate Codex sends after a compaction has no input.
+            var prompt = (long)request.InputTokens + request.CacheReadInputTokens + request.CacheCreationInputTokens;
+            _contextTokens = prompt > 0 ? prompt : null;
         }
 
         var contextWindow = _TryGetLong(usage, "modelContextWindow");
@@ -768,8 +774,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         if (contextWindow is > 0 && usedTokens is not null)
         {
             _contextUsedPercent = Math.Clamp((double)usedTokens.Value / contextWindow.Value * 100, 0, 100);
-            _PublishStatus();
         }
+
+        _PublishStatus();
     }
 
     // AC-2405: Codex counts cached and cache-write tokens inside inputTokens, and reasoning inside outputTokens.
@@ -833,7 +840,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     private void _PublishStatus()
     {
-        var status = new PluginSessionStatus(_contextUsedPercent, _rateLimits);
+        var status = new PluginSessionStatus(_contextUsedPercent, _rateLimits) { ContextTokens = _contextTokens };
         _status = status.HasAny ? status : null;
     }
 

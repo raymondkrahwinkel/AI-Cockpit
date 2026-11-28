@@ -9,6 +9,9 @@ public sealed class UsageThresholdSettings
     public const string CacheSignalKey = "cache";
     public const double CacheDefaultThresholdPercent = 40;
 
+    // AC-2414: the context guard's token limit, a count rather than a percentage; absent or 0 is off.
+    public const string ContextTokensSignalKey = "context-tokens";
+
     // Per provider id, the signal keys that provider's sessions warn at differently from its own declaration.
     public Dictionary<string, Dictionary<string, double>> ByProvider { get; init; } = [];
 
@@ -68,6 +71,6 @@ public sealed class UsageThresholdSettings
             level[owner] = signals;
         }
 
-        signals[signalKey] = Math.Clamp(value, 0, 100);
+        signals[signalKey] = Math.Clamp(value, 0, signalKey == ContextTokensSignalKey ? int.MaxValue : 100);
     }
 }

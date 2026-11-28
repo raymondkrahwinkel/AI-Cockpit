@@ -91,6 +91,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ? new SessionStatusFeed(
                 status.ContextUsedPercent,
                 [.. status.RateLimits.Select(window => new SessionRateWindow(window.Label, window.UsedPercent, window.ResetsAt))])
+            {
+                ContextTokens = status.ContextTokens,
+            }
             : null;
 
     // #45 D4: mid-session controls mapped to the core form the header's live-control panel renders.
