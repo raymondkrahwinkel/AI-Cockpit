@@ -9,6 +9,13 @@ namespace Cockpit.App.ViewModels;
 // AC-233 threshold settings for one provider; undeclared signals create no empty settings section.
 public sealed partial class UsageThresholdsViewModel : ObservableObject
 {
+    // AC-2408: appended to each provider's rows so the cache pill's threshold is set on the same screen.
+    private static readonly PluginUsageSignal _CacheSignal = new(
+        UsageThresholdSettings.CacheSignalKey, "cache", PluginUsageSignalKind.Fill, UsageThresholdSettings.CacheDefaultThresholdPercent)
+    {
+        Description = "Cache hit rate pill",
+    };
+
     private readonly IUsageThresholdStore _store;
     private UsageThresholdSettings _settings = new();
 
@@ -41,8 +48,10 @@ public sealed partial class UsageThresholdsViewModel : ObservableObject
 
         Providers.Clear();
         AssistantProviders.Clear();
-        foreach (var (providerId, displayName, signals) in providers.Where(entry => entry.Signals.Count > 0))
+        foreach (var (providerId, displayName, declared) in providers.Where(entry => entry.Signals.Count > 0))
         {
+            IReadOnlyList<PluginUsageSignal> signals = [.. declared, _CacheSignal];
+
             // The Assistant's own "what this follows" is what an ordinary session on this provider would resolve
             // to (its own override, else the declaration) — not always the raw declaration, now that a provider
             // override on the same screen can already change it.

@@ -5,6 +5,10 @@ namespace Cockpit.Core.Sessions;
 // above", never a zero, so an untouched field keeps following the provider even after it changes its mind.
 public sealed class UsageThresholdSettings
 {
+    // AC-2408: the host's own signal, no provider declares it; unlike the others it warns below its threshold.
+    public const string CacheSignalKey = "cache";
+    public const double CacheDefaultThresholdPercent = 40;
+
     // Per provider id, the signal keys that provider's sessions warn at differently from its own declaration.
     public Dictionary<string, Dictionary<string, double>> ByProvider { get; init; } = [];
 

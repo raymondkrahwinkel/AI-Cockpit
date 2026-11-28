@@ -705,7 +705,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         foreach (var (declared, reading) in _lastReadings.Values)
         {
-            var threshold = _ResolveThreshold(declared);
+            var threshold = _ResolveThreshold(declared.Key, declared.DefaultThresholdPercent);
 
             if (declared.Kind is PluginUsageSignalKind.Fill)
             {
@@ -825,9 +825,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // Where this signal warns for this session (AC-233): what the operator set for the Assistant if this pane is
     // the Assistant, else for the profile, else for the provider, else what the provider itself declared. One
     // resolver, so the pill, the bar and the warning cannot end up judging the same figure by different numbers.
-    private double _ResolveThreshold(PluginUsageSignal signal) =>
-        UsageThresholds?.Resolve(UsageProviderId ?? string.Empty, ActiveProfileLabel, signal.Key, signal.DefaultThresholdPercent, PaneId == AssistantIdentity.PaneId)
-        ?? signal.DefaultThresholdPercent;
+    private double _ResolveThreshold(string signalKey, double declared) =>
+        UsageThresholds?.Resolve(UsageProviderId ?? string.Empty, ActiveProfileLabel, signalKey, declared, PaneId == AssistantIdentity.PaneId)
+        ?? declared;
 
     // The operator's own thresholds, handed in by the cockpit; null means every signal follows its provider's declaration.
     public UsageThresholdSettings? UsageThresholds { get; set; }
@@ -1461,6 +1461,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             // Suppress cost here because this is its only rendering; deselecting usage must remove it, not move it.
             case UsagePillField.SessionUsage when HasUsage:
                 yield return new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip);
+                break;
+
+            case UsagePillField.CacheHitRate when HasUsage:
+                yield return _usage.CacheHitPill(_ResolveThreshold(Core.Sessions.UsageThresholdSettings.CacheSignalKey, Core.Sessions.UsageThresholdSettings.CacheDefaultThresholdPercent));
                 break;
 
             case UsagePillField.RateWindows:

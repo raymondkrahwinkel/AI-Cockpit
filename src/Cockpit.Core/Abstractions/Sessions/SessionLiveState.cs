@@ -46,6 +46,8 @@ public sealed record SessionUsageTotals(
 
     public double? CacheHitRate => TokenUsage.HitRate(CacheReadInputTokens, CacheCountedPromptTokens);
 
+    public TokenUsage? LastTurn { get; init; }
+
     public int TotalTokens => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
 
     // A pure-error session with no usage has nothing worth showing.
@@ -61,6 +63,7 @@ public sealed record SessionUsageTotals(
         Turns + 1)
     {
         CacheCountedPromptTokens = CacheCountedPromptTokens + (usage?.CacheCountedPromptTokens ?? 0),
+        LastTurn = usage,
     };
 }
 

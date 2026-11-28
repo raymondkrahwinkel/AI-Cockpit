@@ -8,4 +8,5 @@ public enum UsagePillField
     Context,
     SessionUsage,
     RateWindows,
+    CacheHitRate,
 }

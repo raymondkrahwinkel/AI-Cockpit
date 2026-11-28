@@ -31,19 +31,31 @@ internal sealed class SessionUsageMeter
     // Back to zero for a conversation that starts over in the same pane (AC-564's context clear).
     public void Reset() => Totals = SessionUsageTotals.None;
 
-    // Compact one-line meter, e.g. `45.2k tok · $0.0123` — the cost is dropped when the provider reports none (local models).
+    // Compact one-line meter, e.g. `45.2k tok · 87% cache · $0.0123` — an unknown cache rate and an unreported cost are dropped.
     public string Summary =>
-        TotalCostUsd > 0
-            ? $"{FormatTokens(TotalTokens)} tok · {FormatCost(TotalCostUsd)}"
-            : $"{FormatTokens(TotalTokens)} tok";
+        $"{FormatTokens(TotalTokens)} tok" +
+        (Totals.CacheHitRate is { } rate ? $" · {FormatHitRate(rate)} cache" : string.Empty) +
+        (TotalCostUsd > 0 ? $" · {FormatCost(TotalCostUsd)}" : string.Empty);
 
     // Per-bucket breakdown for the meter's hover text.
     public string Tooltip =>
         $"Input {FormatTokens(InputTokens)} · Output {FormatTokens(OutputTokens)} · " +
-        $"Cache read {FormatTokens(CacheReadInputTokens)} · Cache write {FormatTokens(CacheCreationInputTokens)} · " +
-        $"Cache hit {FormatHitRate(Totals.CacheHitRate)}" +
+        $"Cache read {FormatTokens(CacheReadInputTokens)} · Cache write {FormatTokens(CacheCreationInputTokens)}" +
         (TotalCostUsd > 0 ? $" · {FormatCost(TotalCostUsd)}" : string.Empty) +
-        $" · {Turns} turn{(Turns == 1 ? string.Empty : "s")}";
+        $" · {Turns} turn{(Turns == 1 ? string.Empty : "s")}\n" +
+        CacheHitLine;
+
+    public string CacheHitLine => Totals.CacheHitRate is { } session
+        ? $"Cache hit: {FormatHitRate(session)} session · {FormatHitRate(Totals.LastTurn?.CacheHitRate)} last turn"
+        : "Cache hit: n/a (provider reports no cache)";
+
+    // AC-2408: the first turns are mostly cache writes, so the pill does not colour before the third.
+    public UsagePillItem CacheHitPill(double warnBelowPercent) => new(
+        $"cache {FormatHitRate(Totals.CacheHitRate)}",
+        Turns >= 3 && Totals.CacheHitRate is { } rate
+            ? UsageSeverity.LowBrushKeyFor(rate * 100, warnBelowPercent)
+            : "CockpitTextSecondaryBrush",
+        CacheHitLine);
 
     // 950 → "950", 45210 → "45.2k", 2_300_000 → "2.30M": one glanceable number that never runs long.
     internal static string FormatTokens(long tokens) => tokens switch
@@ -55,7 +67,7 @@ internal sealed class SessionUsageMeter
 
     // A provider that says nothing about its cache reads as unknown, never as 0%.
     internal static string FormatHitRate(double? rate) =>
-        rate is { } share ? (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%" : "unknown";
+        rate is { } share ? (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%" : "n/a";
 
     // Sub-dollar sessions need the extra digits to not read as "$0.00"; a dollar or more only needs cents.
     internal static string FormatCost(double costUsd) =>

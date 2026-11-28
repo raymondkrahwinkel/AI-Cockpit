@@ -2298,12 +2298,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _transcriptDisplaySettingsStatus = string.Empty;
 
-    // Which metrics the header's usage pill shows (AC-105), as three toggles composed into the saved field list.
+    // Which metrics the header's usage pill shows (AC-105), as toggles composed into the saved field list.
     [ObservableProperty]
     private bool _showUsagePillContext = true;
 
     [ObservableProperty]
     private bool _showUsagePillSessionUsage;
+
+    [ObservableProperty]
+    private bool _showUsagePillCacheHitRate;
 
     // #1105 A2: one toggle for every rolling allowance window a provider reports, replacing the earlier pair of
     // Claude-specific five-hour/weekly toggles that left a differently-shaped window (Codex's 7d) undrawable.
@@ -3190,7 +3193,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     partial void OnShowUsagePillRateWindowsChanged(bool value) => ApplyUsagePillFields();
 
-    // The chosen usage-pill fields in display order, composed from the three toggles.
+    partial void OnShowUsagePillCacheHitRateChanged(bool value) => ApplyUsagePillFields();
+
+    // The chosen usage-pill fields in display order, composed from the toggles.
     private IReadOnlyList<UsagePillField> ComposeUsagePillFields()
     {
         var fields = new List<UsagePillField>();
@@ -3202,6 +3207,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (ShowUsagePillSessionUsage)
         {
             fields.Add(UsagePillField.SessionUsage);
+        }
+
+        if (ShowUsagePillCacheHitRate)
+        {
+            fields.Add(UsagePillField.CacheHitRate);
         }
 
         if (ShowUsagePillRateWindows)
@@ -4605,6 +4615,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _usagePillSettingsStore.LoadAsync();
         ShowUsagePillContext = settings.VisibleFields.Contains(UsagePillField.Context);
         ShowUsagePillSessionUsage = settings.VisibleFields.Contains(UsagePillField.SessionUsage);
+        ShowUsagePillCacheHitRate = settings.VisibleFields.Contains(UsagePillField.CacheHitRate);
         ShowUsagePillRateWindows = settings.VisibleFields.Contains(UsagePillField.RateWindows);
     }
 
@@ -8460,6 +8471,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var usagePill = new UsagePillSettings();
         ShowUsagePillContext = usagePill.VisibleFields.Contains(UsagePillField.Context);
         ShowUsagePillSessionUsage = usagePill.VisibleFields.Contains(UsagePillField.SessionUsage);
+        ShowUsagePillCacheHitRate = usagePill.VisibleFields.Contains(UsagePillField.CacheHitRate);
         ShowUsagePillRateWindows = usagePill.VisibleFields.Contains(UsagePillField.RateWindows);
 
         var behavior = new SessionBehaviorSettings();

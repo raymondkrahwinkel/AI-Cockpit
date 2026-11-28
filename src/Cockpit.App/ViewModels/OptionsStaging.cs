@@ -69,6 +69,7 @@ internal static class OptionsStaging
         "SessionIdleMinutes",
         "ShowDebugControls",
         "ShowTimestamps",
+        "ShowUsagePillCacheHitRate",
         "ShowUsagePillContext",
         "ShowUsagePillRateWindows",
         "ShowUsagePillSessionUsage",
