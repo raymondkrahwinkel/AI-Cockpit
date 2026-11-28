@@ -128,8 +128,9 @@ public partial class McpClientConnectorTests
             registry.Add(second);
             mounts.Grant("contract", ["depot", "other"]);
             await using var local = provider.CreateGatewaySession("contract", token, mounts.Set("contract")?.Context);
-            await local.AddServerAsync(config);
+            // Category D (AC-2410): provider prompt caches need the same tool order whatever order servers mounted in.
             await local.AddServerAsync(second);
+            await local.AddServerAsync(config);
             Assert.Equal(["depot__contract", "other__contract"], local.Tools.Select(tool => tool.Function.Name));
             Assert.Equal(ToolPermissionClass.ReadOnly, local.ToolClasses["mcp__depot__contract"]);
             Assert.Equal(ToolPermissionClass.Destructive, local.ToolClasses["mcp__other__contract"]);
