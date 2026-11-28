@@ -11,4 +11,5 @@ internal sealed record AssistantServerOptions(
     [property: JsonRequired] bool ConsentBypassAll,
     [property: JsonRequired] IReadOnlyList<string> ConsentBypassSources,
     [property: JsonRequired] IReadOnlyList<string> ConsentBypassDangerousSources,
-    bool RequireRole = true);
+    bool RequireRole = true,
+    int CompactionsBeforeRestart = Cockpit.Core.Assistant.AssistantSettings.DefaultCompactionsBeforeRestart);

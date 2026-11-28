@@ -50,6 +50,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
+    private int _compactionsBeforeRestart = AssistantSettings.DefaultCompactionsBeforeRestart;
 
     private async Task<string?> _BrainAndRoleAsync(AssistantProfileSlot slot, CancellationToken cancellationToken)
     {
@@ -503,6 +504,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
         _contextCompactionPercent = _ContextCompactionPercent(settings);
+        _compactionsBeforeRestart = AssistantSettings.NormalizeCompactionsBeforeRestart(settings.CompactionsBeforeRestart);
 
         // AC-1013: Re-applies everything the start path applies from these settings, so a save reaches the running
         // assistant. Reuses the start path's own call rather than hand-picking fields — hand-picking is what
@@ -575,6 +577,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
         _contextCompactionPercent = _ContextCompactionPercent(settings);
+        _compactionsBeforeRestart = AssistantSettings.NormalizeCompactionsBeforeRestart(settings.CompactionsBeforeRestart);
         if (!settings.IsEnabled)
         {
             // Criterion 1: with the feature off the hotkey does nothing — and says why, rather than being a key
@@ -704,7 +707,15 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
-        _RunExclusive(() => _askedTheProviderToCompact = _askedForTheNote = false);
+        _RunExclusive(() =>
+        {
+            _askedTheProviderToCompact = _askedForTheNote = false;
+            // AC-2418: a resume carries the conversation and its compactions on; every other start begins a new one.
+            if (resume.Mode != SessionResumeMode.BySessionId)
+            {
+                _compactions = 0;
+            }
+        });
         Session = session;
         if (standby is not null)
         {
@@ -879,9 +890,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // Once a compaction has been asked for, only a fresh reading may decide anything: its turn ends with the
         // pre-compaction fill still standing, and judged there the hand-over would throw away the very conversation
         // the compaction had just saved.
-        if (_askedTheProviderToCompact && !fillWasJustRead)
+        if (_askedTheProviderToCompact)
         {
-            return false;
+            // AC-2418: the compaction turn's own reading can arrive while still busy, so it stays good until idle.
+            _compactionWasRead |= fillWasJustRead && reading.Turns > _turnsBeforeCompaction;
+            if (!fillWasJustRead && !_compactionWasRead)
+            {
+                return false;
+            }
         }
 
         // A fill that came back under the line re-arms the ask: this is the only place that can tell a compaction
@@ -893,7 +909,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             return false;
         }
 
-        return !ReferenceEquals(session, _notingSession) && _MayResetNow(session, reading);
+        // One relief at a time: two readings at the same idle moment would otherwise start over twice.
+        if (ReferenceEquals(session, _relievingSession) || !_MayResetNow(session, reading))
+        {
+            return false;
+        }
+
+        _relievingSession = session;
+        return true;
     }
 
     // Under `_gate`. AC-1321: a compaction is a turn too; under a controller it waits, like everything else.
@@ -902,9 +925,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         && reading.CanTakeAPrompt
         && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator, _contextCompactionPercent);
 
-    // AC-2417: the state note is asked for once per crossing, and this is the session whose note turn is waited on.
+    // AC-2417: the state note is asked for once per crossing.
     private bool _askedForTheNote;
-    private IAssistantSession? _notingSession;
+    private IAssistantSession? _relievingSession;
 
     private static readonly TimeSpan NoteStateTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan NoteStatePoll = TimeSpan.FromMilliseconds(250);
@@ -922,35 +945,12 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         var reading = SessionReading.Of(session);
         var (proceed, ask) = _RunExclusive(() =>
         {
-            var may = !ReferenceEquals(session, _notingSession) && _MayResetNow(session, reading);
+            var may = _MayResetNow(session, reading);
             var first = may && !_askedForTheNote;
-            if (first)
-            {
-                _askedForTheNote = true;
-                _notingSession = session;
-            }
-
+            _askedForTheNote |= first;
             return (may, first);
         });
-        if (!ask)
-        {
-            return proceed;
-        }
-
-        try
-        {
-            return await _TakeTheNoteTurnAsync(session).ConfigureAwait(true);
-        }
-        finally
-        {
-            _RunExclusive(() =>
-            {
-                if (ReferenceEquals(_notingSession, session))
-                {
-                    _notingSession = null;
-                }
-            });
-        }
+        return ask ? await _TakeTheNoteTurnAsync(session).ConfigureAwait(true) : proceed;
     }
 
     private async Task<bool> _TakeTheNoteTurnAsync(IAssistantSession session)
@@ -1010,7 +1010,30 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // the ask is what makes the fill move, so the condition that triggered it is still true when the reply lands.
     private bool _askedTheProviderToCompact;
 
+    // AC-2418: this conversation's compactions, and what tells whether the last one's turn has been read.
+    private int _compactions;
+    private int? _turnsBeforeCompaction;
+    private bool _compactionWasRead;
+
     private async Task _RelieveTheFullContextAsync(IAssistantSession session)
+    {
+        try
+        {
+            await _CompactOrStartOverAsync(session).ConfigureAwait(true);
+        }
+        finally
+        {
+            _RunExclusive(() =>
+            {
+                if (ReferenceEquals(_relievingSession, session))
+                {
+                    _relievingSession = null;
+                }
+            });
+        }
+    }
+
+    private async Task _CompactOrStartOverAsync(IAssistantSession session)
     {
         // Ahead of the trigger's figures, so the note's age is that of the note just written.
         if (!await _NoteStateBeforeResetAsync(session).ConfigureAwait(true))
@@ -1018,26 +1041,34 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             return;
         }
 
-        // AC-1382: checked and set in one section, so two readings over the line cannot both ask.
         var canCompact = session.SupportsContextCompaction;
-        var ask = _RunExclusive(() =>
+        var before = session.UsageTotals;
+        // AC-1382: checked and set in one section. No reason to start over means: compact.
+        var (startOverBecause, compactions) = _RunExclusive(() =>
         {
-            var first = canCompact && !_askedTheProviderToCompact;
-            _askedTheProviderToCompact |= first;
-            return first;
+            var because = !canCompact ? AssistantContextEvent.NoCompactionSupport
+                : _askedTheProviderToCompact ? AssistantContextEvent.CompactionIneffective
+                : _compactionsBeforeRestart > 0 && _compactions >= _compactionsBeforeRestart ? AssistantContextEvent.CompactionLimit
+                : null;
+            if (because is null)
+            {
+                _askedTheProviderToCompact = true;
+                _turnsBeforeCompaction = before?.Turns;
+                _compactionWasRead = false;
+            }
+
+            return (because, _compactions);
         });
 
         var atTrigger = new AssistantContextEvent(
             DateTimeOffset.Now, AssistantContextEvent.Compact, AssistantContextEvent.Threshold,
             session.ContextUsedPercent, session.ContextTokens, CompactInput: null, CompactOutput: null, _NoteStateAgeMinutes());
 
-        if (ask)
+        if (startOverBecause is null)
         {
             _logger.LogInformation(
                 "The assistant's context is {Fill:0}% full; asking the provider to compact it.",
                 session.ContextUsedPercent);
-
-            var before = session.UsageTotals;
 
             try
             {
@@ -1047,7 +1078,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                     // here — the provider reports it as a system line the transcript does not render — so the
                     // assistant's memory of the early part would quietly thin out with nothing to say that it had.
                     session.AddDivider(atTrigger.Describe());
-                    _RunExclusive(() => _compaction = new CompactionMeasurement(session, atTrigger, before));
+                    _RunExclusive(() =>
+                    {
+                        _compactions += ReferenceEquals(session, Session) ? 1 : 0;
+                        _compaction = new CompactionMeasurement(session, atTrigger, before);
+                    });
                     return;
                 }
             }
@@ -1058,26 +1093,16 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             }
         }
 
-        if (session.SupportsContextCompaction)
-        {
-            _logger.LogInformation(
-                "The assistant's context is {Fill:0}% full and compacting did not relieve it; restarting it on a fresh conversation.",
-                session.ContextUsedPercent);
-        }
-        else
-        {
-            _logger.LogInformation(
-                "The assistant's context is {Fill:0}% full and this provider cannot compact; restarting it on a fresh conversation.",
-                session.ContextUsedPercent);
-        }
-
         var restart = atTrigger with
         {
             Kind = AssistantContextEvent.Restart,
-            Reason = session.SupportsContextCompaction ? AssistantContextEvent.CompactFailed : AssistantContextEvent.NoCompactionSupport,
+            Reason = startOverBecause ?? AssistantContextEvent.CompactFailed,
         };
+        _logger.LogInformation(
+            "The assistant's context is {Fill:0}% full; restarting it on a fresh conversation ({Reason}).",
+            session.ContextUsedPercent, restart.Reason);
         await _StartOrReplaceAsync(
-            replaceALiveInstance: true, startFresh: true, CancellationToken.None, startFreshBecause: restart.Describe()).ConfigureAwait(true);
+            replaceALiveInstance: true, startFresh: true, CancellationToken.None, startFreshBecause: restart.Describe(compactions)).ConfigureAwait(true);
 
         // After the restart, so the log cannot delay it; a held line replaces nothing and writes nothing.
         if (_contextEvents is not null && !ReferenceEquals(session, Session))
@@ -1393,10 +1418,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // AC-1382: what a section decides on, read off the session before it is entered. The headless session's getters
     // take its own lock, which it holds while it raises rows into this host; read under `_gate`, that deadlocks.
     private readonly record struct SessionReading(
-        bool IsBusy, bool IsWaitingOnOperator, double? ContextUsedPercent, bool CanTakeAPrompt)
+        bool IsBusy, bool IsWaitingOnOperator, double? ContextUsedPercent, bool CanTakeAPrompt, int? Turns)
     {
         public static SessionReading Of(IAssistantSession session) =>
-            new(session.IsBusy, session.IsWaitingOnOperator, session.ContextUsedPercent, session.CanTakeAPrompt);
+            new(session.IsBusy, session.IsWaitingOnOperator, session.ContextUsedPercent, session.CanTakeAPrompt,
+                session.UsageTotals?.Turns);
     }
 
     // AC-1382: the F1 pattern (`SessionLauncher.RunExclusiveAsync`), private since nothing outside decides here. The

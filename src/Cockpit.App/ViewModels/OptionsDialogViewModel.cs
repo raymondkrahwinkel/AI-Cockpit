@@ -88,6 +88,9 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
 
+    [ObservableProperty]
+    private int _compactionsBeforeRestart = AssistantSettings.DefaultCompactionsBeforeRestart;
+
     // AC-2357: mirrors `AssistantSettings.RequireRole`, on by default.
     [ObservableProperty]
     private bool _requireRole = true;
@@ -147,6 +150,7 @@ public sealed partial class AssistantOptionsViewModel(
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
                 AlwaysOnTop = _lastLoadedSettings.AlwaysOnTop;
                 ContextCompactionPercent = _lastLoadedSettings.ContextCompactionPercent;
+                CompactionsBeforeRestart = _lastLoadedSettings.CompactionsBeforeRestart;
                 RequireRole = _lastLoadedSettings.RequireRole;
                 SelectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(_lastLoadedSettings.ReadingLevel);
                 ConsentBypassAll = _lastLoadedSettings.ConsentBypassAll;
@@ -269,6 +273,8 @@ public sealed partial class AssistantOptionsViewModel(
 
     partial void OnContextCompactionPercentChanged(double value) => _SaveSettings();
 
+    partial void OnCompactionsBeforeRestartChanged(int value) => _SaveSettings();
+
     partial void OnRequireRoleChanged(bool value) => _SaveSettings();
 
     partial void OnSelectedReadingLevelChanged(ReadingLevelOption value) => _SaveSettings();
@@ -311,6 +317,7 @@ public sealed partial class AssistantOptionsViewModel(
         PushToTalkKeyName = defaults.PushToTalkKeyName;
         AlwaysOnTop = defaults.AlwaysOnTop;
         ContextCompactionPercent = defaults.ContextCompactionPercent;
+        CompactionsBeforeRestart = defaults.CompactionsBeforeRestart;
         RequireRole = defaults.RequireRole;
         SelectedReadingLevel = SessionOptionCatalog.ReadingLevels.FirstOrDefault(level => level.Value == defaults.ReadingLevel)
                                ?? SessionOptionCatalog.DefaultReadingLevel;
@@ -354,6 +361,7 @@ public sealed partial class AssistantOptionsViewModel(
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
             AlwaysOnTop = AlwaysOnTop,
             ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
+            CompactionsBeforeRestart = AssistantSettings.NormalizeCompactionsBeforeRestart(CompactionsBeforeRestart),
             RequireRole = RequireRole,
             ReadingLevel = SelectedReadingLevel.Value,
             // Written from the rows rather than merged into what was loaded: the rows already carry every stored

@@ -55,6 +55,7 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
             ContextCompactionPercent = value.ContextCompactionPercent, SpeechProfileLabel = value.SpeechProfileLabel,
             ConsentBypassAll = value.ConsentBypassAll, ConsentBypassSources = value.ConsentBypassSources,
             ConsentBypassDangerousSources = value.ConsentBypassDangerousSources, RequireRole = value.RequireRole,
+            CompactionsBeforeRestart = value.CompactionsBeforeRestart,
         };
     }
 
@@ -62,7 +63,8 @@ public sealed class RemoteOptionsStores(Func<IRemoteServer?> server) : IRemoteOp
     {
         await _WriteAsync("assistant", new AssistantServerOptions(settings.IsEnabled, settings.ReadingLevel,
             settings.ContextCompactionPercent, settings.SpeechProfileLabel, settings.ConsentBypassAll,
-            settings.ConsentBypassSources, settings.ConsentBypassDangerousSources, settings.RequireRole), cancellationToken).ConfigureAwait(false);
+            settings.ConsentBypassSources, settings.ConsentBypassDangerousSources, settings.RequireRole,
+            settings.CompactionsBeforeRestart), cancellationToken).ConfigureAwait(false);
         _clientAssistant = settings;
     }
 

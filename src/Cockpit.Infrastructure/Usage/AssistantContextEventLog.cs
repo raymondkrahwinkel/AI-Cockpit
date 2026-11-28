@@ -65,14 +65,25 @@ internal sealed record AssistantContextEvent(
     public const string Threshold = "threshold";
     public const string CompactFailed = "compact-failed";
     public const string NoCompactionSupport = "no-compaction-support";
+    public const string CompactionLimit = "compaction-limit";
+    public const string CompactionIneffective = "compaction-ineffective";
 
     // The same core as the line, for the divider in the assistant's transcript.
-    public string Describe()
+    public string Describe(int compactions = 0)
     {
         var fill = FillPercent is { } percent ? FormattableString.Invariant($" at {percent:0}%") : string.Empty;
         var note = NoteStateAgeMinutes is { } minutes ? $"state note {minutes} min old" : "no state note";
-        return Kind == Compact
-            ? $"Context compacted{fill} — {note}"
-            : $"Context restarted{fill} — {note}; a new conversation starts here";
+        if (Kind == Compact)
+        {
+            return $"Context compacted{fill} — {note}";
+        }
+
+        var lead = Reason switch
+        {
+            CompactionLimit => $"Fresh start after {compactions} compaction{(compactions == 1 ? "" : "s")}{fill}",
+            CompactionIneffective => $"Fresh start, compacting left the context{fill}",
+            _ => $"Context restarted{fill}",
+        };
+        return $"{lead} — {note}; a new conversation starts here";
     }
 }

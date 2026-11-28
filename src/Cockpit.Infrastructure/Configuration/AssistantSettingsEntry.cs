@@ -27,6 +27,8 @@ internal sealed class AssistantSettingsEntry
 
     public double? ContextCompactionPercent { get; set; }
 
+    public int? CompactionsBeforeRestart { get; set; }
+
     // AC-2357. Absent in an older config, which reads as the default: on.
     public bool RequireRole { get; set; } = true;
 
@@ -58,6 +60,7 @@ internal sealed class AssistantSettingsEntry
         WakeWordListeningSeconds = settings.WakeWordListeningSeconds,
         AlwaysOnTop = settings.AlwaysOnTop,
         ContextCompactionPercent = settings.ContextCompactionPercent,
+        CompactionsBeforeRestart = settings.CompactionsBeforeRestart,
         RequireRole = settings.RequireRole,
         ReadingLevel = settings.ReadingLevel.ToString(),
         ConsentBypassSources = [.. settings.ConsentBypassSources],
@@ -79,6 +82,7 @@ internal sealed class AssistantSettingsEntry
         WakeWordListeningSeconds = AssistantSettings.NormalizeWakeWordListeningSeconds(WakeWordListeningSeconds),
         AlwaysOnTop = AlwaysOnTop,
         ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
+        CompactionsBeforeRestart = AssistantSettings.NormalizeCompactionsBeforeRestart(CompactionsBeforeRestart),
         RequireRole = RequireRole,
         // A value written by an older build, or a hand-edited config, that does not name one of the three levels
         // falls back to the app default (Developer) rather than throwing.

@@ -1623,6 +1623,15 @@
                                                Increment="1" FormatString="0" Width="104"/>
                                 <TextBlock Text="%" VerticalAlignment="Center"/>
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Fresh start after" FontWeight="SemiBold"/>
+                                <NumericUpDown Value="{Binding AssistantOptions.CompactionsBeforeRestart}" Minimum="0" Maximum="10"
+                                               Increment="1" FormatString="0" Width="104"
+                                               AutomationProperties.Name="Compactions before a fresh start"/>
+                                <TextBlock Text="compactions" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Classes="optionsHint" TextWrapping="Wrap"
+                                       Text="After that many, a full context starts a new conversation from the assistant's state note instead of compacting again. 0 turns this limit off."/>
 
                             <!-- Moved here from the old Voice → Read-aloud page (AC-546 follow-up, then AC-1000
                                  relocated Read-aloud's remainder here too): these settings exist because the

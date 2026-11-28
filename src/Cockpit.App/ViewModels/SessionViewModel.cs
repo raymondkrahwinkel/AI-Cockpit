@@ -3073,6 +3073,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // A turn the host's fold ended in this pass; the pane reads its limits once it is done with the event.
     private bool _turnCompletedInFold;
 
+    // AC-2418: the fill was read for the turn that just ended; an unchanged figure raises no property change.
+    internal event Action? TurnFillRead;
+
     // The connection, usage and tool calls this pane last drew, so a new reading is told from one it already showed.
     private SessionConnection? _shownConnection;
     private SessionUsageTotals _shownUsage = SessionUsageTotals.None;
@@ -3131,6 +3134,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         _turnCompletedInFold = false;
         _RefreshLimits();
+        TurnFillRead?.Invoke();
 
         // "exit" turn finished → ask the cockpit to close this session (T10); the host kept what was queued.
         if (_closeAfterTurn)

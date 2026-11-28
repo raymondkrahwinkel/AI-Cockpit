@@ -102,6 +102,8 @@ internal static class OptionsStaging
         "Swarm.ExtraInternalCidrsText",
         "Swarm.ReturnChoice",
         "AssistantOptions.AlwaysOnTop",
+        "AssistantOptions.CompactionsBeforeRestart",
+        "AssistantOptions.ContextCompactionPercent",
         "AssistantOptions.ConsentBypassAll",
         "AssistantOptions.IsEnabled",
         "AssistantOptions.PushToTalkKeyName",
