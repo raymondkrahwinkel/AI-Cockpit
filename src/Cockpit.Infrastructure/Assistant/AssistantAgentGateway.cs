@@ -315,7 +315,9 @@ internal sealed partial class AssistantAgentGateway(
             McpServersOutsideProject: outsideProject,
             Role: knownRole?.Name ?? role) { CallerPluginId = pluginId }, cancellationToken).ConfigureAwait(false);
 
-        var mcpReport = mcpMounts?.ConnectionReport(pane.PaneId);
+        // AC-2423: a report that is still connecting is no answer; the planned servers stand in, unconfirmed.
+        var mcpReport = mcpMounts?.ConnectionReport(pane.PaneId) is { Settled: true } settled ? settled : null;
+        var mountedNow = mcpMounts?.Set(pane.PaneId)?.ServerNames;
         return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label) with
         {
             Role = knownRole?.Name ?? (withoutRole ? role : null),
@@ -325,7 +327,7 @@ internal sealed partial class AssistantAgentGateway(
                 : null,
             McpServers = mcpReport?.ConnectedServerNames ?? (pluginId is null
                 ? null
-                : mcpMounts?.Set(pane.PaneId)?.ServerNames.ToArray() ?? mcpServerNames),
+                : mountedNow is { Count: > 0 } ? mountedNow.ToArray() : mcpServerNames),
             McpServersConfirmed = mcpReport is not null,
         };
     }

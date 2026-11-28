@@ -58,6 +58,7 @@ public partial class McpClientConnectorTests
     {
         _AssertToolNameRules();
         await _AssertBrainConnectionCacheAsync(upstream);
+        await _AssertReportUnsettledWhileConnectingAsync(upstream);
         var config = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
         var registry = new List<McpServerConfig> { config };
         var catalog = Substitute.For<IMcpServerCatalog>();
@@ -149,6 +150,27 @@ public partial class McpClientConnectorTests
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    // Category C: while one server is still connecting, the report is not a settled (empty or partial) answer (AC-2423).
+    private static async Task _AssertReportUnsettledWhileConnectingAsync(InProcessMcpHttpServer upstream)
+    {
+        using var silent = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        silent.Start();
+        var fast = new McpServerConfig { Name = "depot", Transport = McpTransport.Http, Url = upstream.Url };
+        var slow = new McpServerConfig { Name = "slow", Transport = McpTransport.Http, Url = $"http://127.0.0.1:{((System.Net.IPEndPoint)silent.LocalEndpoint).Port}/" };
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(_ => new[] { fast, slow });
+        var mounts = new SessionMcpMounts();
+        mounts.Bind("unsettled", new SessionMcpContext(null, "", null, "agent"));
+        mounts.Grant("unsettled", ["depot", "slow"]);
+        var keyring = new SessionMcpKeyring();
+        var provider = new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), Substitute.For<IMcpOAuthCoordinator>(),
+            new McpAuthKey(), keyring, NullLogger<McpToolProvider>.Instance, mounts: mounts);
+        await using var session = provider.CreateGatewaySession("unsettled", keyring.TokenFor("unsettled"), mounts.Set("unsettled")?.Context);
+        _ = session.AddServerAsync(slow);
+        await session.AddServerAsync(fast);
+        Assert.False(mounts.ConnectionReport("unsettled")?.Settled);
     }
 
     // Category C: a connection report must not replace the cached upstream by dropping its brain query (AC-2310).

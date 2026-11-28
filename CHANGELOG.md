@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2423: A session start no longer reports an empty list of mounted MCP servers while they are still connecting. The planned servers come back marked unconfirmed (mcpServersConfirmed false) until every server has connected or failed; an empty list now means nothing is mounted.
+
 - AC-2394: A plugin can name the brain of the session it starts (Plugin SDK 3.100.0, Cockpit 0.188.0). Cockpit accepts it only when exactly one registered memory source serves that brain and the project and profile name no other brain. It then becomes the session's full brain (instruction, brain option and MCP context), and its Depot server is always allowed. Any other server stays within the plugin's allowance. Decision (Raymond, 27-11): a profile without a preselection (no list, or an empty list) allows every server Cockpit offers, for plugin starts and for ordinary session starts alike. McpSetPolicy, the delegation ceiling, disabled and internal servers and missing OAuth sign-ins still apply.
 
 - AC-2392: The approval card for a vault command now fits the window with a long command. It starts with a summary (host, program, vault references, the agent's reason), shortens long arguments such as a base64 payload to their size with a button to show the full text, and always keeps Cancel and Run in view. A card that closes without a choice (the wait ran out or the call was cancelled) now tells the agent there was no answer instead of reporting a refusal, and Run without a valid pick keeps the card open instead of counting as a refusal.

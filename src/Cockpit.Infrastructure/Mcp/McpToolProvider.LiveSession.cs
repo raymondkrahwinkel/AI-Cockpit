@@ -502,11 +502,17 @@ internal sealed partial class McpToolProvider
 
         private void _FinishConnecting(Upstream server)
         {
+            bool wasConnecting;
             lock (_sync)
             {
+                wasConnecting = server.Connecting is not null;
                 server.Connecting?.TrySetResult();
                 server.Connecting = null;
                 server.Initial.TrySetResult();
+            }
+            if (wasConnecting)
+            {
+                _ReportConnections();
             }
         }
 
@@ -721,10 +727,31 @@ internal sealed partial class McpToolProvider
                     _provider._logger.LogWarning("MCP tools-changed handler failed.");
                 }
             }
-            if (_paneId is not null && (!_ownsToken || IsLive))
+            _ReportConnections();
+        }
+
+        private readonly object _reportSync = new();
+
+        // Snapshot and write share one lock, so two concurrent reports cannot land in the reverse order.
+        private void _ReportConnections()
+        {
+            if (_paneId is null || (_ownsToken && !IsLive))
             {
+                return;
+            }
+            lock (_reportSync)
+            {
+                bool settled;
+                lock (_sync)
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
+                    settled = _servers.Values.All(server => server.Connecting is null);
+                }
                 _provider._mounts?.ReportConnections(_paneId, ConnectedServerNames, ConnectionIssues,
-                    _ => _provider._logger.LogWarning("MCP connection-report handler failed."));
+                    _ => _provider._logger.LogWarning("MCP connection-report handler failed."), settled);
             }
         }
 

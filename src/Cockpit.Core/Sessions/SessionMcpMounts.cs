@@ -93,9 +93,10 @@ public sealed class SessionMcpMounts : ISingletonService
         Reported?.Invoke(paneId, connectedServerNames, issues ?? []);
     }
 
-    public void ReportConnections(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues, Action<Exception> onHandlerError)
+    // AC-2423: settled=false is a stand-in while servers still connect; an empty list then is not "nothing mounted".
+    public void ReportConnections(string paneId, IReadOnlyList<string> connectedServerNames, IReadOnlyList<McpServerConnectionIssue> issues, Action<Exception> onHandlerError, bool settled = true)
     {
-        _connections[paneId] = new([.. connectedServerNames], [.. issues]);
+        _connections[paneId] = new([.. connectedServerNames], [.. issues], settled);
         Changed?.Invoke(paneId);
         foreach (var handler in Reported?.GetInvocationList() ?? [])
         {
@@ -138,4 +139,4 @@ public sealed class SessionMcpMounts : ISingletonService
         _mounted.TryGetValue(paneId, out var set) && set.ServerNames.Contains(serverName);
 }
 
-public sealed record SessionMcpConnectionReport(IReadOnlyList<string> ConnectedServerNames, IReadOnlyList<McpServerConnectionIssue> Issues);
+public sealed record SessionMcpConnectionReport(IReadOnlyList<string> ConnectedServerNames, IReadOnlyList<McpServerConnectionIssue> Issues, bool Settled = true);

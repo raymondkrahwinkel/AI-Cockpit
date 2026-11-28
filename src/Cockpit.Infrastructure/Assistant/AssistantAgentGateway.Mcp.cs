@@ -208,7 +208,7 @@ internal sealed partial class AssistantAgentGateway
             return new(false, [], false, PluginSessionMcpOwnershipError);
         }
         var report = mcpMounts?.ConnectionReport(session.PaneId);
-        var confirmed = report is not null && result.Servers.Select(row => row.Name).ToHashSet(StringComparer.OrdinalIgnoreCase)
+        var confirmed = report is { Settled: true } && result.Servers.Select(row => row.Name).ToHashSet(StringComparer.OrdinalIgnoreCase)
             .SetEquals(report.ConnectedServerNames.Concat(report.Issues.Select(issue => issue.Name)));
         return new(result.Ok, [.. result.Servers.Select(row => new PluginSessionMcpServer(row.Name, row.Status))],
             result.Ok && confirmed, result.Error);
