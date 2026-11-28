@@ -52,11 +52,10 @@ public static class AssistantStandingInstruction
         // memory. It carries its own "set by" heading, written by the applier, so it goes in as it stands.
         var organised = string.IsNullOrWhiteSpace(orgRules) ? instruction : instruction + "\n\n" + orgRules.Trim();
 
-        // Last, and each under a heading of its own: this is the operator's material and the assistant's own note
-        // rather than the product's rules, and one that cannot tell them apart recites a remembered line as a rule.
-        return _AppendMachineMemory(
-            _Append(_Append(organised, MemoryHeading, memory), CurrentStateHeading, currentState),
-            machineMemory);
+        // Headed so memory is not read as rules; the hand-over note goes last for the prompt cache (AC-2410).
+        return _Append(
+            _AppendMachineMemory(_Append(organised, MemoryHeading, memory), machineMemory),
+            CurrentStateHeading, currentState);
     }
 
     private static string _Append(string instruction, string heading, string? block)
