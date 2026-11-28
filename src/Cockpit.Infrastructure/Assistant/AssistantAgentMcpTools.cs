@@ -1747,7 +1747,7 @@ internal sealed class AssistantAgentMcpTools(
     [McpServerTool(Name = "note_state", ReadOnly = false, Destructive = false)]
     [Description("Replaces the entire current-state note with state, without approval. The note is supplied after restart as possibly stale context; write a self-contained account of current work and outstanding requests. This is transient state; use remember for lasting facts.")]
     public async Task<string> NoteStateAsync(
-        [Description("Where the conversation stands, in a few sentences that will still make sense to someone who cannot see any of it.")] string state)
+        [Description("Where the conversation stands, readable by someone who cannot see any of it, under the headings " + Cockpit.Core.Assistant.AssistantSystemPrompt.NoteStateHeadings + ".")] string state)
     {
         try
         {

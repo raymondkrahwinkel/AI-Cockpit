@@ -704,7 +704,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A new instance has a new context, and a provider that reports no fill until its first turn would otherwise
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
-        _RunExclusive(() => _askedTheProviderToCompact = false);
+        _RunExclusive(() => _askedTheProviderToCompact = _askedForTheNote = false);
         Session = session;
         if (standby is not null)
         {
@@ -889,11 +889,120 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         if (reading.ContextUsedPercent < _contextCompactionPercent)
         {
             _askedTheProviderToCompact = false;
+            _askedForTheNote = false;
             return false;
         }
 
-        // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
-        return reading.CanTakeAPrompt && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator, _contextCompactionPercent);
+        return !ReferenceEquals(session, _notingSession) && _MayResetNow(session, reading);
+    }
+
+    // Under `_gate`. AC-1321: a compaction is a turn too; under a controller it waits, like everything else.
+    private bool _MayResetNow(IAssistantSession session, SessionReading reading) =>
+        ReferenceEquals(session, Session)
+        && reading.CanTakeAPrompt
+        && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator, _contextCompactionPercent);
+
+    // AC-2417: the state note is asked for once per crossing, and this is the session whose note turn is waited on.
+    private bool _askedForTheNote;
+    private IAssistantSession? _notingSession;
+
+    private static readonly TimeSpan NoteStateTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan NoteStatePoll = TimeSpan.FromMilliseconds(250);
+
+    // False puts this reset off: the idle rule raises it again later, without asking for a second note.
+    private async Task<bool> _NoteStateBeforeResetAsync(IAssistantSession session)
+    {
+        // The reading arrives from inside the previous turn's end, which still clears busy and sends what was queued.
+        await Task.Yield();
+        if (!ReferenceEquals(session, Session))
+        {
+            return false;
+        }
+
+        var reading = SessionReading.Of(session);
+        var (proceed, ask) = _RunExclusive(() =>
+        {
+            var may = !ReferenceEquals(session, _notingSession) && _MayResetNow(session, reading);
+            var first = may && !_askedForTheNote;
+            if (first)
+            {
+                _askedForTheNote = true;
+                _notingSession = session;
+            }
+
+            return (may, first);
+        });
+        if (!ask)
+        {
+            return proceed;
+        }
+
+        try
+        {
+            return await _TakeTheNoteTurnAsync(session).ConfigureAwait(true);
+        }
+        finally
+        {
+            _RunExclusive(() =>
+            {
+                if (ReferenceEquals(_notingSession, session))
+                {
+                    _notingSession = null;
+                }
+            });
+        }
+    }
+
+    private async Task<bool> _TakeTheNoteTurnAsync(IAssistantSession session)
+    {
+        var workArrived = false;
+        void OnRow(TranscriptRowUpsert upsert) =>
+            workArrived |= upsert is { Version: 1, Row: { ParentRowId: null, Kind: "UserText" or "Inbox" or "Status" } }
+                && upsert.Row.Text != AssistantSystemPrompt.NoteStatePrompt;
+
+        // Work or a question for the operator goes first; a replaced session is not read again.
+        bool Interrupted() => !ReferenceEquals(session, Session) || workArrived || session.IsWaitingOnOperator;
+
+        _logger.LogInformation(
+            "The assistant's context is {Fill:0}% full; asking for its state note before the reset.",
+            session.ContextUsedPercent);
+        var turnsBefore = session.UsageTotals?.Turns;
+        session.RowUpserted += OnRow;
+        try
+        {
+            using var timeout = new CancellationTokenSource(NoteStateTimeout);
+            await session.SubmitForTheAgentAsync(AssistantSystemPrompt.NoteStatePrompt).WaitAsync(timeout.Token).ConfigureAwait(true);
+
+            // The turn count, not busy: busy can read false while the turn still runs.
+            while (!(session.UsageTotals?.Turns > turnsBefore))
+            {
+                await Task.Delay(NoteStatePoll, timeout.Token).ConfigureAwait(true);
+                if (Interrupted())
+                {
+                    return false;
+                }
+            }
+
+            if (Interrupted())
+            {
+                return false;
+            }
+
+            var after = SessionReading.Of(session);
+            return _RunExclusive(() => _MayResetNow(session, after));
+        }
+        catch (Exception exception)
+        {
+            // Nobody awaits the relief: a note that timed out or could not be asked for must not cost the reset.
+            _logger.LogWarning(
+                exception, "The assistant's state note was not finished within {Minutes} minutes or could not be asked for; resetting anyway.",
+                NoteStateTimeout.TotalMinutes);
+            return !Interrupted();
+        }
+        finally
+        {
+            session.RowUpserted -= OnRow;
+        }
     }
 
     // Whether the provider has already been asked to compact this fill. Without it, every property change above the
@@ -903,6 +1012,12 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
     private async Task _RelieveTheFullContextAsync(IAssistantSession session)
     {
+        // Ahead of the trigger's figures, so the note's age is that of the note just written.
+        if (!await _NoteStateBeforeResetAsync(session).ConfigureAwait(true))
+        {
+            return;
+        }
+
         // AC-1382: checked and set in one section, so two readings over the line cannot both ask.
         var canCompact = session.SupportsContextCompaction;
         var ask = _RunExclusive(() =>
