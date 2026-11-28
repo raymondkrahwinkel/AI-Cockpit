@@ -181,7 +181,7 @@ public class AssistantSessionHostTests
 
         // And it says so where the operator reads, since the provider reports a compaction nowhere they can see.
         var divider = Assert.Single(first.Transcript, entry => entry.IsDivider);
-        Assert.Contains("continues here", divider.Text, StringComparison.Ordinal);
+        Assert.StartsWith("Context compacted at 30%", divider.Text, StringComparison.Ordinal);
     }
 
     /// <summary>

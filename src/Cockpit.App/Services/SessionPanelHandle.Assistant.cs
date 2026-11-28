@@ -2,6 +2,7 @@ using Cockpit.Core.Voice;
 using System.ComponentModel;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.Services;
@@ -30,6 +31,8 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
     double? IAssistantSession.ContextUsedPercent => _Assistant.ContextUsedPercent;
 
     bool IAssistantSession.SupportsContextCompaction => _Assistant.Capabilities.SupportsContextCompaction;
+
+    SessionUsageTotals? IAssistantSession.UsageTotals => _Assistant.Control.LiveState.Usage;
 
     string? IAssistantSession.TurnsHeldBecause
     {

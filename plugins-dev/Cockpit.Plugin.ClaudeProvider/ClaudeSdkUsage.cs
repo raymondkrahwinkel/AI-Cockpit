@@ -88,6 +88,74 @@ internal sealed class ClaudeSdkUsage
         }
     }
 
+    // AC-2419: summed `modelUsage`; null while unknown, since a resumed session's totals include earlier processes.
+    private (long Input, long Output, long CacheRead, long CacheCreation)? _modelTotals = (0, 0, 0, 0);
+    private bool _compacted;
+
+    public void ObserveResume() => _modelTotals = null;
+
+    // The CLI leaves a `/compact` turn's own `usage` at zero (measured); null means keep what the turn reported.
+    public PluginTokenUsage? ObserveCompaction(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("type", out var type)
+            || type.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        if (type.GetString() is "system")
+        {
+            _compacted |= root.TryGetProperty("subtype", out var subtype)
+                && subtype.ValueKind == JsonValueKind.String && subtype.GetString() is "compact_boundary";
+            return null;
+        }
+
+        if (type.GetString() is not "result")
+        {
+            return null;
+        }
+
+        var compacted = _compacted;
+        _compacted = false;
+        var before = _modelTotals;
+        if (!root.TryGetProperty("modelUsage", out var models) || models.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        (long Input, long Output, long CacheRead, long CacheCreation) after = (0, 0, 0, 0);
+        foreach (var model in models.EnumerateObject())
+        {
+            after = (
+                after.Input + _Tokens(model.Value, "inputTokens"),
+                after.Output + _Tokens(model.Value, "outputTokens"),
+                after.CacheRead + _Tokens(model.Value, "cacheReadInputTokens"),
+                after.CacheCreation + _Tokens(model.Value, "cacheCreationInputTokens"));
+        }
+
+        _modelTotals = after;
+        var countedByTheTurn = root.TryGetProperty("usage", out var usage)
+            && _Tokens(usage, "input_tokens") + _Tokens(usage, "output_tokens")
+                + _Tokens(usage, "cache_read_input_tokens") + _Tokens(usage, "cache_creation_input_tokens") > 0;
+        if (!compacted || countedByTheTurn || before is not { } previous)
+        {
+            return null;
+        }
+
+        return new PluginTokenUsage(
+            _Delta(after.Input, previous.Input),
+            _Delta(after.Output, previous.Output),
+            _Delta(after.CacheRead, previous.CacheRead),
+            _Delta(after.CacheCreation, previous.CacheCreation));
+
+        static long _Tokens(JsonElement parent, string name) =>
+            parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var tokens) ? tokens : 0;
+
+        static int _Delta(long now, long then) => (int)Math.Clamp(now - then, 0, int.MaxValue);
+    }
+
     // Folds one already-parsed stdout line in. Lines this class has no use for are ignored, so it can be handed
     // every line without the caller classifying first.
     public void Observe(JsonElement root)

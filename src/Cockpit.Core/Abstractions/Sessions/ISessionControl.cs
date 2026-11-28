@@ -141,6 +141,11 @@ public interface ISessionControl : IAsyncDisposable
     bool IsBusy { get; set; }
 
     /// <summary>
+    /// What the events have folded to, current the moment a turn ends, ahead of any consumer's copy (AC-2419).
+    /// </summary>
+    SessionLiveState LiveState { get; }
+
+    /// <summary>
     /// Why no new turn may start (AC-1321), else null. Lifting it while no turn runs sends what was queued behind it.
     /// </summary>
     string? TurnsHeldBecause { get; set; }

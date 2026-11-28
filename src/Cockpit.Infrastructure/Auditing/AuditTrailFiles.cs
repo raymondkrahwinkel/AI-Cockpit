@@ -37,8 +37,11 @@ internal static class AuditTrailFiles
     // The day aggregates (AC-1719): one line per session and day once its raw timeline and usage lines are gone.
     public const string SessionDayAggregates = "session-day-aggregates.jsonl";
 
+    // The assistant's compactions and fresh restarts (AC-2419).
+    public const string AssistantContextEvents = "assistant-context-events.jsonl";
+
     // Every trail's file name. The order carries no meaning.
-    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, OwnTimeEntries, AgentNotify, AssistantSpawn, JobHistory, NodeAccess, SessionTimeline, SessionDayAggregates];
+    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, OwnTimeEntries, AgentNotify, AssistantSpawn, JobHistory, NodeAccess, SessionTimeline, SessionDayAggregates, AssistantContextEvents];
 
     // Where `fileName` lives for this install: next to `cockpit.json`, under the state root
     // a development build keeps to itself.
