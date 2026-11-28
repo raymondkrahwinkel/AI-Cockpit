@@ -12,9 +12,12 @@ public class McpAuthKeyTests
     public void IsAuthorized_OnlyTheRunsOwnKeyAsABearerToken_IsAccepted()
     {
         var key = new McpAuthKey();
-        var other = new McpAuthKey();
 
         Assert.True(key.IsAuthorized($"Bearer {key.Value}"));
-        Assert.False(key.IsAuthorized($"Bearer {other.Value}"));
+
+        var first = new McpAuthKey();
+        var second = new McpAuthKey();
+
+        Assert.False(first.IsAuthorized($"Bearer {second.Value}"));
     }
 }
