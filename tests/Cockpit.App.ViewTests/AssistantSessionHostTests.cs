@@ -201,8 +201,8 @@ public class AssistantSessionHostTests
         // The compaction turn ends: busy drops while the provider's figure has not been re-read yet.
         Dispatcher.UIThread.Invoke(() => first.IsBusy = false);
 
-        // A wrongly triggered hand-over runs a beat later, so give it one.
-        Thread.Sleep(200);
+        // A wrongly triggered hand-over is posted to the dispatcher; a background job runs only after it.
+        Dispatcher.UIThread.Invoke(() => { }, DispatcherPriority.Background);
         Assert.Same(first, host.View());
         driver.Received(1).CompactContextAsync(Arg.Any<CancellationToken>());
     }
