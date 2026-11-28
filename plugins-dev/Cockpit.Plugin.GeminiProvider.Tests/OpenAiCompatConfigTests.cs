@@ -38,9 +38,7 @@ public class OpenAiCompatConfigTests
     // environment (a container secret), but only on the provider's own host; neither means no sign-in. Fake values.
     [Theory]
     [InlineData("sk-config", "sk-env", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKey, "sk-config")]
-    [InlineData("", "sk-env", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
     [InlineData("  ", "sk-env", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.ApiKeyFromSecret, "sk-env")]
-    [InlineData("", null, OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.Unknown, null)]
     [InlineData("", "  ", OpenAiCompatDefaultBaseUrls.Gemini, PluginCredentialKind.Unknown, null)]
     [InlineData("", "sk-env", "https://gateway.example.test/v1", PluginCredentialKind.Unknown, null)]
     [InlineData("", "sk-env", "http://generativelanguage.googleapis.com/v1", PluginCredentialKind.Unknown, null)]

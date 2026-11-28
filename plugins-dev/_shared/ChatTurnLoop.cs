@@ -1,3 +1,6 @@
+using System.ClientModel;
+using System.ClientModel.Primitives;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
@@ -5,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
+using ChatCompletionOptions = OpenAI.Chat.ChatCompletionOptions;
+using ChatTokenUsage = OpenAI.Chat.ChatTokenUsage;
 
 namespace Cockpit.Plugins.OpenAiCompat;
 
@@ -641,10 +646,48 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
         return base.GetResponseAsync(guarded, guardedOptions, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+    // AC-2406: set once this session's server refused stream_options; the field then stays off.
+    private bool _streamUsageRefused;
+
+    public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var (guarded, guardedOptions) = _Guard(messages, options);
-        return base.GetStreamingResponseAsync(guarded, guardedOptions, cancellationToken);
+        var turn = Turn;
+        var updates = Send();
+        // A server may repeat a running total on every chunk, so only a request's last report counts.
+        PluginTokenUsage? reported = null;
+        try
+        {
+            bool more;
+            try
+            {
+                more = await updates.MoveNextAsync().ConfigureAwait(false);
+            }
+            catch (ClientResultException ex) when (!_streamUsageRefused && ChatStreamUsage.IsRefusal(ex))
+            {
+                _logger.LogWarning(ex, "The server refused stream_options; this session asks without it and shows no token usage it does not send by itself.");
+                _streamUsageRefused = true;
+                await updates.DisposeAsync().ConfigureAwait(false);
+                updates = Send();
+                more = await updates.MoveNextAsync().ConfigureAwait(false);
+            }
+
+            while (more)
+            {
+                reported = ChatStreamUsage.Read(updates.Current) ?? reported;
+                yield return updates.Current;
+                more = await updates.MoveNextAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            turn.Add(reported);
+            await updates.DisposeAsync().ConfigureAwait(false);
+        }
+
+        IAsyncEnumerator<ChatResponseUpdate> Send() =>
+            base.GetStreamingResponseAsync(guarded, _streamUsageRefused ? ChatStreamUsage.NotAskedFor(guardedOptions) : guardedOptions, cancellationToken)
+                .GetAsyncEnumerator(cancellationToken);
     }
 
     private (IEnumerable<ChatMessage> Messages, ChatOptions? Options) _Guard(IEnumerable<ChatMessage> messages, ChatOptions? options)
@@ -823,4 +866,92 @@ internal sealed class TurnGuardState
     public bool ContextFull { get; set; }
 
     public bool WoundDown => BudgetHit || ContextFull;
+
+    // Summed over every request of the turn; null while the server reported nothing.
+    public PluginTokenUsage? Usage { get; private set; }
+
+    public void Add(PluginTokenUsage? request)
+    {
+        if (request is null)
+        {
+            return;
+        }
+
+        Usage = Usage is not { } sum
+            ? request
+            : new PluginTokenUsage(
+                sum.InputTokens + request.InputTokens,
+                sum.OutputTokens + request.OutputTokens,
+                sum.CacheReadInputTokens + request.CacheReadInputTokens,
+                sum.CacheCreationInputTokens + request.CacheCreationInputTokens)
+            {
+                CacheReported = sum.CacheReported || request.CacheReported,
+            };
+    }
+}
+
+// AC-2406: an OpenAI-compatible stream's token usage, in PluginTokenUsage's non-overlapping buckets.
+internal static class ChatStreamUsage
+{
+    public static PluginTokenUsage? Read(ChatResponseUpdate update)
+    {
+        if (update.Contents.OfType<UsageContent>().LastOrDefault() is not { } content)
+        {
+            return null;
+        }
+
+        // Ollama's native client has no OpenAI wire object behind its counts.
+        if (content.RawRepresentation is not ChatTokenUsage wire)
+        {
+            return _Usage(content.Details.InputTokenCount, content.Details.OutputTokenCount, content.Details.CachedInputTokenCount);
+        }
+
+        // ponytail: the SDK writes cached_tokens 0 for a prompt_tokens_details without it; telling those apart needs the raw bytes.
+        using var json = JsonDocument.Parse(ModelReaderWriter.Write(wire));
+        var usage = json.RootElement;
+        return _Usage(
+            _Count(usage, "prompt_tokens"),
+            _Count(usage, "completion_tokens"),
+            _CachedCount(usage, "prompt_tokens_details") ?? _CachedCount(usage, "input_tokens_details"));
+    }
+
+    public static bool IsRefusal(ClientResultException error)
+    {
+        if (error.Status != 400)
+        {
+            return false;
+        }
+
+        var reason = $"{error.Message}\n{error.GetRawResponse()?.Content}";
+        return reason.Contains("stream_options", StringComparison.OrdinalIgnoreCase) || reason.Contains("include_usage", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The SDK asks for usage on every stream by itself, so leaving the field out means patching it out of the body.
+    public static ChatOptions NotAskedFor(ChatOptions? options)
+    {
+        var without = options?.Clone() ?? new ChatOptions();
+        var factory = without.RawRepresentationFactory;
+        without.RawRepresentationFactory = client =>
+        {
+            var raw = factory?.Invoke(client) as ChatCompletionOptions ?? new ChatCompletionOptions();
+#pragma warning disable SCME0001 // The SDK's only way to change a request field it sets itself.
+            raw.Patch.Remove("$.stream_options"u8);
+#pragma warning restore SCME0001
+            return raw;
+        };
+        return without;
+    }
+
+    // OpenAI's prompt count includes what the cache served (AC-2405).
+    private static PluginTokenUsage _Usage(long? prompt, long? completion, long? cached) =>
+        new((int)Math.Max(0, (prompt ?? 0) - (cached ?? 0)), (int)(completion ?? 0), (int)(cached ?? 0), 0)
+        {
+            CacheReported = cached is not null,
+        };
+
+    private static long? _CachedCount(JsonElement usage, string details) =>
+        usage.TryGetProperty(details, out var value) && value.ValueKind == JsonValueKind.Object ? _Count(value, "cached_tokens") : null;
+
+    private static long? _Count(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var count) ? count : null;
 }

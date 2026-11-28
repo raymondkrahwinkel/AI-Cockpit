@@ -13,8 +13,9 @@ provider's own endpoint — a base URL that matches.
 ## What works per provider {#providers}
 
 Taken from each provider's own documentation (November 2026), not from live tests. Every provider gets chat
-and streaming. Tools run through the cockpit, images depend on the model, and this plugin does not show token
-usage, reasoning or cache hits for any of them.
+and streaming. Tools run through the cockpit and images depend on the model. The session meter shows token usage
+when the endpoint reports it, with cache reads where it reports those; otherwise the cache reads "n/a".
+Reasoning is not shown.
 
 | Provider | Base URL | Tools | Reports differently |
 |---|---|---|---|

@@ -1,7 +1,7 @@
 {
   "id": "gemini-provider",
   "name": "OpenAI-compatible",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "entryAssembly": "Cockpit.Plugin.GeminiProvider.dll",
   "entryType": "Cockpit.Plugin.GeminiProvider.GeminiProviderPlugin",
   "uiAssembly": "Cockpit.Plugin.GeminiProvider.UI.dll",
@@ -15,7 +15,7 @@
     { "id": "gemini-provider.custom", "name": "Custom (OpenAI-compatible)" }
   ],
   "abstractionsVersion": 3,
-  "minHostVersion": "0.155.0",
+  "minHostVersion": "0.189.0",
   "description": "Connects any OpenAI-compatible chat-completions endpoint as a session provider via Microsoft.Extensions.AI, with ready entries for Gemini, OpenAI, Groq, Mistral and Cerebras, and a custom base URL for the rest. Runs the session's MCP tools through the cockpit, which gates every call. Configure an API key and model per profile in Manage profiles.",
   "keywords": ["OpenAI", "GPT", "Gemini", "Google", "Groq", "Mistral", "Cerebras", "Grok", "xAI", "OpenRouter", "Hetzner"],
   "author": "Cockpit"
