@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
@@ -36,6 +37,11 @@ public interface IAssistantSession : IAsyncDisposable
     /// How full the context is, as the provider last reported it; null when it reported nothing.
     /// </summary>
     double? ContextUsedPercent { get; }
+
+    /// <summary>
+    /// Its token totals so far, for the compaction measurement (AC-2419); null when it keeps none.
+    /// </summary>
+    SessionUsageTotals? UsageTotals => null;
 
     /// <summary>
     /// Whether the provider can summarise its own conversation (AC-664).

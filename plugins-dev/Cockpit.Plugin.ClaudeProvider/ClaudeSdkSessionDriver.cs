@@ -227,6 +227,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
                 : $"{appendSystemPrompt}\n\n{ClaudeSdkArguments.UnattendedPluginMcpNotice}";
         }
 
+        if (resumeSessionId is not null)
+        {
+            _usage.ObserveResume();
+        }
+
         _systemPromptPath = ClaudePrivateTempFile.WriteSystemPrompt(appendSystemPrompt);
         var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPromptPath: _systemPromptPath, mcpConfigPath: _mcpConfigPath, strictMcpConfig: unattended, environment: _profileEnvironment);
         var environment = _BuildEnvironment(userHome);
@@ -525,6 +530,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
             // and what carries the context window size, and the host reads Status off the back of the resulting
             // TurnCompleted — observing first is what makes that read see this turn rather than the previous one.
             _usage.Observe(root);
+            var compactionUsage = _usage.ObserveCompaction(root);
 
             var type = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String
                 ? typeProp.GetString()
@@ -537,7 +543,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
             if (string.Equals(type, "result", StringComparison.Ordinal))
             {
                 _awaitingResult = false;
-                _pendingResultPublish = _PollUsageThenPublishAsync(line);
+                _pendingResultPublish = _PollUsageThenPublishAsync(line, compactionUsage);
                 return;
             }
 
@@ -716,7 +722,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
     // `get_context_usage` (what `/context` prints) — then publishes the turn's events. Replaces AC-549's
     // `claude -p "/usage"` subprocess and its `.claude.json` cache, which on 2.1.226 became a 35.8s assistant
     // turn that refreshed nothing.
-    private async Task _PollUsageThenPublishAsync(string line)
+    private async Task _PollUsageThenPublishAsync(string line, PluginTokenUsage? compactionUsage)
     {
         try
         {
@@ -729,7 +735,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver, IPluginMcpT
 
         foreach (var evt in ClaudeStreamJson.ParseLine(line))
         {
-            _events.Publish(evt);
+            _events.Publish(compactionUsage is not null && evt is PluginTurnCompleted turn ? turn with { Usage = compactionUsage } : evt);
         }
     }
 

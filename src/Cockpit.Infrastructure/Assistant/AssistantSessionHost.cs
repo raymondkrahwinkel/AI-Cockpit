@@ -17,6 +17,7 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Swarm;
 using Cockpit.Infrastructure.Swarm;
+using Cockpit.Infrastructure.Usage;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -45,6 +46,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly SwarmTakeoverCoordinator? _takeover;
     private readonly IProjectMemorySourceRegistry? _memorySources;
     private readonly Func<SessionStartComposer>? _startComposer;
+    private readonly AssistantContextEventLog? _contextEvents;
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
@@ -119,8 +121,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         SwarmTakeoverCoordinator? takeover = null,
         IProjectMemorySourceRegistry? memorySources = null,
         ISessionProfileStore? speechProfiles = null,
-        Func<SessionStartComposer>? startComposer = null)
+        Func<SessionStartComposer>? startComposer = null,
+        AssistantContextEventLog? contextEvents = null)
     {
+        _contextEvents = contextEvents;
         _sessions = sessions;
         _presence = presence;
         _settings = settings;
@@ -748,6 +752,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             StandbyPublication = _takeover.PublishAsync();
         }
+        // Before the relief, so a compaction that did not help is on record ahead of its restart.
+        _CompleteCompactionMeasurement(session, sessionEnds: false);
+
         var relieve = _RunExclusive(() =>
         {
             _SyncActivityWithSession(reading);
@@ -905,11 +912,18 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             return first;
         });
 
+        // ContextTokens: no provider hands the host a count yet.
+        var atTrigger = new AssistantContextEvent(
+            DateTimeOffset.Now, AssistantContextEvent.Compact, AssistantContextEvent.Threshold,
+            session.ContextUsedPercent, ContextTokens: null, CompactInput: null, CompactOutput: null, _NoteStateAgeMinutes());
+
         if (ask)
         {
             _logger.LogInformation(
                 "The assistant's context is {Fill:0}% full; asking the provider to compact it.",
                 session.ContextUsedPercent);
+
+            var before = session.UsageTotals;
 
             try
             {
@@ -918,7 +932,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                     // AC-638's divider, for the case that keeps the conversation. A compaction is otherwise invisible
                     // here — the provider reports it as a system line the transcript does not render — so the
                     // assistant's memory of the early part would quietly thin out with nothing to say that it had.
-                    session.AddDivider("Context was full — the conversation so far was summarised and continues here");
+                    session.AddDivider(atTrigger.Describe());
+                    _RunExclusive(() => _compaction = new CompactionMeasurement(session, atTrigger, before));
                     return;
                 }
             }
@@ -942,7 +957,91 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 session.ContextUsedPercent);
         }
 
-        await _StartOrReplaceAsync(replaceALiveInstance: true, startFresh: true, CancellationToken.None).ConfigureAwait(true);
+        var restart = atTrigger with
+        {
+            Kind = AssistantContextEvent.Restart,
+            Reason = session.SupportsContextCompaction ? AssistantContextEvent.CompactFailed : AssistantContextEvent.NoCompactionSupport,
+        };
+        await _StartOrReplaceAsync(
+            replaceALiveInstance: true, startFresh: true, CancellationToken.None, startFreshBecause: restart.Describe()).ConfigureAwait(true);
+
+        // After the restart, so the log cannot delay it; a held line replaces nothing and writes nothing.
+        if (_contextEvents is not null && !ReferenceEquals(session, Session))
+        {
+            await _contextEvents.RecordAsync(restart).ConfigureAwait(true);
+        }
+    }
+
+    // AC-2419: a compaction's line waits for its turn to end, which is when the usage over it is known.
+    private sealed record CompactionMeasurement(IAssistantSession Session, AssistantContextEvent AtTrigger, SessionUsageTotals? Before);
+
+    private CompactionMeasurement? _compaction;
+
+    internal Task ContextEventWrite { get; private set; } = Task.CompletedTask;
+
+    private void _CompleteCompactionMeasurement(IAssistantSession session, bool sessionEnds)
+    {
+        if (_RunExclusive(() => ReferenceEquals(_compaction?.Session, session) ? _compaction : null) is not { } measurement)
+        {
+            return;
+        }
+
+        var after = session.UsageTotals;
+        var counted = after?.Turns > measurement.Before?.Turns;
+        // Not on busy/idle: the triggering turn clears busy after the ask. ponytail: a turn without a result books the next.
+        if (!counted && !sessionEnds)
+        {
+            return;
+        }
+
+        // Taken in one step, so two state changes cannot both write it.
+        var taken = _RunExclusive(() =>
+        {
+            var mine = ReferenceEquals(_compaction, measurement);
+            if (mine)
+            {
+                _compaction = null;
+            }
+
+            return mine;
+        });
+        if (!taken || _contextEvents is null)
+        {
+            return;
+        }
+
+        long? input = null;
+        long? output = null;
+        if (counted && after is not null && measurement.Before is { } before)
+        {
+            input = _PromptTokens(after) - _PromptTokens(before);
+            output = (long)after.OutputTokens - before.OutputTokens;
+        }
+
+        // No tokens counted is unknown; zero would read as free.
+        var measured = input > 0 || output > 0;
+        ContextEventWrite = _contextEvents.RecordAsync(measurement.AtTrigger with
+        {
+            CompactInput = measured ? input : null,
+            CompactOutput = measured ? output : null,
+        });
+
+        static long _PromptTokens(SessionUsageTotals totals) =>
+            (long)totals.InputTokens + totals.CacheReadInputTokens + totals.CacheCreationInputTokens;
+    }
+
+    private int? _NoteStateAgeMinutes()
+    {
+        try
+        {
+            var changedAt = (_memory as AssistantMemoryFile)?.NoteStateChangedAt() ?? DateTimeOffset.MinValue;
+            return changedAt == DateTimeOffset.MinValue ? null : (int)(DateTimeOffset.UtcNow - changedAt).TotalMinutes;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "The age of the assistant's state note could not be read.");
+            return null;
+        }
     }
 
     // The rule itself, as a pure function so it can be asserted directly — the same shape as ActivityFor above.
@@ -1224,6 +1323,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // thrown at a hotkey handler.
     private async Task _DisposeQuietlyAsync(IAssistantSession session)
     {
+        // While its totals can still be read.
+        _CompleteCompactionMeasurement(session, sessionEnds: true);
+
         // Before the dispose, and outside the try: the host wired this session up when it minted it, and that
         // wiring has to come off whether or not the runtime tears down cleanly — a dispose that throws would
         // otherwise leave the dead session subscribed for the life of the process.
