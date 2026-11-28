@@ -115,6 +115,8 @@ A session start whose MCP gateway cannot be prepared stops, never falling back t
 | `Swarm.ExtraInternalCidrsText` | Server backend (AC-2279) |
 | `Swarm.ReturnChoice` | Server backend (AC-2279) |
 | `AssistantOptions.AlwaysOnTop` | Client presentation/device |
+| `AssistantOptions.CompactionsBeforeRestart` | Server assistant (AC-2418) |
+| `AssistantOptions.ContextCompactionPercent` | Server assistant (AC-2280) |
 | `AssistantOptions.ConsentBypassAll` | Server assistant (AC-2280) |
 | `AssistantOptions.IsEnabled` | Server assistant (AC-2280) |
 | `AssistantOptions.PushToTalkKeyName` | Client presentation/device |

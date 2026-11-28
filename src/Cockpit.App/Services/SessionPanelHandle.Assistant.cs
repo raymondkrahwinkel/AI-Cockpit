@@ -62,6 +62,7 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
             if (_assistantStateChanged is null)
             {
                 _Assistant.PropertyChanged += _OnAssistantPaneChanged;
+                _Assistant.TurnFillRead += _OnAssistantTurnFillRead;
             }
 
             _assistantStateChanged += value;
@@ -73,6 +74,10 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
             if (_assistantStateChanged is null && _pane is { } pane)
             {
                 pane.PropertyChanged -= _OnAssistantPaneChanged;
+                if (pane is SessionViewModel assistant)
+                {
+                    assistant.TurnFillRead -= _OnAssistantTurnFillRead;
+                }
             }
         }
     }
@@ -149,6 +154,8 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
     void IAssistantSession.SpeakReplies(bool speak) => _Assistant.ReadResponsesAloud = speak;
 
     ValueTask IAsyncDisposable.DisposeAsync() => _pane?.DisposeAsync() ?? ValueTask.CompletedTask;
+
+    private void _OnAssistantTurnFillRead() => _assistantStateChanged?.Invoke(this, true);
 
     // The properties the assistant's chip and its hand-over read (AC-1013, AC-596); a null name is "everything".
     // The consent card is a second way to wait on the operator, with a property of its own (#AC-47).

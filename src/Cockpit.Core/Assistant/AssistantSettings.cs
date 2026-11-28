@@ -13,6 +13,12 @@ public sealed record AssistantSettings
     public static double NormalizeCompactionPercent(double? value) =>
         value is >= MinimumCompactionPercent and <= MaximumCompactionPercent ? value.Value : DefaultCompactionPercent;
 
+    public const int MaximumCompactionsBeforeRestart = 10;
+    public const int DefaultCompactionsBeforeRestart = 2;
+
+    public static int NormalizeCompactionsBeforeRestart(int? value) =>
+        value is >= 0 and <= MaximumCompactionsBeforeRestart ? value.Value : DefaultCompactionsBeforeRestart;
+
     // Whether the assistant exists at all (decision 7, criterion 1). *Off by default.* Off means: no
     // instance, no model in memory, no session costing anything, no chip in the sidebar, and the assistant
     // hotkey does nothing — while saying why, rather than being a key that silently is not there.
@@ -36,6 +42,9 @@ public sealed record AssistantSettings
     public bool AlwaysOnTop { get; init; } = true;
 
     public double ContextCompactionPercent { get; init; } = DefaultCompactionPercent;
+
+    // AC-2418: after this many compactions of one conversation the next full context starts a new one; 0 never does.
+    public int CompactionsBeforeRestart { get; init; } = DefaultCompactionsBeforeRestart;
 
     // AC-2357: whether start_agent refuses a start without a fitting role (not even `none`) when the target brain has roles. On by default.
     public bool RequireRole { get; init; } = true;

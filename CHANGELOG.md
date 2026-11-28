@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2418: After two compactions of one conversation the assistant no longer compacts it again: the next time its context fills up it starts a new conversation from its state note ("Fresh start after 2 compactions"). It also starts fresh when a compaction leaves the context above the threshold, even if the figure did not change. Set the number under Options › Assistant, "Fresh start after … compactions" (1-10, 0 turns the limit off).
+
 - AC-2414: A session now warns when its context gets long. The usage warnings have a new "Context tokens" field per provider and for the Assistant (empty is off), next to the context percentage; whichever is passed first shows one line, "Context 72% (148.0k tokens) — long contexts cost more per turn and lose detail.", with "Compact now" where the provider can compact; the transcript then marks the compaction. It comes back only after the context has dropped below both limits. The Assistant shows no line, only the amber "ctx" figure, since it compacts on its own. The token count is what the last model request held (Claude, Codex SDK and OpenAI-compatible sessions), is unknown right after a compaction, and is now recorded in `assistant-context-events.jsonl` (Claude plugin 0.37.0, Codex 0.17.0, OpenAI-compatible 0.11.0, Grok 0.7.0, OpenRouter 0.7.0, Plugin SDK 3.103.0).
 
 - AC-2409: Productivity › Overview has a new card "Cache hit per day and model" (day, model, tokens, cache hit rate), weighted over the turns that reported their cache; it reads "n/a" for models that report none (local models) and for usage recorded before this update (Productivity plugin 0.9.0, Plugin SDK 3.102.0).

@@ -525,9 +525,8 @@ public class AssistantSessionHostTests
 
         Assert.True(Dispatcher.UIThread.Invoke(host.RequestConversationClear));
 
-        // Not run while busy: give the (fire-and-forget, if wrongly triggered) clear a moment, then assert nothing
-        // moved.
-        Thread.Sleep(200);
+        // A wrongly triggered clear is posted to the dispatcher; a background job runs only after it.
+        Dispatcher.UIThread.Invoke(() => { }, DispatcherPriority.Background);
         Assert.Same(first, host.View());
 
         // The turn ends: the same property change AC-596's hand-over watches is what runs the queued clear.
