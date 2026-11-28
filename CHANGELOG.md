@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2409: Productivity › Overview has a new card "Cache hit per day and model" (day, model, tokens, cache hit rate), weighted over the turns that reported their cache; it reads "n/a" for models that report none (local models) and for usage recorded before this update (Productivity plugin 0.9.0, Plugin SDK 3.102.0).
+
 - AC-2417: Before the assistant compacts its conversation or starts a fresh one, it is first asked to update its state note under five fixed headings (State, Open tasks, Decisions today, Running sessions and watches, Open questions). The request and the note appear in the assistant's panel; the reset waits for that turn for at most 3 minutes, and is put off when you send something or a question waits for you.
 
 - AC-2406: Sessions on LM Studio, Ollama and OpenAI-compatible providers (OpenAI, Gemini, Grok, OpenRouter, Hetzner and other custom endpoints) now show their token usage in the session meter, with cache reads where the server reports them; where it does not, the cache hit rate in the tooltip reads "n/a" (OpenAI-compatible plugin 0.10.0, Grok 0.6.0, OpenRouter 0.6.0).

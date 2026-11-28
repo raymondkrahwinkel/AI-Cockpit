@@ -41,6 +41,9 @@ public sealed record UsageSnapshot
 
     public int CacheCreationInputTokens { get; init; }
 
+    // AC-2409: `SessionUsageTotals.CacheCountedPromptTokens` so far; null on lines written before it was kept.
+    public long? CacheCountedPromptTokens { get; init; }
+
     // What the provider said this cost so far, in US dollars. Zero where the provider reports no cost at all (a local model).
     public double TotalCostUsd { get; init; }
 
