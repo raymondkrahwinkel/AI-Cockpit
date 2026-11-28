@@ -64,7 +64,9 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         }
         var environment = new Dictionary<string, string?>(BuildEnvironmentOverlay(config, mcpLaunch.EnvironmentVariables));
         JsonElement hooks = JsonSerializer.SerializeToElement(TtyChildHooks.Settings(statusFile, "codex", environment));
-        var hookArguments = new List<string>([.. mcpLaunch.ConfigArgs, .. config.CompactionArguments()]);
+        var codexHome = environment.GetValueOrDefault("CODEX_HOME") ?? context.BaseEnvironment.GetValueOrDefault("CODEX_HOME");
+        var modelWindow = CodexContextWindow.Read(codexHome, CliAgentConfig.ResolveOption(context.Options, ModelOptionKey, config.Model));
+        var hookArguments = new List<string>([.. mcpLaunch.ConfigArgs, .. config.CompactionArguments(modelWindow)]);
         IReadOnlyDictionary<string, string> options = context.Options;
         if (CodexSandbox.StrictWritableRoots(context.BaseEnvironment, context.WorkingDirectory, logger) is { } writableRoots)
         {

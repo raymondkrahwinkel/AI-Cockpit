@@ -21,14 +21,20 @@ internal sealed record CliAgentConfig(
     string? ConfigDir = null,
     long? AutoCompactTokenLimit = null)
 {
-    // AC-2421: about half of the 272k window most Codex models have; Codex's own line is 90% of the window.
-    public const long DefaultAutoCompactTokenLimit = 135_000;
+    // AC-2421: Codex's own line is 90% of the window; the default sits at this share of it, or at a fixed count when unknown.
+    public const int DefaultAutoCompactPercent = 45;
+    public const long FallbackAutoCompactTokenLimit = 135_000;
 
     // Codex only lets this limit lower its own line; 0 passes nothing, so the operator's config.toml or Codex decides.
-    public IReadOnlyList<string> CompactionArguments() =>
-        (AutoCompactTokenLimit ?? DefaultAutoCompactTokenLimit) is > 0 and var limit
+    public IReadOnlyList<string> CompactionArguments(long? modelWindow)
+    {
+        var fallback = modelWindow is { } window
+            ? (long)Math.Round(window * DefaultAutoCompactPercent / 100_000d, MidpointRounding.AwayFromZero) * 1000
+            : FallbackAutoCompactTokenLimit;
+        return (AutoCompactTokenLimit ?? fallback) is > 0 and var limit
             ? ["-c", string.Create(CultureInfo.InvariantCulture, $"model_auto_compact_token_limit={limit}")]
             : [];
+    }
 
     // Case-insensitive property matching on deserialize — a hand-edited `cockpit.json` should not fail
     // to parse over a casing mismatch, same rationale as `OpenAiCompatConfig.JsonOptions`.

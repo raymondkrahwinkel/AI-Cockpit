@@ -235,7 +235,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             environmentVariables[key] = value;
         }
 
-        var configArguments = new List<string>([.. mcpLaunch.ConfigArgs, .. _config.CompactionArguments()]);
+        var modelWindow = CodexContextWindow.Read(environmentVariables.GetValueOrDefault("CODEX_HOME"), effectiveModel);
+        var compaction = _config.CompactionArguments(modelWindow);
+        _logger?.LogInformation("Codex model {Model}: context window {Window}, compaction override {Override}.", effectiveModel, modelWindow, string.Join(' ', compaction));
+        var configArguments = new List<string>([.. mcpLaunch.ConfigArgs, .. compaction]);
         if (_writableRoots is not null)
         {
             configArguments.AddRange(CodexSandbox.ConfigArguments(_writableRoots));

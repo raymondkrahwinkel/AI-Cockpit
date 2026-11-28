@@ -42,11 +42,12 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
 
-        var defaultLimit = CliAgentConfig.DefaultAutoCompactTokenLimit.ToString(CultureInfo.InvariantCulture);
+        var share = CliAgentConfig.DefaultAutoCompactPercent;
+        var fallback = CliAgentConfig.FallbackAutoCompactTokenLimit.ToString(CultureInfo.InvariantCulture);
         _autoCompact = new TextBox
         {
             Text = existing?.AutoCompactTokenLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-            PlaceholderText = defaultLimit,
+            PlaceholderText = $"Empty = {share}% of the model's window",
         };
         _autoCompactStatus.IsVisible = false;
         var compaction = new StackPanel
@@ -58,7 +59,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _autoCompact,
                 new TextBlock
                 {
-                    Text = $"Codex summarises the conversation once it reaches this size. Empty = {defaultLimit}. Codex's own line is 90% of the model's window and this can only lower it. 0 = leave it to Codex and your config.toml.",
+                    Text = $"A number of tokens, not a percentage: Codex summarises the conversation once it reaches this size. Empty = {share}% of the model's context window, rounded to thousands and read from Codex's own model list when a session starts, or {fallback} when that window is unknown. Codex's own line is 90% and this can only lower it. 0 = leave it to Codex and your config.toml.",
                     FontSize = 11,
                     Opacity = 0.7,
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
