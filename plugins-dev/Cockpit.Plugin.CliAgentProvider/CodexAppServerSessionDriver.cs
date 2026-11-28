@@ -235,7 +235,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             environmentVariables[key] = value;
         }
 
-        var configArguments = new List<string>(mcpLaunch.ConfigArgs);
+        var configArguments = new List<string>([.. mcpLaunch.ConfigArgs, .. _config.CompactionArguments()]);
         if (_writableRoots is not null)
         {
             configArguments.AddRange(CodexSandbox.ConfigArguments(_writableRoots));
@@ -572,6 +572,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _events.Publish(new PluginSessionError { SessionId = sessionId, Message = $"MCP server '{displayName}' did not start, so this session has none of its tools: {reason}" });
     }
 
+    internal const string CompactedNote = "(cockpit) Codex compacted this conversation: earlier turns are now a summary.\n\n";
+
     private void _HandleToolItem(JsonElement parameters, bool completed)
     {
         if (!parameters.TryGetProperty("item", out var item)
@@ -621,6 +623,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         switch (itemType)
         {
+            // AC-2421: Codex compacts on its own and says nothing else, so the transcript names the moment.
+            case "contextCompaction" when completed && !isChild:
+                _events.Publish(new PluginAssistantTextDelta { SessionId = sessionId, BlockIndex = 0, Text = CompactedNote });
+                break;
+
             case "commandExecution" when !completed:
                 _events.Publish(new PluginToolUseRequested { SessionId = sessionId, ParentToolUseId = parentTool, ToolUseId = itemId, ToolName = "shell", InputJson = _RawOrEmpty(item, "command") });
                 break;

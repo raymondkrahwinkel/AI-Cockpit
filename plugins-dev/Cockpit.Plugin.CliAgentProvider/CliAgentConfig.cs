@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -17,8 +18,18 @@ internal sealed record CliAgentConfig(
     IReadOnlyList<string>? ExtraArgs = null,
     string? AuthEnvVar = "CODEX_API_KEY",
     string? ApiKey = null,
-    string? ConfigDir = null)
+    string? ConfigDir = null,
+    long? AutoCompactTokenLimit = null)
 {
+    // AC-2421: about half of the 272k window most Codex models have; Codex's own line is 90% of the window.
+    public const long DefaultAutoCompactTokenLimit = 135_000;
+
+    // Codex only lets this limit lower its own line; 0 passes nothing, so the operator's config.toml or Codex decides.
+    public IReadOnlyList<string> CompactionArguments() =>
+        (AutoCompactTokenLimit ?? DefaultAutoCompactTokenLimit) is > 0 and var limit
+            ? ["-c", string.Create(CultureInfo.InvariantCulture, $"model_auto_compact_token_limit={limit}")]
+            : [];
+
     // Case-insensitive property matching on deserialize — a hand-edited `cockpit.json` should not fail
     // to parse over a casing mismatch, same rationale as `OpenAiCompatConfig.JsonOptions`.
     public static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };

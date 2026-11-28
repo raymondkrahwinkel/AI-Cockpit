@@ -472,7 +472,8 @@
     <!-- 0.188.0 (AC-2394): a plugin may name its session's brain; no profile preselection allows every server (SDK 3.100.0). -->
     <!-- 0.188.1 (AC-2423): a session start reports its planned MCP servers, unconfirmed, while they still connect; no API change. -->
     <!-- 0.189.0 (AC-2405): one cache model for every provider, cache hit rate in the usage tooltip (SDK 3.101.0). -->
-    <VersionPrefix>0.189.0</VersionPrefix>
+    <!-- 0.190.0 (AC-2421): compaction threshold per profile for Codex and local models; no API change. -->
+    <VersionPrefix>0.190.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

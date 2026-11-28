@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -18,14 +20,24 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
     private readonly AutoCompleteBox _model;
     private readonly TextBox _baseUrl;
 
-    // AC-1489: no field of its own; kept from the loaded config so a save does not drop it.
+    // AC-1489: only the two fresh-start bounds have a field; the rest of the loaded object survives a save.
     private readonly JsonElement? _turnLimits;
+    private readonly TextBox _contextWindow;
+    private readonly TextBox _restartAt;
+    private readonly TextBlock _restartStatus = ProviderConfigStatus.CreateLine();
     private readonly bool _isSelfHosted;
     private readonly TextBox _timeoutSeconds;
     private readonly Button _fetchModels;
     private readonly TextBlock _modelStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _timeoutStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _baseUrlStatus = ProviderConfigStatus.CreateLine();
+
+    private const string _ContextWindowKey = "contextWindowTokens";
+    private const string _RestartKey = "restartAtPercent";
+
+    // The same line the host's own local providers use; above the maximum the context guard is already winding turns down.
+    private const int _DefaultRestartPercent = 55;
+    private const int _MaximumRestartPercent = 75;
 
     public Control View { get; }
 
@@ -80,6 +92,24 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         };
         advancedFields.Classes.Add("advanced-provider-field");
 
+        _contextWindow = new TextBox { Text = _ReadLimit(existing?.TurnLimits, _ContextWindowKey), PlaceholderText = "Empty = never start fresh" };
+        _restartAt = new TextBox { Text = _ReadLimit(existing?.TurnLimits, _RestartKey), PlaceholderText = _DefaultRestartPercent.ToString(CultureInfo.InvariantCulture) };
+        _restartStatus.IsVisible = false;
+        var contextFields = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                _Label("Context window the server really loads (tokens)"),
+                _contextWindow,
+                _Label("Start fresh at (% of that window)"),
+                _restartAt,
+                _Hint($"This endpoint does not compact. With a window set, the first message past this line starts a fresh conversation: the model no longer sees earlier messages, and the transcript says so. Empty = {_DefaultRestartPercent}, 0 = never, highest {_MaximumRestartPercent}."),
+                _restartStatus,
+            },
+        };
+        contextFields.Classes.Add("advanced-provider-field");
+
         // The first-run wizard hides advanced fields, and a custom endpoint has no default to fall back on.
         if (!provider.IsCustom)
         {
@@ -100,6 +130,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
                 _modelStatus,
                 baseUrlFields,
                 advancedFields,
+                contextFields,
             },
         };
     }
@@ -133,9 +164,62 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
-        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds, _turnLimits, _isSelfHosted));
+        _restartStatus.IsVisible = false;
+        if (!_TryGetTurnLimits(out var turnLimits))
+        {
+            _restartStatus.IsVisible = true;
+            ProviderConfigStatus.Set(_restartStatus, $"The window must be a positive number; the percentage 0 to {_MaximumRestartPercent}, and only with a window set.", isOk: false);
+            configJson = string.Empty;
+            return false;
+        }
+
+        configJson = JsonSerializer.Serialize(new OpenAiCompatConfig((_apiKey.Text ?? string.Empty).Trim(), _model.Text.Trim(), _baseUrl.Text.Trim(), timeoutSeconds, turnLimits, _isSelfHosted));
         return true;
     }
+
+    // The loaded `turnLimits` with the two fields written into it; an emptied window removes both.
+    private bool _TryGetTurnLimits(out JsonElement? turnLimits)
+    {
+        turnLimits = _turnLimits;
+        var windowText = _contextWindow.Text?.Trim() ?? string.Empty;
+        var percentText = _restartAt.Text?.Trim() ?? string.Empty;
+        if (windowText.Length == 0 && percentText.Length == 0 && _ReadLimit(_turnLimits, _ContextWindowKey).Length == 0)
+        {
+            return true;
+        }
+
+        var window = 0;
+        var percent = _DefaultRestartPercent;
+        if ((windowText.Length == 0 && percentText.Length > 0)
+            || (windowText.Length > 0 && (!int.TryParse(windowText, NumberStyles.None, CultureInfo.InvariantCulture, out window) || window == 0))
+            || (percentText.Length > 0 && (!int.TryParse(percentText, NumberStyles.None, CultureInfo.InvariantCulture, out percent) || percent > _MaximumRestartPercent)))
+        {
+            return false;
+        }
+
+        var limits = (_turnLimits is { ValueKind: JsonValueKind.Object } current ? JsonObject.Create(current) : null) ?? new JsonObject();
+        foreach (var name in limits.Select(property => property.Key)
+            .Where(name => name.Equals(_ContextWindowKey, StringComparison.OrdinalIgnoreCase) || name.Equals(_RestartKey, StringComparison.OrdinalIgnoreCase))
+            .ToList())
+        {
+            limits.Remove(name);
+        }
+
+        if (window > 0)
+        {
+            limits[_ContextWindowKey] = window;
+            limits[_RestartKey] = percent;
+        }
+
+        turnLimits = limits.Count == 0 ? null : JsonSerializer.SerializeToElement(limits);
+        return true;
+    }
+
+    private static string _ReadLimit(JsonElement? turnLimits, string key) =>
+        turnLimits is { ValueKind: JsonValueKind.Object } limits
+        && limits.EnumerateObject().FirstOrDefault(property => property.Name.Equals(key, StringComparison.OrdinalIgnoreCase)).Value is { ValueKind: JsonValueKind.Number } value
+            ? value.GetRawText()
+            : string.Empty;
 
     private Control _ModelRow()
     {

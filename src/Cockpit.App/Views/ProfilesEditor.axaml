@@ -273,6 +273,16 @@
                                            Increment="1024" FormatString="0"/>
                         </StackPanel>
 
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Start fresh at (% of context)" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <NumericUpDown Name="RestartAtPercent" Value="{Binding RestartAtPercent}" Minimum="0"
+                                           Maximum="75"
+                                           Increment="5" FormatString="0"/>
+                            <TextBlock Text="A local model does not compact. Past this line the next message starts a fresh conversation: the model no longer sees earlier messages, and the transcript says so. 0 = never. The Assistant uses its own setting instead."
+                                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+
                         <CheckBox Content="Model zelf laden met deze context"
                                   IsChecked="{Binding LoadModelWithContext}"
                                   IsEnabled="{Binding !ManageLmStudioLoadOptions}"

@@ -7,6 +7,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -100,6 +101,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private TimeSpan _streamIdleTimeout;
 
     public string? SessionId => _sessionId;
+
+    // AC-2421: the guard's own estimate of how full the window is, so the header and the Assistant can see it.
+    public SessionStatusFeed? CurrentStatus =>
+        _agent?.GetService<ContextGuardChatClient>()?.FillPercent is { } fill ? new SessionStatusFeed(Math.Round(fill), []) : null;
 
     public SessionProfile? Profile { get; private set; }
 
@@ -226,8 +231,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             _turnTools = _BuildTurnTools();
             _toolSession.ToolsChanged += _OnToolsChanged;
             var turnLimits = TurnLimitsFrom(config, _logger);
-            _logger.LogInformation("Local-model turn guard: context {ContextWindowTokens}, reserve {ReserveTokens}, soft limit {SoftLimitRatio}.",
-                turnLimits.ContextWindowTokens, turnLimits.ReserveTokens, turnLimits.SoftLimitRatio);
+            // AC-2421: the Assistant already starts fresh on its own line (ContextCompactionPercent), after noting its state.
+            if (paneId == AssistantIdentity.PaneId)
+            {
+                turnLimits = turnLimits with { RestartAtPercent = 0 };
+            }
+
+            _logger.LogInformation("Local-model turn guard: context {ContextWindowTokens}, reserve {ReserveTokens}, soft limit {SoftLimitRatio}, fresh start at {RestartAtPercent}%.",
+                turnLimits.ContextWindowTokens, turnLimits.ReserveTokens, turnLimits.SoftLimitRatio, turnLimits.RestartAtPercent);
             _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
                 .UseFunctionInvocation(configure: client =>
                 {
@@ -709,7 +720,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             LmStudioConfig lmStudio => lmStudio.ContextTokens,
             _ => LocalModelContext.DefaultTokens,
         };
-        return ChatTurnLimits.From(json, logger) with { ContextWindowTokens = LocalModelContext.Normalize(contextTokens) };
+        var limits = ChatTurnLimits.From(json, logger);
+        return limits with
+        {
+            ContextWindowTokens = LocalModelContext.Normalize(contextTokens),
+            RestartAtPercent = limits.RestartAtPercent ?? LocalModelContext.DefaultRestartPercent,
+        };
     }
 
     private static string? _SystemPromptFrom(ProviderConfig config) => config switch
