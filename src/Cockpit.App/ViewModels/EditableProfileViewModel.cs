@@ -254,6 +254,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private bool _loadModelWithContext;
 
+    // AC-2421: stored inside `turnLimits`; 0 is never.
+    [ObservableProperty]
+    private int _restartAtPercent;
+
     // AC-1489: a local provider's context-guard bounds have no field of their own; kept so a save does not drop them.
     private readonly JsonElement? _turnLimits;
 
@@ -775,6 +779,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             LmStudioConfig lmStudio => lmStudio.TurnLimits,
             _ => null,
         };
+        _restartAtPercent = LocalModelContext.RestartPercent(_turnLimits);
         _InitializeLmStudioOptions(profile.ProviderConfig as LmStudioConfig);
         _localReasoningEffort = profile.ProviderConfig switch
         {
@@ -929,8 +934,8 @@ public partial class EditableProfileViewModel : ViewModelBase
 
         return SelectedProvider.Value switch
         {
-            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), _LocalReasoningEffort()),
-            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext, _LmStudioLoadOptions(), _ToggleValue(LmStudioThinking), _LocalReasoningEffort()),
+            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, LocalModelContext.WithRestartPercent(_turnLimits, RestartAtPercent), LocalModelContext.Normalize(ContextTokens), _LocalReasoningEffort()),
+            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, LocalModelContext.WithRestartPercent(_turnLimits, RestartAtPercent), LocalModelContext.Normalize(ContextTokens), LoadModelWithContext, _LmStudioLoadOptions(), _ToggleValue(LmStudioThinking), _LocalReasoningEffort()),
             _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }

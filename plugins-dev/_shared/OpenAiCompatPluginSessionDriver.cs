@@ -35,6 +35,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     private string? _sessionId;
     private string _model = defaultModel;
+    private ChatTurnLimits _turnLimits = turnLimits ?? ChatTurnLimits.Default;
     private readonly TimeSpan _defaultStreamIdleTimeout = streamIdleTimeout ?? ChatTurnLoop.StreamIdleTimeout;
     private TimeSpan? _streamIdleTimeout = streamIdleTimeout;
     private CancellationTokenSource? _turnCancellation;
@@ -51,6 +52,12 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
+    // AC-2421: only a profile that states its window gets a fill figure; the default window is a guess, not a measurement.
+    public PluginSessionStatus? Status =>
+        _turnLimits.RestartAtPercent is not null && _agent?.GetService<ContextGuardChatClient>()?.FillPercent is { } fill
+            ? new PluginSessionStatus(Math.Round(fill), [])
+            : null;
+
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrWhiteSpace(model))
@@ -66,7 +73,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
                 _toolLoop = client;
                 client.AdditionalTools = [.. _additionalTools];
             })
-            .Use(inner => new ContextGuardChatClient(inner, turnLimits ?? ChatTurnLimits.Default, logger, preservePrefix))
+            .Use(inner => new ContextGuardChatClient(inner, _turnLimits, logger, preservePrefix))
             .Build();
         _events.Publish(new PluginSessionInitialized { SessionId = _sessionId, Tools = _reachableToolNames });
         return Task.CompletedTask;
@@ -77,6 +84,12 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
         _streamIdleTimeout = StreamSilenceTimeout.Resolve(options?.GetValueOrDefault(StreamSilenceTimeout.Key), _defaultStreamIdleTimeout);
+        // AC-2421: the Assistant (the host's fixed pane id) starts fresh on its own line, after noting its state.
+        if (options?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId) == "cockpit-assistant" && _turnLimits.RestartAtPercent is not null)
+        {
+            _turnLimits = _turnLimits with { RestartAtPercent = 0 };
+        }
+
         var appendSystemPrompt = options is not null
             && options.TryGetValue(WellKnownPluginSessionOptions.AppendSystemPrompt, out var value)
             && !string.IsNullOrWhiteSpace(value)

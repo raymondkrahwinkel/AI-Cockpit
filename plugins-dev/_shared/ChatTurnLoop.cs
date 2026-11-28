@@ -133,6 +133,11 @@ internal static class ChatTurnLoop
         {
             _TrimOldToolResults(history);
         }
+        if (guard?.RestartWhenFull(history, options) is { } restartNote)
+        {
+            logger.LogInformation("{RestartNote}", restartNote);
+            onText($"{restartNote}\n\n");
+        }
         var limits = guard?.Limits ?? ChatTurnLimits.Default;
         guard?.BeginTurn();
         var turnText = new StringBuilder();
@@ -161,6 +166,7 @@ internal static class ChatTurnLoop
                 turnText.Append(prefix).Append(RepeatedToolFailureNotice);
                 onText(prefix + RepeatedToolFailureNotice);
                 history.Add(new ChatMessage(ChatRole.Assistant, RepeatedToolFailureNotice));
+                guard?.Measure(history, options);
                 guard?.LogTurn(logger);
                 return new ChatTurnOutcome(turnText.ToString(), round.FinishReason, toolRounds, continuation);
             }
@@ -177,6 +183,7 @@ internal static class ChatTurnLoop
                 || (options.Tools is { Count: > 0 } && toolRounds > 0 && !round.Text.Contains(CompletionMarker, StringComparison.OrdinalIgnoreCase));
             if (!endedEarly || continuation >= limits.MaxContinuations || guard?.Turn.WoundDown == true)
             {
+                guard?.Measure(history, options);
                 guard?.LogTurn(logger);
                 return new ChatTurnOutcome(turnText.ToString(), round.FinishReason, toolRounds, continuation);
             }
@@ -531,6 +538,9 @@ internal sealed record ChatTurnLimits
 
     public int MaxContinuations { get; init; } = 1;
 
+    // AC-2421: percent of the window at which the next message starts a fresh conversation; 0 is off, null is unset.
+    public int? RestartAtPercent { get; init; }
+
     // A missing field keeps its default; a `turnLimits` that does not parse keeps them all rather than failing the session.
     internal static ChatTurnLimits From(JsonElement? json, ILogger? logger = null)
     {
@@ -580,6 +590,39 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     public TurnGuardState Turn { get; private set; } = new();
 
     public void BeginTurn() => Turn = new TurnGuardState();
+
+    // AC-2421: how full the window is, on the same rough estimate pruning uses; null until something was measured.
+    public double? FillPercent { get; private set; }
+
+    public void Measure(IList<ChatMessage> messages, ChatOptions? options) =>
+        FillPercent = Math.Min(100d, 100d * _EstimateTokens(messages, options) / Limits.ContextWindowTokens);
+
+    // AC-2421: past the profile's line, only the system prompt and the turn now starting stay; returns what to tell the operator.
+    public string? RestartWhenFull(List<ChatMessage> history, ChatOptions options)
+    {
+        var line = Limits.RestartAtPercent ?? 0;
+        var turnStart = ChatTurnLoop.TurnStartIndex(history);
+        var earlier = history.GetRange(0, turnStart);
+        if (line <= 0 || earlier.All(message => message.Role == ChatRole.System))
+        {
+            return null;
+        }
+
+        Measure(earlier, options);
+        var fill = FillPercent;
+        var system = earlier.Where(message => message.Role == ChatRole.System).ToList();
+        Measure(system, options);
+        // A system prompt and tool list that fill the line on their own would restart every turn and free nothing.
+        if (fill < line || FillPercent >= line)
+        {
+            FillPercent = fill;
+            return null;
+        }
+
+        history.RemoveRange(0, turnStart);
+        history.InsertRange(0, system);
+        return $"(cockpit) The context was about {fill:0}% full (limit {line}%), so a fresh conversation started: the model no longer sees the earlier messages.";
+    }
 
     public void LogTurn(ILogger turnLogger) =>
         turnLogger.LogInformation(

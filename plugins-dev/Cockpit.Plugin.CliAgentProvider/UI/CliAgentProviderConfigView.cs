@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -15,6 +16,8 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     private readonly TextBox _command;
     private readonly TextBox _workingDirectory;
     private readonly TextBox _apiKey;
+    private readonly TextBox _autoCompact;
+    private readonly TextBlock _autoCompactStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _workingDirectoryStatus = ProviderConfigStatus.CreateLine();
 
@@ -39,6 +42,33 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
 
+        var share = CliAgentConfig.DefaultAutoCompactPercent;
+        var fallback = CliAgentConfig.FallbackAutoCompactTokenLimit.ToString(CultureInfo.InvariantCulture);
+        _autoCompact = new TextBox
+        {
+            Text = existing?.AutoCompactTokenLimit?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            PlaceholderText = $"Empty = {share}% of the model's window",
+        };
+        _autoCompactStatus.IsVisible = false;
+        var compaction = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Auto-compact at (tokens)", FontSize = 11, Margin = new Thickness(0, 4, 0, 0) },
+                _autoCompact,
+                new TextBlock
+                {
+                    Text = $"A number of tokens, not a percentage: Codex summarises the conversation once it reaches this size. Empty = {share}% of the model's context window, rounded to thousands and read from Codex's own model list when a session starts, or {fallback} when that window is unknown. Codex's own line is 90% and this can only lower it. 0 = leave it to Codex and your config.toml.",
+                    FontSize = 11,
+                    Opacity = 0.7,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                },
+                _autoCompactStatus,
+            },
+        };
+        compaction.Classes.Add("advanced-provider-field");
+
         View = new StackPanel
         {
             Spacing = 8,
@@ -54,6 +84,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _LabelRow("API key (optional)", host.CreateHelpHint("setup", "api-key")),
                 _apiKey,
                 new TextBlock { Text = "Or set CODEX_API_KEY in session.env on the server.", FontSize = 11, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                compaction,
             },
         };
 
@@ -134,6 +165,21 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             return false;
         }
 
+        _autoCompactStatus.IsVisible = false;
+        long? autoCompact = null;
+        if (!string.IsNullOrWhiteSpace(_autoCompact.Text))
+        {
+            if (!long.TryParse(_autoCompact.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var limit))
+            {
+                _autoCompactStatus.IsVisible = true;
+                ProviderConfigStatus.Set(_autoCompactStatus, "Auto-compact at (tokens) must be a whole number, 0 or empty.", isOk: false);
+                configJson = string.Empty;
+                return false;
+            }
+
+            autoCompact = limit;
+        }
+
         // Carried over untouched rather than re-defaulted: a profile still running on this pair as its fallback
         // would otherwise be reset to "read-only" by a save that touched an entirely different field.
         var config = new CliAgentConfig(
@@ -141,7 +187,8 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             WorkingDirectory: workingDirectory,
             SandboxMode: _existing?.SandboxMode ?? "read-only",
             Model: _existing?.Model,
-            ApiKey: string.IsNullOrWhiteSpace(_apiKey.Text) ? null : _apiKey.Text.Trim());
+            ApiKey: string.IsNullOrWhiteSpace(_apiKey.Text) ? null : _apiKey.Text.Trim(),
+            AutoCompactTokenLimit: autoCompact);
 
         configJson = JsonSerializer.Serialize(config, CliAgentConfig.JsonOptions);
         return true;
