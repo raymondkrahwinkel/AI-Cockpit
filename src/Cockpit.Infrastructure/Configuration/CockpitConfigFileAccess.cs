@@ -46,7 +46,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // AC-1108: mid-batch, sees that batch's own not-yet-flushed copy instead of stale disk — GlobalHotkeyCoordinator
     // re-reads a section a sibling save just wrote, from the VoiceSettingsSaved handler that save raises mid-Apply.
     public async Task<CockpitConfigFile?> ReadAsync(CancellationToken cancellationToken) =>
-        CockpitConfigWriteBatch.TryPeek(this) is { } pending
+        await CockpitConfigWriteBatch.TryPeekAsync(this, cancellationToken).ConfigureAwait(false) is { } pending
             ? pending
             : await ReadNowAsync(cancellationToken).ConfigureAwait(false);
 
@@ -344,7 +344,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
-    // What TryPeek hands a mid-batch ReadAsync caller instead of the live, still-mutating batch document — so
+    // What TryPeekAsync hands a mid-batch ReadAsync caller instead of the live, still-mutating batch document — so
     // mutating what it got back (nothing does today, but ReadAsync's contract allows it) can't corrupt the batch.
     internal static CockpitConfigFile ClonePeeked(CockpitConfigFile configFile) =>
         JsonSerializer.Deserialize<CockpitConfigFile>(JsonSerializer.Serialize(configFile, SerializerOptions), SerializerOptions)!;

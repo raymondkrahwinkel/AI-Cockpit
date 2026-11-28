@@ -76,9 +76,8 @@ public sealed class CockpitConfigWriteBatch : IAsyncDisposable
         return true;
     }
 
-    // Null (no scope, a scope for a different file, one that hasn't loaded anything yet, or one already flushed)
-    // means the caller falls through to its own read.
-    internal static CockpitConfigFile? TryPeek(CockpitConfigFileAccess access)
+    // AC-2424: null means fall through to its own read; a load under way holds the gate, so wait for it, not the gate.
+    internal static async Task<CockpitConfigFile?> TryPeekAsync(CockpitConfigFileAccess access, CancellationToken cancellationToken)
     {
         var batch = _current.Value;
         if (batch is null || !batch._Owns(access))
@@ -86,6 +85,18 @@ public sealed class CockpitConfigWriteBatch : IAsyncDisposable
             return null;
         }
 
+        Task<CockpitConfigFile>? loading;
+        lock (batch._syncRoot)
+        {
+            loading = batch._flushed ? null : batch._loading;
+        }
+
+        if (loading is null)
+        {
+            return null;
+        }
+
+        await loading.WaitAsync(cancellationToken).ConfigureAwait(false);
         lock (batch._syncRoot)
         {
             return batch._flushed || batch._file is null ? null : CockpitConfigFileAccess.ClonePeeked(batch._file);
