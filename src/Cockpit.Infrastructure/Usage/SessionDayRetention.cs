@@ -375,6 +375,8 @@ internal sealed class SessionDayRetention : ISingletonService
                 OutputTokens = _spent.OutputTokens + spent.OutputTokens,
                 CacheReadInputTokens = _spent.CacheReadInputTokens + spent.CacheReadInputTokens,
                 CacheCreationInputTokens = _spent.CacheCreationInputTokens + spent.CacheCreationInputTokens,
+                // Null if either side is: a day holding an older line has no known rate.
+                CacheCountedPromptTokens = _spent.CacheCountedPromptTokens + spent.CacheCountedPromptTokens,
                 TotalCostUsd = _spent.TotalCostUsd + spent.TotalCostUsd,
                 Turns = _spent.Turns + spent.Turns,
             };
@@ -395,7 +397,10 @@ internal sealed class SessionDayRetention : ISingletonService
             _spent?.TotalCostUsd ?? 0,
             _spent?.Turns ?? 0,
             _spent?.Model,
-            Closing);
+            Closing)
+        {
+            CacheCountedPromptTokens = _spent?.CacheCountedPromptTokens,
+        };
     }
 }
 
@@ -418,7 +423,10 @@ internal sealed record SessionDayAggregate(
     double ReportedCostUsd,
     int Turns,
     string? Model,
-    UsageSnapshot? Closing);
+    UsageSnapshot? Closing)
+{
+    public long? CacheCountedPromptTokens { get; init; }
+}
 
 internal sealed class SessionDayAggregateLog : JsonlAuditLog<SessionDayAggregate>
 {

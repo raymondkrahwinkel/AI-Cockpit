@@ -121,3 +121,40 @@ internal static class ProfileRates
             ? day.ReportedCostUsd
             : null;
 }
+
+internal sealed record CacheHitRow(DateOnly Day, string? Model, long Tokens, double? HitRate);
+
+internal static class CacheHits
+{
+    // AC-2409: weighted over the records that reported their cache; the rest count as tokens only. Newest day first.
+    public static IReadOnlyList<CacheHitRow> PerDayAndModel(CockpitTimeline timeline) =>
+    [
+        .. timeline.Usage
+            .Select(usage => (
+                Day: DateOnly.FromDateTime(usage.RecordedAt.LocalDateTime),
+                usage.Model,
+                Tokens: (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens,
+                Read: (long)usage.CacheReadInputTokens,
+                Counted: usage.CacheCountedPromptTokens ?? 0))
+            .Concat(timeline.Days.Select(day => (
+                day.Day,
+                day.Model,
+                Tokens: (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens,
+                Read: (long)day.CacheReadInputTokens,
+                Counted: day.CacheCountedPromptTokens ?? 0)))
+            .GroupBy(part => (part.Day, part.Model))
+            .Select(group =>
+            {
+                var counted = group.Where(part => part.Counted > 0).ToList();
+                var prompt = counted.Sum(part => part.Counted);
+                return new CacheHitRow(
+                    group.Key.Day,
+                    group.Key.Model,
+                    group.Sum(part => part.Tokens),
+                    prompt > 0 ? (double)counted.Sum(part => part.Read) / prompt : null);
+            })
+            .Where(row => row.Tokens > 0)
+            .OrderByDescending(row => row.Day)
+            .ThenBy(row => row.Model, StringComparer.Ordinal),
+    ];
+}

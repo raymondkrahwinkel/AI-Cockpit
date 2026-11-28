@@ -1376,6 +1376,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             OutputTokens = _usage.OutputTokens,
             CacheReadInputTokens = _usage.CacheReadInputTokens,
             CacheCreationInputTokens = _usage.CacheCreationInputTokens,
+            CacheCountedPromptTokens = _usage.Totals.CacheCountedPromptTokens,
             TotalCostUsd = _usage.TotalCostUsd,
             Turns = _usage.Turns,
         });

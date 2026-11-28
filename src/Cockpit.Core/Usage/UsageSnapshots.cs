@@ -20,6 +20,7 @@ public static class UsageSnapshots
                 OutputTokens = current.OutputTokens - previous.OutputTokens,
                 CacheReadInputTokens = current.CacheReadInputTokens - previous.CacheReadInputTokens,
                 CacheCreationInputTokens = current.CacheCreationInputTokens - previous.CacheCreationInputTokens,
+                CacheCountedPromptTokens = current.CacheCountedPromptTokens - previous.CacheCountedPromptTokens,
                 TotalCostUsd = current.TotalCostUsd - previous.TotalCostUsd,
                 Turns = current.Turns - previous.Turns,
             }

@@ -27,7 +27,7 @@ internal static class ProductivityScenes
     [
         ("310c04a507254a208ad3f985ece5fe8f", Cockpit, "AC-1764", "AC-1764 sidebar-secties", "personal", "opus", true),
         ("e94f3cde6e0e4d76a08f798624fb88d9", Cockpit, "AC-1599", "AC-1599 pr-poort", "Codex", "gpt-5-codex", true),
-        ("0289b8a18f9e4393920c8bee7b8eb14b", Cockpit, "AC-1745", "AC-1745 transcript", "Codex", "gpt-5-codex", false),
+        ("0289b8a18f9e4393920c8bee7b8eb14b", Cockpit, "AC-1745", "AC-1745 transcript", "LM Studio", "qwen3-coder", false),
         ("d47726c7d6a3469cad70694b37425ce6", Depot, "DEP-212", "DEP-212 quota", "work", "sonnet", true),
         ("46fcee8a1d6c4c3eb35dfa4ac000c623", Cockpit, "AC-1737", "AC-1737 host-api", "personal", "opus", false),
     ];
@@ -95,7 +95,14 @@ internal static class ProductivityScenes
             void Spend(int session, double hour, int tokens, double cost)
             {
                 var (pane, _, _, _, profile, model, _) = Sessions[session];
-                usage.Add(new CockpitUsageDelta(pane, morning.AddHours(hour), null, model, tokens / 10, tokens / 20, tokens * 3 / 4, tokens / 10, cost, 6) { ProfileLabel = profile });
+                var cached = model != "qwen3-coder";
+                var read = cached ? tokens / 100 * (75 - (day * 8) - (session * 5)) : 0;
+                var written = cached ? tokens / 10 : 0;
+                usage.Add(new CockpitUsageDelta(pane, morning.AddHours(hour), null, model, tokens / 10, tokens / 20, read, written, cost, 6)
+                {
+                    ProfileLabel = profile,
+                    CacheCountedPromptTokens = cached ? (tokens / 10) + read + written : 0,
+                });
             }
 
             Act(0, 9.1 + (day * 0.2), 75 - (day * 10));

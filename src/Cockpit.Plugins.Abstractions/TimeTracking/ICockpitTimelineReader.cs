@@ -70,6 +70,12 @@ public sealed record CockpitUsageDelta(
     /// The profile the session ran under — whose account the tokens came off — or null when the host did not record it.
     /// </summary>
     public string? ProfileLabel { get; init; }
+
+    /// <summary>
+    /// The prompt tokens a cache hit rate is measured over: input, cache reads and cache writes of a turn that reported
+    /// its cache, 0 for one that did not. Null when the host did not record it.
+    /// </summary>
+    public long? CacheCountedPromptTokens { get; init; }
 }
 
 /// <summary>
@@ -91,7 +97,13 @@ public sealed record CockpitTimelineDay(
     int CacheCreationInputTokens,
     double ReportedCostUsd,
     int Turns,
-    string? Model);
+    string? Model)
+{
+    /// <summary>
+    /// <see cref="CockpitUsageDelta.CacheCountedPromptTokens"/> summed over the day; null when any record in it lacks it.
+    /// </summary>
+    public long? CacheCountedPromptTokens { get; init; }
+}
 
 /// <summary>
 /// The answer to one range: raw lines and per-turn deltas where they are still kept, day aggregates before that.

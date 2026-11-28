@@ -143,6 +143,7 @@ internal sealed class CockpitTimelineReader : ICockpitTimelineReader, ISingleton
         delta.Turns)
     {
         ProfileLabel = delta.ProfileLabel,
+        CacheCountedPromptTokens = delta.CacheCountedPromptTokens,
     };
 
     private static CockpitTimelineDay _ToDay(SessionDayAggregate day) => new(
@@ -160,5 +161,8 @@ internal sealed class CockpitTimelineReader : ICockpitTimelineReader, ISingleton
         day.CacheCreationInputTokens,
         day.ReportedCostUsd,
         day.Turns,
-        day.Model);
+        day.Model)
+    {
+        CacheCountedPromptTokens = day.CacheCountedPromptTokens,
+    };
 }

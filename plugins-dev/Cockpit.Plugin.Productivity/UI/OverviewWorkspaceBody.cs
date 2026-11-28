@@ -69,6 +69,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
             _body.Children.Add(_Entries(snapshot));
             _body.Children.Add(_Tickets(snapshot));
+            _body.Children.Add(_CacheHits(snapshot));
         }
 
         // The rebuild shrinks the content for a moment; put the scroll position back once it is laid out again.
@@ -639,6 +640,39 @@ internal sealed class OverviewWorkspaceBody : UserControl
             body.Children.Add(Ui.Hint("No tickets in this range."));
         }
 
+        return Ui.Card(body, 14);
+    }
+
+    private const string CacheHitColumns = "90,*,90,90";
+
+    private static Control _CacheHits(ProductivityOverviewSnapshot snapshot)
+    {
+        var body = new StackPanel
+        {
+            Name = "OverviewCacheHits",
+            Spacing = 6,
+            Children =
+            {
+                new TextBlock { Text = "Cache hit per day and model", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                _TableHead(["Day", "Model", "Tokens", "Cache hit"], CacheHitColumns),
+            },
+        };
+        var rows = CacheHits.PerDayAndModel(snapshot.Timeline);
+        foreach (var row in rows)
+        {
+            body.Children.Add(_TableRow(
+                [
+                    row.Day.ToString("ddd d MMM", English),
+                    row.Model ?? "unknown model",
+                    _Tokens(row.Tokens),
+                    row.HitRate is { } rate ? (rate * 100).ToString("0", CultureInfo.InvariantCulture) + "%" : "n/a",
+                ],
+                CacheHitColumns));
+        }
+
+        body.Children.Add(Ui.Hint(rows.Count == 0
+            ? "No tokens in this range."
+            : "Share of the prompt served from cache. n/a: no cache count reported, or recorded before it was kept."));
         return Ui.Card(body, 14);
     }
 

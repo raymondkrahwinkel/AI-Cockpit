@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AC-2409: Productivity › Overview has a new card "Cache hit per day and model" (day, model, tokens, cache hit rate), weighted over the turns that reported their cache; it reads "n/a" for models that report none (local models) and for usage recorded before this update (Productivity plugin 0.9.0, Plugin SDK 3.102.0).
+
 - AC-2406: Sessions on LM Studio, Ollama and OpenAI-compatible providers (OpenAI, Gemini, Grok, OpenRouter, Hetzner and other custom endpoints) now show their token usage in the session meter, with cache reads where the server reports them; where it does not, the cache hit rate in the tooltip reads "n/a" (OpenAI-compatible plugin 0.10.0, Grok 0.6.0, OpenRouter 0.6.0).
 - AC-2421: A profile now says when a long conversation is cut down. Codex profiles have "Auto-compact at (tokens)" under Options: Codex then summarises the conversation at that size instead of at 90% of the model's window; empty means 45% of that window (135000 when the window is unknown), 0 leaves it to Codex, and an SDK session says in the transcript that it was compacted. Ollama and LM Studio profiles have "Start fresh at (% of context)" (55 by default, 0 is never): these models do not compact, and LM Studio silently drops older messages once its window is full, so past the line the next message starts a fresh conversation and the transcript says so. OpenAI-compatible endpoints get the same once their context window is filled in. These sessions now also show the context fill in the header.
 
